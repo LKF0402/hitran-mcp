@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# 运行期自动生成（可由 fetch/工具重生，不入库）
+Hitran_Data/
+tmp/
+
+# 个人凭据（严禁入库）
+hitran_api_key.txt

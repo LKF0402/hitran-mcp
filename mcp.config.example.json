@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hitran": {
+      "command": "python",
+      "args": ["D:/hitran-mcp-kit/tools/hitran_mcp.py"],
+      "type": "stdio",
+      "timeout": 600000,
+      "disabled": false
+    }
+  }
+}
