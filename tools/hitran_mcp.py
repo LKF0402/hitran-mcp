@@ -728,6 +728,11 @@ _CONFIRM_NOTE = ("注意：数据全部实时取自 HITRANonline（经 HAPI）�
                  "返回中的 assumed_defaults 列出了本次被迫使用的默认值，needs_confirm=true 时"
                  "必须向用户复核关键工况，不得把默认值当成用户的意图。")
 
+# 2026-09-08 客户端兼容 workaround：豆包 MCP 客户端对 inputSchema 中的
+# "数组 / 嵌套对象 / 联合类型" 参数定义解析失败（tools/list 里只暴露空对象，
+# 导致参数无法传入、调用永远空参）。故全部工具 schema 一律改为扁平、单类型、
+# 标量参数。服务器函数本体不改：specs 数组、diluent 字典等仍受内部支持，
+# 只是不再向客户端广告。豆包客户端修复 schema 摄入后，可恢复丰富参数形式。
 TOOLS = [
     {"name": "hitran_species",
      "description": "查询 HITRAN 官方分子表（HAPI ISO 表，覆盖全部分子与同位素）：分子号 M、主同位素、"
@@ -742,8 +747,7 @@ TOOLS = [
      "inputSchema": {"type": "object",
                      "properties": {"name": {"type": "string"},
                                     "numin": {"type": "number"}, "numax": {"type": "number"},
-                                    "iso": {"type": ["integer", "string"],
-                                            "description": "同位素号，或 'all'（全同位素）；默认主同位素"},
+                                    "iso": {"type": "string", "description": "同位素号（如 1）或 'all'（全同位素）；默认主同位素"},
                                     "force": {"type": "boolean", "description": "True 强制重抓"}},
                      "required": ["name", "numin", "numax"]}},
     {"name": "hitran_lines",
@@ -751,26 +755,21 @@ TOOLS = [
      "inputSchema": {"type": "object",
                      "properties": {"name": {"type": "string"},
                                     "numin": {"type": "number"}, "numax": {"type": "number"},
-                                    "iso": {"type": ["integer", "string"], "description": "同位素号或 'all'"},
+                                    "iso": {"type": "string", "description": "同位素号（如 1）或 'all'"},
                                     "top_n": {"type": "integer", "description": "返回条数，默认 10"},
                                     "min_intensity": {"type": "number"},
                                     "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["name", "numin", "numax"]}},
     {"name": "hitran_spectrum",
-     "description": "计算吸收系数 α / 透过率谱（支持混合气与全同位素），落盘带溯源水印的 CSV，"
-                    "返回峰值、积分、线表信息与告警。混合气按 α_i = x_i·α_pure_i(T,P,浴气) 计算。"
+     "description": "计算吸收系数 α / 透过率谱（单分子或全同位素），落盘带溯源水印的 CSV，"
+                    "返回峰值、积分、线表信息与告警。多组分混合请分次调用后自行叠加。"
                     + _CONFIRM_NOTE,
      "inputSchema": {"type": "object",
                      "properties": {
-                         "specs": {"type": "array",
-                                   "items": {"type": "object",
-                                             "properties": {"name": {"type": "string"},
-                                                            "iso": {"type": ["integer", "string"]},
-                                                            "mole_frac": {"type": "number",
-                                                                          "description": "摩尔分数 0~1；不填按纯气体 1 处理并在 assumed_defaults 里标记"}},
-                                             "required": ["name"]},
-                                   "description": "混合气组分列表；省略时可用 name/mole_frac 单组分简写"},
-                         "name": {"type": "string"}, "mole_frac": {"type": "number"}, "iso": {"type": ["integer", "string"]},
+                         "name": {"type": "string", "description": "分子式，如 CH4/CO2/H2O"},
+                         "mole_frac": {"type": "number",
+                                       "description": "摩尔分数 0~1；不填按纯气体 1 处理并在 assumed_defaults 里标记"},
+                         "iso": {"type": "string", "description": "同位素号（如 1）或 'all'；默认主同位素"},
                          "numin": {"type": "number"}, "numax": {"type": "number",
                                                                  "description": "波数窗口 cm-1（必填，向用户确认）"},
                          "T": {"type": "number", "description": "温度 K（未给则用 296 并标记待确认）"},
@@ -782,27 +781,26 @@ TOOLS = [
                          "hitran_units": {"type": "boolean", "description": "True 返回 cm2/molecule 截面（σ，不按 x 缩放）"},
                          "profile": {"type": "string",
                                      "description": "线型：voigt(默认)/lorentz/gauss/doppler/ht/sdvoigt（官方 HAPI 谱函数）"},
-                         "diluent": {"type": ["string", "object"],
-                                     "description": "展宽浴：'air'(默认)/'self'/如 {\"air\":0.79,\"self\":0.21}"},
+                         "diluent": {"type": "string", "description": "展宽浴：'air'(默认) 或 'self'"},
                          "min_abundance": {"type": "number", "description": "iso='all' 时的丰度下限，默认 1e-4"},
                          "strict": {"type": "boolean", "description": "True 时 T/P 未给则报错（强制先向用户确认）"},
                          "save": {"type": "boolean", "description": "是否落盘 CSV，默认 True"},
                          "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["numin", "numax"]}},
     {"name": "hitran_plot",
-     "description": "绘制谱图 PNG（多物种叠加 + 总谱），返回 PNG 与 CSV 路径。参数同 hitran_spectrum，另加 title/ylog/dpi。"
+     "description": "绘制谱图 PNG（单分子或全同位素），返回 PNG 与 CSV 路径。参数同 hitran_spectrum，另加 title/ylog/dpi。"
                     + _CONFIRM_NOTE,
      "inputSchema": {"type": "object",
                      "properties": {
-                         "specs": {"type": "array", "items": {"type": "object"},
-                                   "description": "同 hitran_spectrum"},
-                         "name": {"type": "string"}, "mole_frac": {"type": "number"}, "iso": {"type": ["integer", "string"]},
+                         "name": {"type": "string", "description": "分子式，如 CH4/CO2/H2O"},
+                         "mole_frac": {"type": "number"},
+                         "iso": {"type": "string"},
                          "numin": {"type": "number"}, "numax": {"type": "number"},
                          "T": {"type": "number"}, "P": {"type": "number"},
                          "step": {"type": "number"}, "wingHW": {"type": "number"},
                          "mode": {"type": "string"}, "path_length_cm": {"type": "number"},
                          "hitran_units": {"type": "boolean"},
-                         "profile": {"type": "string"}, "diluent": {"type": ["string", "object"]},
+                         "profile": {"type": "string"}, "diluent": {"type": "string"},
                          "min_abundance": {"type": "number"}, "strict": {"type": "boolean"},
                          "title": {"type": "string"}, "ylog": {"type": "boolean"},
                          "dpi": {"type": "integer"},
@@ -818,7 +816,6 @@ TOOLS = [
                                     "tips_version": {"type": "integer",
                                                      "description": "TIPS 版本：2025/2021/2017/2011"}}}},
 ]
-
 DISPATCH = {
     "hitran_species": t_species,
     "hitran_fetch": t_fetch,
