@@ -5,5 +5,8 @@ __pycache__/
 Hitran_Data/
 tmp/
 
+# 用户个人下载的截面文件（工具包不含数据，xsc_data/ 不入库）
+xsc_data/
+
 # 个人凭据（严禁入库）
 hitran_api_key.txt
