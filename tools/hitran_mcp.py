@@ -6,8 +6,8 @@
   · 纯标准库实现的 stdio JSON-RPC（MCP 2024-11-05），零新增依赖；
     HAPI / matplotlib 惰性加载，空闲时不占用内存。
   · 所有 print 被捕获为 log 字段返回，绝不污染 stdout 协议流。
-  · 6 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气）
-    / 谱图绘制 / 配分函数。
+  · 7 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气）
+    / 谱图绘制 / 配分函数 / 截面文件（HOTW）读入分析。
   · 产物统一落 tmp/mcp_out/（gitignore 区），CSV 自带 HITRAN 溯源水印。
   · 物理纪律沿用 tools/hitran.py：输入护栏 + 结果轮询 + 混合气 α = x·α_pure(T,P,空气浴)。
 
@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
 
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "hitran", "version": "1.0.0"}
+SERVER_INFO = {"name": "hitran", "version": "1.1.0"}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
 _NP = None
@@ -209,9 +209,11 @@ def _resolve_M(name):
         if f.replace("(", "").replace(")", "") == s.replace("(", "").replace(")", ""):
             return f, e["M"]
     raise ValueError(
-        f"[hitran] 未知物种 '{name}'（HITRAN 官方表无此分子）。"
-        f"可调 hitran_species 不传 name 获取官方全表；共 {len(idx)} 个分子。")
-
+        f"[hitran] 未知物种 '{name}'（HITRAN 逐线库官方表无此分子）。"
+        f"可调 hitran_species 不传 name 获取官方全表；共 {len(idx)} 个分子。"
+        f"若该分子为丙烷/丁烷/VOC 等重分子：HITRAN2024 采用双库架构，它可能收录于"
+        f"截面子库（hitran.org/xsc，600+ 分子，网页登录下载、无在线 API）——"
+        f"请用 hitran_cross_section 读入本地下载的截面文件。")
 
 def _isotopologues(M, iso, min_abundance=1e-4, max_n=6):
     """返回 [(I, 自然丰度)]。
@@ -699,6 +701,135 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, numin=None, numax=No
     return out
 
 
+def _read_hotw_file(path):
+    """读 HITRAN-on-the-Web 截面文件（两列：nu, coef[cm2/molecule]）。
+
+    兼容：空行/注释行（# 开头）自动跳过；注释行前若干行收集为文件头（溯源用）。
+    数据行必须恰好两列浮点；单列或多列行忽略并计数（异常太多则报错）。
+    """
+    path = Path(str(path))
+    if not path.exists():
+        raise ValueError(f"[hitran_cross_section] 截面文件不存在: {path}")
+    if path.is_dir():
+        raise ValueError(f"[hitran_cross_section] 给出的是目录而非文件: {path}")
+    nu, coef, header, skipped = [], [], [], 0
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            s = ln.strip()
+            if not s:
+                continue
+            if s.startswith("#"):
+                if not nu:
+                    header.append(s)
+                continue
+            parts = s.split()
+            if len(parts) == 2:
+                try:
+                    nu.append(float(parts[0]))
+                    coef.append(float(parts[1]))
+                    continue
+                except ValueError:
+                    pass
+            skipped += 1
+            if not nu and skipped > 200:      # 头部垃圾行过多，疑似非截面文件
+                break
+    if not nu:
+        raise ValueError(
+            f"[hitran_cross_section] '{path.name}' 中未解析到两列数值数据（nu, coef）。"
+            f"请确认是 hitran.org/xsc 下载的 HOTW 截面文件（形如 '2950.0000 1.23e-21'）。")
+    return _np().asarray(nu, dtype=float), _np().asarray(coef, dtype=float), header, skipped
+
+
+def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
+                    title=None, ylog=False, dpi=160, save_csv=True):
+    """读入本地 HOTW 截面文件（hitran.org/xsc 下载，两列 ν–σ）→ 截窗 → 绘图 PNG + 溯源 CSV。
+
+    桥接 HITRAN 双库架构的截面通道：逐线库（61 分子）走 HAPI 在线 API；截面库
+    （600+ 重分子，如丙烷/丁烷/VOC）只经 Web Portal 登录下载文件，无在线 API。
+    本工具把下载的截面文件接入同一套产物链路（CSV/PNG 带溯源水印），
+    实现截面分子"下载一次、缓存复用、随时叠加分析"。
+
+    参数：file_path(必填, 本地 .txt 截面文件路径)；source_label(溯源标签，如
+    "C3H8 PNNL 298.15K Sharpe2004"；默认取文件名)；numin/numax(截窗 cm-1，默认全谱)；
+    title/ylog/dpi 同 hitran_plot。数据单位固定为 σ (cm²/molecule)。
+    """
+    if not file_path:
+        raise ValueError("[hitran_cross_section] 必须提供 file_path（本地 HOTW 截面文件路径）")
+    nu, coef, header, skipped = _read_hotw_file(file_path)
+    label = str(source_label or Path(str(file_path)).name)
+    win = [float(numin) if numin is not None else float(nu.min()),
+           float(numax) if numax is not None else float(nu.max())]
+    if not (win[0] <= win[1]):
+        raise ValueError(f"[hitran_cross_section] 窗口非法: numin={win[0]} > numax={win[1]}")
+    m = (nu >= win[0]) & (nu <= win[1])
+    nu_w, coef_w = nu[m], coef[m]
+    warnings = []
+    if nu_w.size == 0:
+        warnings.append(f"窗口 {win[0]:g}–{win[1]:g} cm-1 内 0 个数据点（文件覆盖 "
+                        f"{float(nu.min()):g}–{float(nu.max()):g} cm-1），未截到数据。")
+    if skipped:
+        warnings.append(f"跳过 {skipped} 个非两列数据行（注释/表头已忽略）。")
+
+    # —— 绘图（复用 hitran_plot 风格） ——
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    import matplotlib
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(9.2, 5.0), dpi=int(dpi))
+    if nu_w.size:
+        ax.plot(nu_w, coef_w, lw=0.9, color="#1f4e79", label=label)
+        ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
+    ax.set_xlabel("Wavenumber (cm⁻¹)")
+    ax.set_ylabel("Cross section σ (cm²/molecule)")
+    ax.set_title(title or f"{label}  {win[0]:g}–{win[1]:g} cm⁻¹")
+    ax.grid(alpha=0.25, lw=0.6)
+    if nu_w.size:
+        ax.legend(fontsize=8, framealpha=0.9)
+    if ylog:
+        ax.set_yscale("log")
+    ax.set_xlim(win[0], win[1])
+    fig.text(0.01, 0.01,
+             f"HITRAN2024 cross-section file (HOTW) · source: {label}",
+             fontsize=6.5, color="#666666")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    png = OUT_DIR / _slug(f"{label}_{win[0]}-{win[1]}cm-1_XSC.png")
+    fig.savefig(png, dpi=int(dpi))
+    plt.close(fig)
+
+    # —— CSV（带溯源水印） ——
+    csv = None
+    if save_csv:
+        src = label
+        head = "\n".join([
+            "# ===== HITRAN cross-section file (HOTW) =====",
+            f"# source: {src}",
+            f"# file: {Path(str(file_path)).resolve()}",
+            f"# window_cm-1: {win[0]:g} - {win[1]:g};  units: sigma cm2/molecule",
+            "# (data not from HITRAN2024 line list; cite the original reference"
+            " embedded in the source file header)",
+        ])
+        if header:
+            head += "\n# file_header:\n" + "\n".join(f"#   {h[:120]}" for h in header[:20])
+        csv = OUT_DIR / _slug(f"{label}_{win[0]}-{win[1]}cm-1_XSC.csv")
+        with open(csv, "w", encoding="utf-8") as f:
+            f.write(head + "\nwavenumber_cm-1,sigma_cm2_per_molecule\n")
+            _np().savetxt(f, _np().column_stack([nu, coef]), delimiter=",", fmt="%.6e")
+
+    out = {"source": str(Path(str(file_path)).resolve()), "source_label": label,
+           "file_header_lines": header[:20], "skipped_lines": skipped,
+           "units": "sigma_cm2_per_molecule",
+           "file_coverage_cm-1": [round(float(nu.min()), 4), round(float(nu.max()), 4)],
+           "window_cm-1": [round(win[0], 4), round(win[1], 4)],
+           "n_points_file": int(nu.size), "n_points_in_window": int(nu_w.size),
+           "warnings": warnings, "png": str(png), "csv": str(csv) if csv else None}
+    if nu_w.size:
+        i = int(coef_w.argmax())
+        out["peak"] = {"sigma_cm2_per_molecule": float(coef_w[i]),
+                       "at_nu_cm-1": float(nu_w[i])}
+    return out
+
+
 def t_partition_sum(name=None, M=None, I=None, T=296.0, tips_version=None):
     """配分函数 Q(T)，走官方 TIPS（2025/2021/2017/2011 可选，默认 HAPI 内置 2025）。"""
     ht = _hitran()
@@ -815,6 +946,25 @@ TOOLS = [
                                     "T": {"type": "number", "description": "温度 K，默认 296"},
                                     "tips_version": {"type": "integer",
                                                      "description": "TIPS 版本：2025/2021/2017/2011"}}}},
+    {"name": "hitran_cross_section",
+     "description": "读入本地 HOTW 截面文件（hitran.org/xsc 登录下载，两列 ν–σ，单位 cm²/molecule）"
+                    "→ 截窗 → 绘图 PNG + 溯源 CSV。桥接 HITRAN2024 双库架构的截面通道："
+                    "逐线库 61 分子走 HAPI 在线 API；截面库 600+ 重分子（丙烷/丁烷/VOC）"
+                    "只经 Web Portal 下载文件、无在线 API。本工具把下载的截面文件接入同一套产物链路，"
+                    "实现'下载一次、缓存复用、随时叠加分析'。",
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "file_path": {"type": "string",
+                                       "description": "必填：本地 HOTW 截面文件路径（两列：wavenumber_cm-1, sigma_cm2_per_molecule）"},
+                         "source_label": {"type": "string",
+                                          "description": "溯源标签，如 'C3H8 PNNL 298.15K Sharpe2004'；默认取文件名"},
+                         "numin": {"type": "number", "description": "截窗下限 cm-1；默认全谱"},
+                         "numax": {"type": "number", "description": "截窗上限 cm-1；默认全谱"},
+                         "title": {"type": "string", "description": "图标题，默认 '<label>  <窗口> cm-1'"},
+                         "ylog": {"type": "boolean", "description": "True 用对数坐标"},
+                         "dpi": {"type": "integer", "description": "PNG 分辨率，默认 160"},
+                         "save_csv": {"type": "boolean", "description": "是否落盘溯源 CSV，默认 True"}},
+                     "required": ["file_path"]}},
 ]
 DISPATCH = {
     "hitran_species": t_species,
@@ -823,6 +973,7 @@ DISPATCH = {
     "hitran_spectrum": t_spectrum,
     "hitran_plot": t_plot,
     "hitran_partition_sum": t_partition_sum,
+    "hitran_cross_section": t_cross_section,
 }
 
 
@@ -908,6 +1059,20 @@ def selftest():
     mix = t_plot(specs=[{"name": "CO", "mole_frac": 100e-6}, {"name": "H2O", "mole_frac": 0.02}],
                  numin=2140, numax=2146, T=296, P=1.0, step=0.01)
     print("— plot   :", mix["png"])
+    # 截面链路自测：合成 HOTW 截面文件（两列 ν–σ，高斯峰 @2967 cm-1 模拟 C3H8）
+    import numpy as _np2
+    nu_s = _np2.linspace(2800, 3100, 1501)
+    sig = 1.6e-18 * _np2.exp(-((nu_s - 2967.0) / 8.0) ** 2)
+    demo = OUT_DIR / "_demo_c3h8_pnnl.txt"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(demo, "w", encoding="utf-8") as f:
+        f.write("# synthetic demo cross-section (not real data)\n")
+        for a, b in zip(nu_s, sig):
+            f.write(f"{a:.4f} {b:.6e}\n")
+    xs = t_cross_section(file_path=str(demo), source_label="C3H8 demo",
+                         numin=2900, numax=3000)
+    print("— xsc    :", {k: xs[k] for k in ("n_points_file", "n_points_in_window", "peak")},
+          "png:", xs["png"])
 
 
 if __name__ == "__main__":
