@@ -322,7 +322,8 @@ def _diluent_dict(diluent):
 
 
 def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
-                force=False, min_abundance=1e-4, profile="voigt", diluent=None):
+                force=False, min_abundance=1e-4, profile="voigt", diluent=None,
+                intensity_cutoff=None):
     """窗口安全的吸收谱计算（绕开 ht.absorption 的表名复用问题）。
 
     同位素口径（需在结论中显式声明主同位素近似或全同位素近似）：
@@ -355,12 +356,15 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     if pkey not in PROFILES:
         raise ValueError(f"[hitran] 未知线型 '{profile}'，官方可选: {sorted(PROFILES)}")
     bath = _diluent_dict(diluent)
-    nu, coef = getattr(hapi, PROFILES[pkey])(
+    _hapi_kwargs = dict(
         Components=[(M, e["I"], e["ab"] if full else 1.0) for e in entries],
         SourceTables=[e["table"] for e in entries],
         WavenumberRange=(float(numin), float(numax)), WavenumberStep=float(step),
         WavenumberWingHW=float(wingHW), HITRAN_units=bool(hitran_units),
         Environment={"T": float(T), "p": float(P), "Diluent": bath})
+    if intensity_cutoff is not None and float(intensity_cutoff) > 0:
+        _hapi_kwargs["IntensityThreshold"] = float(intensity_cutoff)
+    nu, coef = getattr(hapi, PROFILES[pkey])(**_hapi_kwargs)
     tinfo = {"molecule": formula, "M": M, "profile": pkey, "diluent": bath,
              "isotope_mode": "all(自然丰度加权)" if full else f"single(I={entries[0]['I']})",
              "table": ",".join(e["table"] for e in entries),
@@ -399,7 +403,7 @@ def _resolve_defaults(kw, strict=False):
 
 def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
              mode="alpha", path_length_cm=None, hitran_units=False,
-             profile="voigt", diluent=None, min_abundance=1e-4):
+             profile="voigt", diluent=None, min_abundance=1e-4, intensity_cutoff=None):
     """算谱核心：返回 dict(nu, per{label:coef}, total, trans, meta)。
 
     混合气纪律（物理正确性要求）：α_i = x_i · α_pure_i(T, P, 空气浴)，
@@ -429,7 +433,7 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
                 warnings.append(ln.strip())
         nu_i, coef, tinfo = _absorption(name, iso, numin, numax, T, P, step,
                                         wingHW, hitran_units, sp.get("force", False),
-                                        min_abundance, profile, diluent)
+                                        min_abundance, profile, diluent, intensity_cutoff)
         nu_i = np.asarray(nu_i, dtype=float)
         coef = np.asarray(coef, dtype=float)
         if not hitran_units:

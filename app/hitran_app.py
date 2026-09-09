@@ -40,6 +40,14 @@ from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI �
 
 APP_TITLE = "HitranLab · HITRAN 光谱分析工作站"
 PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
+
+# 标准大气/常见气体浓度预设（仅含 HITRAN 逐线分子，Ar/Ne/He 等无红外谱线的已排除）
+ATM_PRESETS = {
+    "干燥空气": [("N2", 0.7808), ("O2", 0.2095), ("CO2", 0.00042)],
+    "呼气": [("N2", 0.74), ("O2", 0.16), ("CO2", 0.04), ("H2O", 0.06)],
+    "燃烧烟气": [("CO2", 0.12), ("H2O", 0.10), ("N2", 0.73), ("O2", 0.04), ("CO", 0.001)],
+    "天然气": [("CH4", 0.95), ("C2H6", 0.03), ("N2", 0.02)],
+}
 MODES = {"吸收系数 α (cm⁻¹)": "alpha",
          "透过率 T": "transmittance",
          "两者 both": "both",
@@ -311,6 +319,13 @@ class HitranLab(tk.Tk):
         ttk.Combobox(f2, textvariable=self.profile_var, values=PROFILES, width=20, state="readonly").grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         self.ylog_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(f2, text="对数轴 (ylog)", variable=self.ylog_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ttk.Label(f2, text="翼宽 wingHW:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        self.winghw_var = tk.StringVar(value="50.0")
+        ttk.Entry(f2, textvariable=self.winghw_var, width=10).grid(row=3, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
+        ttk.Label(f2, text="强度截断:").grid(row=4, column=0, sticky="w", pady=(4, 0))
+        self.cutoff_var = tk.StringVar(value="")
+        ttk.Entry(f2, textvariable=self.cutoff_var, width=10).grid(row=4, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
+        ttk.Label(f2, text="(cm⁻¹/(mol·cm⁻²), 空=不截断)", foreground="#7A82A0").grid(row=5, column=0, columnspan=2, sticky="w")
 
         # 混合气
         f3 = ttk.LabelFrame(inner, text="混合气组分（浓度留空 = 纯气体）", padding=8)
@@ -323,6 +338,12 @@ class HitranLab(tk.Tk):
         ttk.Entry(f3, textvariable=self.frac_var, width=10).grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Button(f3, text="添加组分", command=self._add_mix).grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         ttk.Button(f3, text="删除选中", command=self._del_mix).grid(row=1, column=2, padx=(4, 0), pady=(4, 0))
+        ttk.Label(f3, text="预设:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.preset_var = tk.StringVar(value="")
+        self.preset_cb = ttk.Combobox(f3, textvariable=self.preset_var, width=14, state="readonly",
+                                       values=list(ATM_PRESETS.keys()))
+        self.preset_cb.grid(row=2, column=1, sticky="we", padx=(4, 0), pady=(6, 0))
+        ttk.Button(f3, text="加载", command=self._load_preset).grid(row=2, column=2, padx=(4, 0), pady=(6, 0))
 
         # 动作按钮
         fb = ttk.Frame(inner)
@@ -392,6 +413,9 @@ class HitranLab(tk.Tk):
                         ("gair", "γ_air", 90), ("E", "E″ (cm⁻¹)", 100)):
             self.line_tree.heading(c, text=t); self.line_tree.column(c, width=w)
         self.line_tree.pack(fill=tk.BOTH, expand=True)
+        line_btn = ttk.Frame(self.line_tab)
+        line_btn.pack(fill=tk.X, pady=(4, 0))
+        ttk.Button(line_btn, text="导出完整线表 CSV", command=self._export_lines).pack(side="left")
         # 截面
         self.xsc_tab = ttk.Frame(self.nb)
         self.nb.add(self.xsc_tab, text="截面文件信息")
@@ -442,6 +466,17 @@ class HitranLab(tk.Tk):
         for i in sel:
             self.mix_tree.delete(i)
 
+    def _load_preset(self):
+        name = self.preset_var.get().strip()
+        if not name or name not in ATM_PRESETS:
+            messagebox.showinfo("HitranLab", "请先选择一个预设")
+            return
+        for it in self.mix_tree.get_children():
+            self.mix_tree.delete(it)
+        for mol, x in ATM_PRESETS[name]:
+            self.mix_tree.insert("", "end", values=(mol, f"{x:g}"))
+        self.status_var.set(f"已加载预设: {name}")
+
     def _pick_xsc(self):
         p = filedialog.askopenfilename(
             title="选择 HITRAN 截面文件", filetypes=[("HOTW 文本", "*.txt"), ("所有文件", "*.*")])
@@ -484,12 +519,19 @@ class HitranLab(tk.Tk):
         profile = self.profile_var.get()
         ylog = self.ylog_var.get()
         hitran_units = mode == "sigma"
+        wingHW = f(self.winghw_var.get(), "wingHW")
+        if wingHW <= 0:
+            raise ValueError("翼宽 wingHW 必须 > 0")
+        cutoff_str = self.cutoff_var.get().strip()
+        intensity_cutoff = float(cutoff_str) if cutoff_str else None
+        if intensity_cutoff is not None and intensity_cutoff < 0:
+            raise ValueError("强度截断必须 >= 0")
         rows = self._get_mix()
         if rows:
             specs = rows
         else:
             specs = [{"name": name, "mole_frac": None}]
-        return specs, numin, numax, T, P, step, mode, profile, L, ylog, hitran_units
+        return specs, numin, numax, T, P, step, mode, profile, L, ylog, hitran_units, wingHW, intensity_cutoff
 
     # ───────────────────────── 计算（后台线程） ─────────────────────────
     def _compute_and_plot(self):
@@ -497,7 +539,7 @@ class HitranLab(tk.Tk):
             messagebox.showinfo("HitranLab", "计算进行中，请稍候或点击「停止计算」")
             return
         try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
+            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, wingHW, cutoff = self._params()
         except ValueError as e:
             messagebox.showerror("HitranLab", str(e))
             return
@@ -512,12 +554,12 @@ class HitranLab(tk.Tk):
         path_cm = L if cmode in ("transmittance", "both") else None
         self._set_busy(True, "计算谱线…")
         self.worker.run(self._job_spectrum, specs, numin, numax, T, P, step,
-                        cmode, profile, path_cm, hunits, ylog)
+                        cmode, profile, path_cm, hunits, ylog, wingHW, cutoff)
 
-    def _job_spectrum(self, specs, numin, numax, T, P, step, cmode, profile, path_cm, hunits, ylog):
-        res = hm._compute(specs, numin, numax, T=T, P=P, step=step, wingHW=50.0,
+    def _job_spectrum(self, specs, numin, numax, T, P, step, cmode, profile, path_cm, hunits, ylog, wingHW, cutoff):
+        res = hm._compute(specs, numin, numax, T=T, P=P, step=step, wingHW=wingHW,
                           mode=cmode, path_length_cm=path_cm, hitran_units=hunits,
-                          profile=profile)
+                          profile=profile, intensity_cutoff=cutoff)
         label = "+".join(res["per"].keys())
         return {"kind": "spectrum", "res": res, "label": label,
                 "mode": cmode, "hitran_units": hunits, "ylog": ylog,
@@ -528,7 +570,7 @@ class HitranLab(tk.Tk):
             messagebox.showinfo("HitranLab", "计算进行中，请稍候")
             return
         try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
+            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
             messagebox.showerror("HitranLab", str(e))
@@ -537,14 +579,16 @@ class HitranLab(tk.Tk):
         self.worker.run(self._job_lines, name, numin, numax)
 
     def _job_lines(self, name, numin, numax):
-        return {"kind": "lines", "data": hm.t_lines(name, numin, numax, top_n=15)}
+        # 取窗口内全部线（top_n 设大），GUI 只显示前 15，完整数据供导出
+        data = hm.t_lines(name, numin, numax, top_n=100000)
+        return {"kind": "lines", "data": data}
 
     def _partition(self):
         if self.worker.busy:
             messagebox.showinfo("HitranLab", "计算进行中，请稍候")
             return
         try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
+            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
             messagebox.showerror("HitranLab", str(e))
@@ -560,7 +604,7 @@ class HitranLab(tk.Tk):
             messagebox.showinfo("HitranLab", "计算进行中，请稍候")
             return
         try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
+            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
             messagebox.showerror("HitranLab", str(e))
@@ -685,8 +729,11 @@ class HitranLab(tk.Tk):
         self.peak_text.insert("1.0", "\n".join(txt) if txt else "（无峰/无警告）")
 
     def _render_lines(self, data):
+        self._last_lines_data = data
         self.line_tree.delete(*self.line_tree.get_children())
-        for ln in data.get("lines", []):
+        all_lines = data.get("lines", [])
+        display = all_lines[:15]
+        for ln in display:
             self.line_tree.insert("", "end", values=(
                 f"{ln['nu_cm-1']:.4f}", f"{ln['S_cm_per_molecule']:.3e}",
                 f"{ln['gamma_air']:.4f}", f"{ln['E_lower_cm-1']:.2f}"))
@@ -695,7 +742,7 @@ class HitranLab(tk.Tk):
             self.status_var.set("强线完成：窗口内 0 条？见提示")
             messagebox.showinfo("HitranLab", w)
         else:
-            self.status_var.set(f"强线完成：窗口内 {data.get('n_in_window', 0)} 条，取最强 {len(data.get('lines', []))} 条")
+            self.status_var.set(f"强线完成：窗口内 {data.get('n_in_window', 0)} 条，显示最强 {len(display)} 条（完整数据可导出）")
         self.nb.select(self.line_tab)
 
     def _render_partition(self, data):
@@ -759,6 +806,31 @@ class HitranLab(tk.Tk):
             self.stat_text.insert("1.0", f"状态读取失败: {e}")
 
     # ───────────────────────── 导出 ─────────────────────────
+    def _export_lines(self):
+        if not getattr(self, "_last_lines_data", None):
+            messagebox.showinfo("HitranLab", "请先点击「强线 TOP N」获取线表")
+            return
+        data = self._last_lines_data
+        lines = data.get("lines", [])
+        if not lines:
+            messagebox.showinfo("HitranLab", "窗口内无谱线")
+            return
+        p = filedialog.asksaveasfilename(defaultextension=".csv",
+                                         filetypes=[("CSV", "*.csv")],
+                                         initialfile=f"{data.get('molecule','lines')}_linelist.csv")
+        if not p:
+            return
+        with open(p, "w", encoding="utf-8", newline="") as f:
+            f.write(f"# HitranLab line list · {data.get('molecule','')} (M={data.get('M','')}, iso={data.get('iso','')})\n")
+            f.write(f"# window: {data.get('coverage_cm-1',['?','?'])[0]}-{data.get('coverage_cm-1',['?','?'])[1]} cm-1\n")
+            f.write(f"# n_in_window: {data.get('n_in_window',0)}\n")
+            f.write("nu_cm-1,S_cm_per_molecule,gamma_air,E_lower_cm-1\n")
+            for ln in lines:
+                f.write(f"{ln['nu_cm-1']:.6f},{ln['S_cm_per_molecule']:.6e},"
+                        f"{ln['gamma_air']:.6f},{ln['E_lower_cm-1']:.4f}\n")
+        self.status_var.set(f"线表已导出 ({len(lines)} 条): {p}")
+        messagebox.showinfo("HitranLab", f"完整线表已导出 ({len(lines)} 条):\n{p}")
+
     def _export_csv(self):
         if not self._last_fig_data or self._last_fig_data["kind"] != "spectrum":
             messagebox.showinfo("HitranLab", "请先「计算并绘图」")
