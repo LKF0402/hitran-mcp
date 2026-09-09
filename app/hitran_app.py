@@ -14,6 +14,7 @@ import queue
 import sys
 import threading
 import traceback
+import ctypes
 from pathlib import Path
 
 if getattr(sys, "frozen", False):
@@ -43,8 +44,21 @@ MODES = {"吸收系数 α (cm⁻¹)": "alpha",
          "透过率 T": "transmittance",
          "两者 both": "both",
          "截面 σ (cm²/molecule)": "sigma"}
-DEFAULT_W = 1240
-DEFAULT_H = 820
+DEFAULT_W = 1280
+DEFAULT_H = 880
+
+
+def _set_dark_titlebar(hwnd):
+    """Windows 10/11：通过 DWM 让标题栏跟随暗色主题。"""
+    for attr in (20, 19):
+        try:
+            val = ctypes.c_int(1)
+            r = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
+            if r == 0:
+                return
+        except Exception:
+            continue
 
 
 class Worker:
@@ -68,6 +82,7 @@ class HitranLab(tk.Tk):
         self.title(APP_TITLE)
         self.geometry(f"{DEFAULT_W}x{DEFAULT_H}")
         self.minsize(1000, 680)
+        _set_dark_titlebar(self.winfo_id())
         self.worker = Worker()
 
         self._species = {}
@@ -82,14 +97,118 @@ class HitranLab(tk.Tk):
 
     # ───────────────────────── UI 构建 ─────────────────────────
     def _build_style(self):
+        """现代深色主题（Tokyo Night 风格）。"""
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except Exception:
             pass
-        style.configure("TLabelframe", font=("Segoe UI", 10))
-        style.configure("TButton", font=("Segoe UI", 10))
-        style.configure("TEntry", font=("Segoe UI", 10))
+
+        BG       = "#1A1B26"   # 主背景
+        SURFACE  = "#24283B"   # 面板
+        SURFACE2 = "#2E3347"   # 输入框/悬停
+        ACCENT   = "#7AA2F7"   # 强调蓝
+        ACCENT_H = "#9DBBFF"   # 强调蓝悬停
+        GREEN    = "#9ECE6A"   # 成功绿
+        TEXT     = "#C0CAF5"   # 主文字
+        TEXT_DIM = "#7A82A0"   # 次要文字
+        BORDER   = "#3B4261"   # 边框
+
+        self._bg, self._surface, self._accent = BG, SURFACE, ACCENT
+        self.configure(bg=BG)
+
+        # 全局
+        style.configure(".", background=BG, foreground=TEXT,
+                        fieldbackground=SURFACE2, bordercolor=BORDER,
+                        lightcolor=BORDER, darkcolor=BORDER,
+                        font=("Microsoft YaHei UI", 10))
+
+        # Frame / PanedWindow
+        style.configure("TFrame", background=BG)
+        style.configure("TPanedwindow", background=BG)
+
+        # LabelFrame（卡片）
+        style.configure("TLabelframe", background=BG, bordercolor=BORDER,
+                        relief="solid", borderwidth=1)
+        style.configure("TLabelframe.Label", background=BG, foreground=ACCENT,
+                        font=("Microsoft YaHei UI", 10, "bold"))
+
+        # Label
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("Dim.TLabel", background=BG, foreground=TEXT_DIM,
+                        font=("Microsoft YaHei UI", 9))
+
+        # 普通按钮
+        style.configure("TButton", background=SURFACE, foreground=TEXT,
+                        bordercolor=BORDER, focusthickness=0, padding=(10, 5),
+                        font=("Microsoft YaHei UI", 9))
+        style.map("TButton",
+                  background=[("active", SURFACE2), ("pressed", ACCENT)],
+                  foreground=[("active", TEXT), ("pressed", BG)])
+
+        # 主按钮（强调色）
+        style.configure("Accent.TButton", background=ACCENT, foreground=BG,
+                        bordercolor=ACCENT, padding=(12, 8),
+                        font=("Microsoft YaHei UI", 10, "bold"))
+        style.map("Accent.TButton",
+                  background=[("active", ACCENT_H), ("pressed", "#5B85D6")],
+                  foreground=[("active", BG)])
+
+        # Entry
+        style.configure("TEntry", fieldbackground=SURFACE2, foreground=TEXT,
+                        insertcolor=TEXT, bordercolor=BORDER, padding=5)
+
+        # Combobox
+        style.configure("TCombobox", fieldbackground=SURFACE2, foreground=TEXT,
+                        background=SURFACE, arrowcolor=ACCENT, bordercolor=BORDER,
+                        padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", SURFACE2),
+                                                  ("active", SURFACE2)])
+
+        # Notebook
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=SURFACE, foreground=TEXT_DIM,
+                        padding=(18, 7), font=("Microsoft YaHei UI", 9))
+        style.map("TNotebook.Tab",
+                  background=[("selected", SURFACE2)],
+                  foreground=[("selected", ACCENT)])
+
+        # Treeview
+        style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
+                        foreground=TEXT, bordercolor=BORDER, rowheight=26)
+        style.configure("Treeview.Heading", background=SURFACE2, foreground=ACCENT,
+                        font=("Microsoft YaHei UI", 9, "bold"), relief="flat")
+        style.map("Treeview",
+                  background=[("selected", ACCENT)],
+                  foreground=[("selected", BG)])
+
+        # Scrollbar
+        style.configure("Vertical.TScrollbar", background=SURFACE, troughcolor=BG,
+                        bordercolor=BORDER, arrowcolor=TEXT_DIM)
+        style.configure("Horizontal.TScrollbar", background=SURFACE, troughcolor=BG,
+                        bordercolor=BORDER, arrowcolor=TEXT_DIM)
+
+        # Checkbutton
+        style.configure("TCheckbutton", background=BG, foreground=TEXT)
+        style.map("TCheckbutton", background=[("active", BG)])
+
+        # matplotlib 深色配色
+        mpl.rcParams.update({
+            "figure.facecolor": BG,
+            "axes.facecolor": BG,
+            "axes.edgecolor": BORDER,
+            "axes.labelcolor": TEXT,
+            "xtick.color": TEXT_DIM,
+            "ytick.color": TEXT_DIM,
+            "grid.color": "#252840",
+            "grid.linestyle": "--",
+            "grid.alpha": 0.6,
+            "text.color": TEXT,
+            "axes.titlecolor": TEXT,
+            "legend.facecolor": SURFACE,
+            "legend.edgecolor": BORDER,
+            "legend.labelcolor": TEXT,
+        })
 
     def _build_ui(self):
         main = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -99,7 +218,7 @@ class HitranLab(tk.Tk):
         left = ttk.Frame(main, width=340)
         left.pack_propagate(False)
         main.add(left, weight=0)
-        left_cv = tk.Canvas(left, width=340, highlightthickness=0)
+        left_cv = tk.Canvas(left, width=340, highlightthickness=0, bg=self._bg)
         left_vsb = ttk.Scrollbar(left, orient="vertical", command=left_cv.yview)
         left_cv.configure(yscrollcommand=left_vsb.set)
         left_cv.pack(side="left", fill="both", expand=True)
@@ -167,7 +286,8 @@ class HitranLab(tk.Tk):
         # 动作按钮
         fb = ttk.Frame(inner)
         fb.pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(fb, text="▶ 计算并绘图", command=self._compute_and_plot).pack(fill=tk.X, pady=2)
+        ttk.Button(fb, text="▶  计算并绘图", style="Accent.TButton",
+                   command=self._compute_and_plot).pack(fill=tk.X, pady=(0, 6))
         fbg = ttk.Frame(fb)
         fbg.pack(fill=tk.X)
         acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
@@ -196,10 +316,11 @@ class HitranLab(tk.Tk):
         self.ax = self.fig.add_subplot(111)
         self.ax.set_xlabel("Wavenumber (cm⁻¹)")
         self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
-        self.ax.grid(alpha=0.25, lw=0.6)
+        self.ax.grid(alpha=0.4, lw=0.6)
         self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
-                     transform=self.ax.transAxes, color="#9aa0a6", fontsize=13)
+                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
+        self.canvas.get_tk_widget().configure(bg=self._bg)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 4))
 
         self.nb = ttk.Notebook(right)
@@ -207,7 +328,9 @@ class HitranLab(tk.Tk):
         # 峰统计
         self.peak_tab = ttk.Frame(self.nb)
         self.nb.add(self.peak_tab, text="峰 / 统计")
-        self.peak_text = tk.Text(self.peak_tab, height=7, font=("Consolas", 10))
+        self.peak_text = tk.Text(self.peak_tab, height=7, font=("Consolas", 10),
+                                  bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
+                                  relief="flat", borderwidth=0, padx=8, pady=6)
         self.peak_text.pack(fill=tk.BOTH, expand=True)
         # 强线
         self.line_tab = ttk.Frame(self.nb)
@@ -220,18 +343,22 @@ class HitranLab(tk.Tk):
         # 截面
         self.xsc_tab = ttk.Frame(self.nb)
         self.nb.add(self.xsc_tab, text="截面文件信息")
-        self.xsc_text = tk.Text(self.xsc_tab, height=7, font=("Consolas", 10))
+        self.xsc_text = tk.Text(self.xsc_tab, height=7, font=("Consolas", 10),
+                                 bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
+                                 relief="flat", borderwidth=0, padx=8, pady=6)
         self.xsc_text.pack(fill=tk.BOTH, expand=True)
         # 状态
         self.stat_tab = ttk.Frame(self.nb)
         self.nb.add(self.stat_tab, text="运行状态")
-        self.stat_text = tk.Text(self.stat_tab, height=7, font=("Consolas", 10))
+        self.stat_text = tk.Text(self.stat_tab, height=7, font=("Consolas", 10),
+                                  bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
+                                  relief="flat", borderwidth=0, padx=8, pady=6)
         self.stat_text.pack(fill=tk.BOTH, expand=True)
 
         # 底部状态栏
         self.status_var = tk.StringVar(value="就绪")
         ttk.Label(self, textvariable=self.status_var, anchor="w",
-                  font=("Segoe UI", 9), foreground="#555").pack(fill=tk.X, padx=8, pady=(0, 4))
+                  style="Dim.TLabel").pack(fill=tk.X, padx=10, pady=(0, 6))
 
     # ───────────────────────── 数据加载 ─────────────────────────
     def _load_species(self):
@@ -434,14 +561,14 @@ class HitranLab(tk.Tk):
                     else "Absorption coefficient α (cm⁻¹)")
         show_t = res.get("trans") is not None
         if show_t:
-            ax.plot(nu, res["trans"], color="#1f4e79", lw=1.2,
+            ax.plot(nu, res["trans"], color="#7AA2F7", lw=1.4,
                     label=f"transmittance (L={res.get('path_length_cm', 1.0):g} cm)")
             ylab = "Transmittance"
         else:
             for lab, c in per.items():
-                ax.plot(nu, c, lw=0.9, alpha=0.8, label=lab)
+                ax.plot(nu, c, lw=0.9, alpha=0.85, label=lab)
             if len(per) > 1:
-                ax.plot(nu, total, color="k", lw=1.4, label="TOTAL")
+                ax.plot(nu, total, color="#F7768E", lw=1.5, label="TOTAL")
             ylab = unit_lab
         if d["ylog"]:
             ax.set_yscale("log")
@@ -449,8 +576,8 @@ class HitranLab(tk.Tk):
         ax.set_ylabel(ylab)
         sp = d["specs"][0]
         ax.set_title(f"{d['label']}  {float(res['numin']):g}–{float(res['numax']):g} cm⁻¹"
-                     f"  T={res['T']:g} K  P={res['P']:g} atm")
-        ax.grid(alpha=0.25, lw=0.6)
+                     f"  T={res['T']:g} K  P={res['P']:g} atm", fontsize=11, pad=10)
+        ax.grid(alpha=0.4, lw=0.6)
         if not show_t:
             ax.legend(fontsize=8, framealpha=0.9)
         if not d["ylog"] and not show_t:
@@ -502,11 +629,11 @@ class HitranLab(tk.Tk):
     def _render_qcurve(self, d):
         ax = self.ax
         ax.clear()
-        ax.plot(d["Ts"], d["Qs"], "o-", color="#1f4e79", lw=1.4)
+        ax.plot(d["Ts"], d["Qs"], "o-", color="#9ECE6A", lw=1.5, markersize=5)
         ax.set_xlabel("Temperature T (K)")
         ax.set_ylabel("Partition function Q(T)")
-        ax.set_title(f"{d['name']}  Q(T)  TIPS-2025")
-        ax.grid(alpha=0.25, lw=0.6)
+        ax.set_title(f"{d['name']}  Q(T)  TIPS-2025", fontsize=11, pad=10)
+        ax.grid(alpha=0.4, lw=0.6)
         self.fig.tight_layout()
         self.canvas.draw()
         self._last_fig_data = {"kind": "qcurve", "name": d["name"]}
@@ -517,12 +644,12 @@ class HitranLab(tk.Tk):
         ax = self.ax
         ax.clear()
         if nu is not None and len(nu):
-            ax.plot(nu, coef, lw=0.9, color="#1f4e79")
+            ax.plot(nu, coef, lw=1.0, color="#BB9AF7")
             ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
         ax.set_xlabel("Wavenumber (cm⁻¹)")
         ax.set_ylabel("Cross section σ (cm²/molecule)")
-        ax.set_title(Path(d["path"]).name)
-        ax.grid(alpha=0.25, lw=0.6)
+        ax.set_title(Path(d["path"]).name, fontsize=11, pad=10)
+        ax.grid(alpha=0.4, lw=0.6)
         self.fig.tight_layout()
         self.canvas.draw()
         self._last_fig_data = d
