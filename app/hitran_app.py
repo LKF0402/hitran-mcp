@@ -33,7 +33,7 @@ matplotlib.use("TkAgg", force=True)
 import matplotlib as mpl
 mpl.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 mpl.rcParams["axes.unicode_minus"] = False
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 
 from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI 惰性加载）
@@ -62,18 +62,46 @@ def _set_dark_titlebar(hwnd):
 
 
 class Worker:
-    """后台线程：不阻塞 GUI。result_queue 收到 (tag, payload)。"""
+    """后台线程：不阻塞 GUI。result_queue 收到 (tag, payload)。
+    支持 busy 互斥（防止重复提交）与 cancel（长循环可中途退出）。"""
 
     def __init__(self):
         self.q = queue.Queue()
+        self.cancel_event = threading.Event()
+        self._busy = False
+        self._lock = threading.Lock()
+
+    @property
+    def busy(self):
+        return self._busy
 
     def run(self, fn, *args, **kw):
+        """提交任务。已有任务在跑时返回 False（不提交）。"""
+        with self._lock:
+            if self._busy:
+                return False
+            self._busy = True
+            self.cancel_event.clear()
+
         def target():
             try:
-                self.q.put(("ok", fn(*args, **kw)))
+                result = fn(*args, **kw)
+                if not self.cancel_event.is_set():
+                    self.q.put(("ok", result))
             except Exception as e:
-                self.q.put(("err", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
+                if not self.cancel_event.is_set():
+                    self.q.put(("err", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
+            finally:
+                with self._lock:
+                    self._busy = False
+
         threading.Thread(target=target, daemon=True).start()
+        return True
+
+    def cancel(self):
+        """请求取消当前任务。HAPI 单次阻塞调用无法中断，
+        但多步循环（Q(T) 扫描）会在每步检查 cancel_event。"""
+        self.cancel_event.set()
 
 
 class HitranLab(tk.Tk):
@@ -210,6 +238,19 @@ class HitranLab(tk.Tk):
             "legend.labelcolor": TEXT,
         })
 
+    def _style_toolbar(self):
+        """matplotlib 工具栏（tk.Button）深色主题适配。"""
+        self.toolbar_frame.configure(style="TFrame")
+        for child in self.toolbar.winfo_children():
+            if isinstance(child, tk.Button):
+                child.configure(bg=self._surface, fg=self._accent,
+                                activebackground="#2E3347", activeforeground="#9DBBFF",
+                                relief="flat", bd=0, padx=4, pady=2, highlightthickness=0,
+                                cursor="hand2")
+            elif isinstance(child, tk.Label):
+                child.configure(bg=self._surface, fg=self._text_dim if hasattr(self, "_text_dim") else "#7A82A0")
+        self.toolbar.configure(bg=self._surface)
+
     def _build_ui(self):
         main = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         main.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
@@ -234,7 +275,7 @@ class HitranLab(tk.Tk):
         f0.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(f0, text="分子:").grid(row=0, column=0, sticky="w")
         self.mol_var = tk.StringVar()
-        self.mol_cb = ttk.Combobox(f0, textvariable=self.mol_var, width=20)
+        self.mol_cb = ttk.Combobox(f0, textvariable=self.mol_var, width=20, state="readonly")
         self.mol_cb.grid(row=0, column=1, sticky="we", padx=(4, 0))
         ttk.Label(f0, text="窗口 ν (cm⁻¹):").grid(row=1, column=0, sticky="w", pady=(4, 0))
         self.numin_var, self.numax_var = tk.StringVar(value="2950.0"), tk.StringVar(value="3120.0")
@@ -286,8 +327,12 @@ class HitranLab(tk.Tk):
         # 动作按钮
         fb = ttk.Frame(inner)
         fb.pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(fb, text="▶  计算并绘图", style="Accent.TButton",
-                   command=self._compute_and_plot).pack(fill=tk.X, pady=(0, 6))
+        self.btn_compute = ttk.Button(fb, text="▶  计算并绘图", style="Accent.TButton",
+                                       command=self._compute_and_plot)
+        self.btn_compute.pack(fill=tk.X, pady=(0, 4))
+        self.btn_stop = ttk.Button(fb, text="■  停止计算", command=self._stop_compute,
+                                    state="disabled")
+        self.btn_stop.pack(fill=tk.X, pady=(0, 6))
         fbg = ttk.Frame(fb)
         fbg.pack(fill=tk.X)
         acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
@@ -321,7 +366,14 @@ class HitranLab(tk.Tk):
                      transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
         self.canvas.get_tk_widget().configure(bg=self._bg)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 4))
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
+
+        # matplotlib 导航工具栏（缩放/平移/取点/保存）
+        self.toolbar_frame = ttk.Frame(right)
+        self.toolbar_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
+        self.toolbar.update()
+        self._style_toolbar()
 
         self.nb = ttk.Notebook(right)
         self.nb.pack(fill=tk.BOTH, expand=True)
@@ -418,8 +470,16 @@ class HitranLab(tk.Tk):
         numin, numax, step = f(self.numin_var.get(), "numin"), f(self.numax_var.get(), "numax"), f(self.step_var.get(), "step")
         if numin >= numax:
             raise ValueError("窗口非法: numin ≥ numax")
+        if step <= 0:
+            raise ValueError("步长必须 > 0")
         T, P = f(self.T_var.get(), "T"), f(self.P_var.get(), "P")
+        if T <= 0:
+            raise ValueError("温度 T 必须 > 0 K")
+        if P <= 0:
+            raise ValueError("压力 P 必须 > 0 atm")
         L = f(self.L_var.get(), "光程")
+        if L <= 0:
+            raise ValueError("光程 L 必须 > 0 cm")
         mode = MODES[self.mode_var.get()]
         profile = self.profile_var.get()
         ylog = self.ylog_var.get()
@@ -433,6 +493,9 @@ class HitranLab(tk.Tk):
 
     # ───────────────────────── 计算（后台线程） ─────────────────────────
     def _compute_and_plot(self):
+        if self.worker.busy:
+            messagebox.showinfo("HitranLab", "计算进行中，请稍候或点击「停止计算」")
+            return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
         except ValueError as e:
@@ -458,9 +521,12 @@ class HitranLab(tk.Tk):
         label = "+".join(res["per"].keys())
         return {"kind": "spectrum", "res": res, "label": label,
                 "mode": cmode, "hitran_units": hunits, "ylog": ylog,
-                "specs": specs}
+                "specs": specs, "profile": profile}
 
     def _lines(self):
+        if self.worker.busy:
+            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
             name = specs[0]["name"]
@@ -474,6 +540,9 @@ class HitranLab(tk.Tk):
         return {"kind": "lines", "data": hm.t_lines(name, numin, numax, top_n=15)}
 
     def _partition(self):
+        if self.worker.busy:
+            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
             name = specs[0]["name"]
@@ -487,6 +556,9 @@ class HitranLab(tk.Tk):
         return {"kind": "partition", "data": hm.t_partition_sum(name, T=T)}
 
     def _qcurve(self):
+        if self.worker.busy:
+            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits = self._params()
             name = specs[0]["name"]
@@ -500,10 +572,15 @@ class HitranLab(tk.Tk):
         Ts = [t for t in range(200, 401, 20)]
         qs = []
         for t in Ts:
+            if self.worker.cancel_event.is_set():
+                return {"kind": "cancelled"}
             qs.append(hm.t_partition_sum(name, T=float(t))["Q"])
         return {"kind": "qcurve", "name": name, "Ts": Ts, "Qs": qs}
 
     def _import_xsc(self):
+        if self.worker.busy:
+            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            return
         p = self.xsc_var.get().strip()
         if not p or not Path(p).exists():
             messagebox.showwarning("HitranLab", "请先选择截面文件")
@@ -531,8 +608,11 @@ class HitranLab(tk.Tk):
         self.after(100, self._drain_queue)
 
     def _render(self, d):
+        kind = d.get("kind")
+        if kind == "cancelled":
+            self._set_busy(False, "已停止")
+            return
         self._set_busy(False, "完成")
-        kind = d["kind"]
         if kind == "species":
             self._species = d["data"]
             self.mol_cb["values"] = sorted(d["data"].keys())
@@ -691,17 +771,29 @@ class HitranLab(tk.Tk):
             return
         res = d["res"]
         nu = res["nu"]
+        per = res["per"]
+        has_total = res.get("total") is not None and len(per) > 1
+        has_trans = res.get("trans") is not None
         header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n" \
                  f"# T={res['T']:g} K  P={res['P']:g} atm  profile={d.get('profile', 'voigt')}\n" \
                  f"# window={res['numin']:g}-{res['numax']:g} cm-1  step={res['step']:g}\n" \
                  + ("# units: sigma cm2/molecule\n" if d["hitran_units"] else "# units: alpha cm-1\n")
-        cols = ["nu_cm-1"] + list(res["per"].keys())
+        cols = ["nu_cm-1"] + list(per.keys())
+        if has_total:
+            cols.append("total")
+        if has_trans:
+            cols.append("transmittance")
         with open(p, "w", encoding="utf-8", newline="") as f:
             f.write(header)
             f.write(",".join(cols) + "\n")
-            per = res["per"]
+            total_arr = res.get("total")
+            trans_arr = res.get("trans")
             for i in range(len(nu)):
                 row = [f"{nu[i]:.6f}"] + [f"{per[c][i]:.6e}" for c in per]
+                if has_total:
+                    row.append(f"{total_arr[i]:.6e}")
+                if has_trans:
+                    row.append(f"{trans_arr[i]:.6e}")
                 f.write(",".join(row) + "\n")
         self.status_var.set(f"CSV 已导出: {p}")
         messagebox.showinfo("HitranLab", f"CSV 已导出:\n{p}")
@@ -716,9 +808,19 @@ class HitranLab(tk.Tk):
         self.status_var.set(f"PNG 已导出: {p}")
         messagebox.showinfo("HitranLab", f"PNG 已导出:\n{p}")
 
+    def _stop_compute(self):
+        """请求停止当前计算。HAPI 单次调用无法中断，Q(T) 扫描等多步循环可中途退出。"""
+        if self.worker.busy:
+            self.worker.cancel()
+            self.status_var.set("已请求停止…")
+
     # ───────────────────────── 工具 ─────────────────────────
     def _set_busy(self, busy, msg):
         self.status_var.set(msg if busy else "就绪")
+        if hasattr(self, "btn_compute"):
+            self.btn_compute.configure(state="disabled" if busy else "normal")
+        if hasattr(self, "btn_stop"):
+            self.btn_stop.configure(state="normal" if busy else "disabled")
         self.update_idletasks()
 
 
