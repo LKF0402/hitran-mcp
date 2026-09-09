@@ -23,7 +23,10 @@ import sys
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent   # 冻结(exe)模式：数据/缓存/产物与 exe 同级
+else:
+    ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))          # 保证 tools 包可导入（自包含）
 
@@ -1183,17 +1186,52 @@ def handle(req):
     return rid, None, {"code": -32601, "message": f"method not found: {method}"}
 
 
+def _iter_requests():
+    """自适应读取：同时支持标准 MCP（Content-Length framing）与裸 JSON 行协议。
+
+    逐条产生 (raw_text, use_framing)。use_framing=True 表示客户端走标准 framing，
+    响应必须用同样的 framing 回写，否则严格客户端解析不到响应 —— 这是能否接入
+    标准 MCP 客户端（WorkBuddy / Claude Desktop 等）的关键。
+    """
+    stdin = sys.stdin.buffer
+    while True:
+        first = stdin.readline()
+        if not first:
+            return
+        if first.lstrip().lower().startswith(b"content-length"):
+            headers, line = {}, first
+            while line and line not in (b"\r\n", b"\n"):
+                k, _, v = line.decode("utf-8", "replace").partition(":")
+                headers[k.strip().lower()] = v.strip()
+                line = stdin.readline()
+            n = int(headers.get("content-length") or 0)
+            body = stdin.read(n) if n > 0 else b""
+            yield body.decode("utf-8", "replace"), True
+        else:
+            yield first.decode("utf-8", "replace"), False
+
+
+def _write_response(out, use_framing):
+    """按客户端所用 framing 回写：标准客户端要 Content-Length 头，旧客户端要裸 JSON 行。"""
+    data = json.dumps(out, ensure_ascii=False).encode("utf-8")
+    if use_framing:
+        sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(data) + data)
+    else:
+        sys.stdout.buffer.write(data + b"\n")
+    sys.stdout.buffer.flush()
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
+    for raw, use_framing in _iter_requests():
+        raw = raw.strip()
+        if not raw:
             continue
         try:
-            req = json.loads(line)
+            req = json.loads(raw)
         except Exception:
             continue
         try:
@@ -1207,8 +1245,7 @@ def main():
             out["error"] = error
         else:
             out["result"] = result
-        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        _write_response(out, use_framing)
 
 
 def selftest():
