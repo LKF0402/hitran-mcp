@@ -868,8 +868,21 @@ class HitranLab(tk.Tk):
         return xf, None
 
     def _on_mix_unit_change(self, event=None):
-        """单位切换时刷新表格所有行的显示值。"""
+        """单位切换时刷新表格所有行的显示值，并保存到首选项。"""
         self._mix_unit = self.mix_unit_var.get()
+        # 保存到首选项（读-改-写，不影响其他键）
+        try:
+            import json as _json
+            _merged = {}
+            if PREFS_PATH.exists():
+                try:
+                    _merged = _json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            _merged["mix_unit"] = self._mix_unit
+            PREFS_PATH.write_text(_json.dumps(_merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass  # 保存失败不影响单位切换功能
         # 刷新表格显示（内部值通过 _params 时重新转换）
         for item in self.mix_tree.get_children():
             vals = self.mix_tree.item(item, "values")
@@ -2038,6 +2051,14 @@ class HitranLab(tk.Tk):
                 continue
             try:
                 getattr(self, attr).set(str(v))
+            except Exception:
+                pass
+        # 恢复混合气单位（mix_unit_var 在 _build_ui 中已初始化）
+        _mu = d.get("mix_unit")
+        if _mu in ("摩尔分数", "ppm", "ppb") and hasattr(self, "mix_unit_var"):
+            try:
+                self.mix_unit_var.set(_mu)
+                self._mix_unit = _mu
             except Exception:
                 pass
 
