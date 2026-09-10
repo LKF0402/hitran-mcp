@@ -56,7 +56,7 @@ except ImportError:
 def get_capabilities():
     """返回当前引擎能力状态（HAPI2/Numba 是否可用）。"""
     return {
-        "hapi_version": getattr(hapi, "__version__", "1.x"),
+        "hapi_version": getattr(hapi, "HAPI_VERSION", getattr(hapi, "__version__", "1.x")),
         "hapi2_available": _HAPI2_AVAILABLE,
         "hapi2_version": _HAPI2_VERSION,
         "numba_available": _NUMBA_AVAILABLE,
