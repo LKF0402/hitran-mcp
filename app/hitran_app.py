@@ -41,6 +41,9 @@ from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI �
 APP_TITLE = "HitranLab · HITRAN 光谱分析工作站"
 PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 
+# 叠加模式的颜色循环（每次叠加取下一个颜色）
+OVERLAY_COLORS = ["#F7768E", "#7AA2F7", "#9ECE6A", "#E0AF68", "#BB9AF7", "#7DCFFF", "#FF9E64", "#4ABCF9"]
+
 # 标准大气/常见气体浓度预设（仅含 HITRAN 逐线分子，Ar/Ne/He 等无红外谱线的已排除）
 ATM_PRESETS = {
     "干燥空气": [("N2", 0.7808), ("O2", 0.2095), ("CO2", 0.00042)],
@@ -123,6 +126,7 @@ class HitranLab(tk.Tk):
 
         self._species = {}
         self._last_fig_data = None      # {"kind","nu","per","total","trans","label","mode","meta"}
+        self._overlay_count = 0          # 叠加次数（0=首次绘制会清空提示文字）
         self._mix_rows = []             # [{"name","mole_frac"}]
 
         self._build_style()
@@ -388,7 +392,8 @@ class HitranLab(tk.Tk):
         acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
                 ("Q(T) 曲线", self._qcurve), ("导出 CSV", self._export_csv),
                 ("导出 PNG", self._export_png), ("截面文件", self._pick_xsc),
-                ("重置参数", self._reset_params), ("保存预设", self._save_user_preset)]
+                ("清空图", self._clear_plot), ("重置参数", self._reset_params),
+                ("保存预设", self._save_user_preset)]
         for i, (txt, cmd) in enumerate(acts):
             ttk.Button(fbg, text=txt, command=cmd).grid(row=i // 2, column=i % 2,
                                                         sticky="we", padx=2, pady=2)
@@ -627,6 +632,19 @@ class HitranLab(tk.Tk):
             self.mix_tree.insert("", "end", values=(mol, x))
         self.status_var.set(f"已加载用户预设: {name}")
 
+    def _clear_plot(self):
+        """只清空画布，不改变参数。重置叠加计数器。"""
+        self._overlay_count = 0
+        self.ax.clear()
+        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
+        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
+        self.ax.grid(alpha=0.4, lw=0.6)
+        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
+                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
+        self.fig.tight_layout()
+        self.canvas.draw()
+        self.status_var.set("画布已清空")
+
     def _reset_params(self):
         self.mol_var.set("CH4")
         self._load_isotopologues()
@@ -648,6 +666,7 @@ class HitranLab(tk.Tk):
         self.frac_var.set("")
         for it in self.mix_tree.get_children():
             self.mix_tree.delete(it)
+        self._overlay_count = 0
         self.ax.clear()
         self.ax.set_xlabel("Wavenumber (cm⁻¹)")
         self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
@@ -887,32 +906,54 @@ class HitranLab(tk.Tk):
         nu, per, total = res["nu"], res["per"], res["total"]
         self._last_fig_data = d
         ax = self.ax
-        ax.clear()
+        first_draw = (self._overlay_count == 0)
+
+        if first_draw:
+            ax.clear()  # 首次绘制清空提示文字
+
         unit_lab = ("Cross section σ (cm²/molecule)" if d["hitran_units"]
                     else "Absorption coefficient α (cm⁻¹)")
         show_t = res.get("trans") is not None
-        if show_t:
-            ax.plot(nu, res["trans"], color="#7AA2F7", lw=1.4,
-                    label=f"transmittance (L={res.get('path_length_cm', 1.0):g} cm)")
-            ylab = "Transmittance"
+
+        if first_draw:
+            # 首次绘制：画各组分 + TOTAL，用默认颜色
+            if show_t:
+                ax.plot(nu, res["trans"], color="#7AA2F7", lw=1.4,
+                        label=f"transmittance (L={res.get('path_length_cm', 1.0):g} cm)")
+                ylab = "Transmittance"
+            else:
+                for lab, c in per.items():
+                    ax.plot(nu, c, lw=0.9, alpha=0.85, label=lab)
+                if len(per) > 1:
+                    ax.plot(nu, total, color="#F7768E", lw=1.5, label="TOTAL")
+                ylab = unit_lab
+            if d["ylog"]:
+                ax.set_yscale("log")
+            ax.set_xlabel("Wavenumber (cm⁻¹)")
+            ax.set_ylabel(ylab)
+            ax.set_title(f"{d['label']}  {float(res['numin']):g}–{float(res['numax']):g} cm⁻¹"
+                         f"  T={res['T']:g} K  P={res['P']:g} atm", fontsize=11, pad=10)
+            ax.grid(alpha=0.4, lw=0.6)
+            if not show_t:
+                ax.legend(fontsize=8, framealpha=0.9)
+            if not d["ylog"] and not show_t:
+                ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
         else:
-            for lab, c in per.items():
-                ax.plot(nu, c, lw=0.9, alpha=0.85, label=lab)
-            if len(per) > 1:
-                ax.plot(nu, total, color="#F7768E", lw=1.5, label="TOTAL")
-            ylab = unit_lab
-        if d["ylog"]:
-            ax.set_yscale("log")
-        ax.set_xlabel("Wavenumber (cm⁻¹)")
-        ax.set_ylabel(ylab)
-        sp = d["specs"][0]
-        ax.set_title(f"{d['label']}  {float(res['numin']):g}–{float(res['numax']):g} cm⁻¹"
-                     f"  T={res['T']:g} K  P={res['P']:g} atm", fontsize=11, pad=10)
-        ax.grid(alpha=0.4, lw=0.6)
-        if not show_t:
-            ax.legend(fontsize=8, framealpha=0.9)
-        if not d["ylog"] and not show_t:
-            ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
+            # 叠加绘制：只画 total（或单组分），用循环颜色，标签含参数
+            color = OVERLAY_COLORS[(self._overlay_count - 1) % len(OVERLAY_COLORS)]
+            if show_t:
+                ydata = res["trans"]
+                ylab = "Transmittance"
+            else:
+                ydata = total if len(per) > 1 else list(per.values())[0]
+                ylab = unit_lab
+            tag = f"{d['label']} {float(res['numin']):g}–{float(res['numax']):g} T={res['T']:g}K P={res['P']:g}atm"
+            ax.plot(nu, ydata, color=color, lw=1.4, label=tag)
+            ax.set_ylabel(ylab)
+            ax.legend(fontsize=7, framealpha=0.9)
+            ax.set_title("叠加对比", fontsize=11, pad=10)
+
+        self._overlay_count += 1
         self.fig.tight_layout()
         self.canvas.draw()
 
