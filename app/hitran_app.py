@@ -9,7 +9,7 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
