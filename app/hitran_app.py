@@ -92,9 +92,13 @@ class Worker:
                 result = fn(*args, **kw)
                 if not self.cancel_event.is_set():
                     self.q.put(("ok", result))
+                else:
+                    self.q.put(("ok", {"kind": "cancelled"}))
             except Exception as e:
                 if not self.cancel_event.is_set():
                     self.q.put(("err", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
+                else:
+                    self.q.put(("ok", {"kind": "cancelled"}))
             finally:
                 with self._lock:
                     self._busy = False
