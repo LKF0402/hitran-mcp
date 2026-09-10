@@ -1205,13 +1205,21 @@ def t_apikey_status():
             xsc_n = n
         else:
             out_n = n
+    from tools import hitran as ht
+    caps = ht.get_capabilities()
     return {"api_key_configured": bool(key), "api_key_source":
             "env(HITRAN_API_KEY)" if os.environ.get("HITRAN_API_KEY", "").strip()
             else "tools/hitran_api_key.txt" if key else "未配置",
             "line_cache_files": cache_n, "line_cache_MB": round(cache_bytes / 1e6, 2),
             "xsc_data_files": xsc_n, "output_files": out_n,
+            "hapi_version": caps["hapi_version"],
+            "hapi2_available": caps["hapi2_available"],
+            "hapi2_version": caps["hapi2_version"],
+            "numba_available": caps["numba_available"],
+            "numba_version": caps["numba_version"],
+            "numpy_version": caps["numpy_version"],
             "note": ("HAPI 1.3.0.0 下载接口暂不校验 key（预置）；官方每日抓取配额超限会 403，"
-                     "缓存未删的前提下无需重复抓取。")}
+                     "缓存未删的前提下无需重复抓取。HAPI2/Numba 为可选加速引擎，检测到可用时自动提示。")}
 
 
 def t_partition_sum(name=None, M=None, I=None, T=296.0, tips_version=None):

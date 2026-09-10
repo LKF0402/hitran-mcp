@@ -31,6 +31,49 @@ import hapi
 from hapi import (db_begin, tableList, absorptionCoefficient_Voigt)
 import numpy as np
 
+# ---- HAPI2 / Numba 能力检测（兼容层框架）----
+# HAPI2 是第二代 HAPI（SQLAlchemy ORM + JIT 加速 + 截面下载），
+# 目前网络安装受限，这里做能力检测，未来可用时可快速切换。
+_HAPI2_AVAILABLE = False
+_HAPI2_VERSION = None
+try:
+    import hapi2 as _hapi2_mod
+    _HAPI2_AVAILABLE = True
+    _HAPI2_VERSION = getattr(_hapi2_mod, "__version__", "unknown")
+except ImportError:
+    pass
+
+_NUMBA_AVAILABLE = False
+_NUMBA_VERSION = None
+try:
+    import numba as _numba_mod
+    _NUMBA_AVAILABLE = True
+    _NUMBA_VERSION = getattr(_numba_mod, "__version__", "unknown")
+except ImportError:
+    pass
+
+
+def get_capabilities():
+    """返回当前引擎能力状态（HAPI2/Numba 是否可用）。"""
+    return {
+        "hapi_version": getattr(hapi, "__version__", "1.x"),
+        "hapi2_available": _HAPI2_AVAILABLE,
+        "hapi2_version": _HAPI2_VERSION,
+        "numba_available": _NUMBA_AVAILABLE,
+        "numba_version": _NUMBA_VERSION,
+        "numpy_version": np.__version__,
+    }
+
+
+def is_hapi2_available():
+    """HAPI2 是否可用。"""
+    return _HAPI2_AVAILABLE
+
+
+def is_numba_available():
+    """Numba 是否可用（可用于 JIT 加速）。"""
+    return _NUMBA_AVAILABLE
+
 # ---- 统一缓存目录：HITRAN 线表落盘处（fetch 自动写此目录）----
 # 兼容源码运行与 PyInstaller 打包：冻结模式下用 exe 所在目录，源码模式用仓库根目录
 if getattr(sys, "frozen", False):
