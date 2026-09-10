@@ -598,6 +598,7 @@ class HitranLab(tk.Tk):
         m_tools.add_command(label="HITRAN 分子表查询", command=self._show_molecule_table)
         m_tools.add_command(label="快捷键列表", command=self._show_shortcuts)
         m_tools.add_separator()
+        m_tools.add_command(label="配置 API key…", command=self._show_api_key_config)
         m_tools.add_command(label="清理线表缓存…", command=self._clear_line_cache)
         menubar.add_cascade(label="工具", menu=m_tools)
         # 帮助
@@ -2660,6 +2661,67 @@ class HitranLab(tk.Tk):
         except Exception as e:
             return {"kind": "check_update", "error": str(e)}
 
+
+    def _show_api_key_config(self):
+        """配置 HITRAN API key（保存到 Hitran_Data/hitran_api_key.txt，已 gitignore）。"""
+        import os
+        win = tk.Toplevel(self)
+        win.title("配置 API key")
+        win.geometry("480x260")
+        win.configure(bg=self._bg)
+        win.transient(self)
+        win.grab_set()
+
+        # 当前状态
+        current_key = os.environ.get("HITRAN_API_KEY", "").strip()
+        key_file = ROOT / "Hitran_Data" / "hitran_api_key.txt"
+        if not current_key and key_file.exists():
+            try:
+                current_key = key_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+
+        status_text = "已配置（环境变量）" if os.environ.get("HITRAN_API_KEY", "").strip() else \
+                      ("已配置（文件）" if current_key else "未配置")
+        status_color = "#34C759" if current_key else "#FF9500"
+        ttk.Label(win, text=f"当前状态：{status_text}", background=self._bg,
+                  foreground=status_color, font=("", 10, "bold")).pack(anchor="w", padx=16, pady=(16, 4))
+
+        ttk.Label(win, text="HITRAN API key：", background=self._bg).pack(anchor="w", padx=16, pady=(8, 2))
+        key_var = tk.StringVar(value=current_key)
+        entry = ttk.Entry(win, textvariable=key_var, width=50, show="*")
+        entry.pack(anchor="w", padx=16, fill="x")
+
+        # 显示/隐藏切换
+        show_var = tk.BooleanVar(value=False)
+        def toggle_show():
+            entry.config(show="" if show_var.get() else "*")
+        ttk.Checkbutton(win, text="显示 key", variable=show_var, command=toggle_show).pack(anchor="w", padx=16, pady=(4, 0))
+
+        ttk.Label(win, text="获取 key：注册 https://hitran.org 账号 → 用户个人资料页",
+                  background=self._bg, foreground="#8A8A92", font=("", 9)).pack(anchor="w", padx=16, pady=(8, 0))
+
+        def save():
+            key = key_var.get().strip()
+            try:
+                (ROOT / "Hitran_Data").mkdir(parents=True, exist_ok=True)
+                if key:
+                    key_file.write_text(key, encoding="utf-8")
+                    self.status_var.set("API key 已保存，立即生效")
+                else:
+                    if key_file.exists():
+                        key_file.unlink()
+                    self.status_var.set("API key 已清除")
+            except Exception as e:
+                self._show_error(f"保存失败: {e}")
+            win.destroy()
+
+        def clear():
+            key_var.set("")
+
+        btn_frame = ttk.Frame(win); btn_frame.pack(fill="x", padx=16, pady=16)
+        ttk.Button(btn_frame, text="清除", command=clear).pack(side="left")
+        ttk.Button(btn_frame, text="保存", command=save).pack(side="right")
 
     def _clear_line_cache(self):
         """清理线表缓存：删除 Hitran_Data/ 下的 .data/.header 文件，清空内存计算缓存。"""
