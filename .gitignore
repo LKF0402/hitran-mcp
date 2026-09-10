@@ -108,3 +108,8 @@ _temp/
 Thumbs.db
 desktop.ini
 $RECYCLE.BIN/
+
+# HAPI2 local config and database
+config.json
+local/
+hapi2.db
