@@ -9,7 +9,7 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
@@ -307,12 +307,12 @@ class HitranLab(tk.Tk):
                         font=("Microsoft YaHei", 9))
 
         # 普通按钮 - iOS 26 风格：44pt 触控目标、大内边距、悬停高亮
-        style.configure("TButton", background=SURFACE, foreground=ACCENT,
+        style.configure("TButton", background=SURFACE2, foreground=TEXT,
                         bordercolor=BORDER, focusthickness=0, padding=(16, 10),
                         font=("Microsoft YaHei", 10))
         style.map("TButton",
                   background=[("active", SURFACE2), ("pressed", SURFACE3)],
-                  foreground=[("active", ACCENT_H), ("pressed", TEXT)])
+                  foreground=[("active", TEXT), ("pressed", TEXT_DIM)])
 
         # 主按钮（强调色）- iOS 风格：填充色、大圆角、白色文字
         style.configure("Accent.TButton", background=ACCENT, foreground="#D8D8DE",
@@ -440,6 +440,8 @@ class HitranLab(tk.Tk):
         m_tools.add_command(label="波长 ↔ 波数换算器", command=self._show_converter)
         m_tools.add_command(label="HITRAN 分子表查询", command=self._show_molecule_table)
         m_tools.add_command(label="快捷键列表", command=self._show_shortcuts)
+        m_tools.add_separator()
+        m_tools.add_command(label="清理线表缓存…", command=self._clear_line_cache)
         menubar.add_cascade(label="工具", menu=m_tools)
         # 帮助
         m_help = tk.Menu(menubar, tearoff=0)
@@ -639,7 +641,7 @@ class HitranLab(tk.Tk):
         ttk.Label(layer_top, text="已绘制曲线（双击或选中后点删除）：").pack(side="left")
         self.layer_list = tk.Listbox(self.layer_tab, font=("Consolas", 9),
                                       bg="#1A1A1F", fg="#D8D8DE", selectbackground="#6B8FD4",
-                                      selectforeground="#000000", relief="flat", borderwidth=0,
+                                      selectforeground="#FFFFFF", relief="flat", borderwidth=0,
                                       activestyle="none")
         self.layer_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
         self.layer_list.bind("<Double-Button-1>", lambda e: self._remove_layer())
@@ -2147,6 +2149,45 @@ class HitranLab(tk.Tk):
                     "asset_url": assets.get(UPDATE_ASSET)}
         except Exception as e:
             return {"kind": "check_update", "error": str(e)}
+
+
+    def _clear_line_cache(self):
+        """清理线表缓存：删除 Hitran_Data/ 下的 .data/.header 文件，清空内存计算缓存。"""
+        import shutil
+        cache_dir = Path(getattr(sys, "frozen", False) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent.parent) / "Hitran_Data"
+        if not cache_dir.exists():
+            messagebox.showinfo("清理缓存", "线表缓存目录不存在，无需清理。")
+            return
+        files = list(cache_dir.glob("*.data")) + list(cache_dir.glob("*.header"))
+        total_size = sum(f.stat().st_size for f in files)
+        if not files:
+            messagebox.showinfo("清理缓存", "缓存目录为空，无需清理。")
+            return
+        if not messagebox.askyesno("清理线表缓存",
+            f"将删除 {len(files)} 个缓存文件（{total_size/1024/1024:.1f} MB）。\n\n"
+            f"清理后下次计算相同分子/窗口需要重新联网抓取线表。\n\n"
+            f"确定清理吗？"):
+            return
+        try:
+            deleted = 0
+            for f in files:
+                f.unlink()
+                deleted += 1
+            # 清空内存中的计算缓存
+            try:
+                from tools import hitran_mcp as hm
+                hm.abs_cache_clear()
+            except Exception:
+                pass
+            try:
+                from tools import hitran as ht
+                ht.cache_clear()
+            except Exception:
+                pass
+            messagebox.showinfo("清理完成", f"已删除 {deleted} 个缓存文件。\n下次计算将重新联网抓取线表。")
+            self.status_var.set(f"已清理 {deleted} 个线表缓存文件")
+        except Exception as e:
+            messagebox.showerror("清理失败", f"清理缓存时出错：{e}")
 
     def _show_about(self):
         """关于对话框。"""
