@@ -609,7 +609,7 @@ class HitranLab(tk.Tk):
         ttk.Entry(qframe, textvariable=self.qtstep_var, width=5).pack(side="left")
 
         # 混合气
-        f3 = ttk.LabelFrame(inner, text="混合气（浓度留空=纯气体）", padding=8)
+        f3 = ttk.LabelFrame(inner, text="混合气（浓度留空=纯气体，总和可<1，不可>1）", padding=8)
         f3.pack(fill=tk.X, pady=(0, 6))
         mix_frame = ttk.Frame(f3)
         mix_frame.grid(row=0, column=0, columnspan=3, sticky="we")
@@ -632,6 +632,9 @@ class HitranLab(tk.Tk):
         self.mix_unit_cb.bind("<<ComboboxSelected>>", self._on_mix_unit_change)
         ttk.Button(f3, text="添加组分", command=self._add_mix).grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         ttk.Button(f3, text="删除选中", command=self._del_mix).grid(row=1, column=2, padx=(4, 0), pady=(4, 0))
+        self.mix_sum_var = tk.StringVar(value="总和: 0")
+        self.mix_sum_label = ttk.Label(f3, textvariable=self.mix_sum_var, foreground="#8A8A92")
+        self.mix_sum_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
         f3.columnconfigure(0, weight=1)
 
         # 动作按钮
@@ -875,6 +878,7 @@ class HitranLab(tk.Tk):
             old_display = str(vals[1])
             xf = self._parse_any_frac(old_display)
             self.mix_tree.item(item, values=(name, self._frac_to_display(xf)))
+        self._update_mix_sum()
 
     def _parse_any_frac(self, display_str):
         """从任意单位的显示字符串解析摩尔分数（用于单位切换时的转换）。"""
@@ -908,6 +912,29 @@ class HitranLab(tk.Tk):
                 return v / 1e6
         return v
 
+    def _update_mix_sum(self):
+        """计算并显示所有组分的摩尔分数总和。"""
+        total = 0.0
+        for item in self.mix_tree.get_children():
+            vals = self.mix_tree.item(item, "values")
+            display_str = str(vals[1]) if vals[1] else ""
+            if display_str and "纯" not in display_str:
+                xf = self._parse_any_frac(display_str)
+                if xf and 0 < xf <= 1:
+                    total += xf
+        unit = self.mix_unit_var.get()
+        if unit == "ppm":
+            self.mix_sum_var.set(f"总和: {total * 1e6:.4g} ppm（{total * 100:.4f}%）")
+        elif unit == "ppb":
+            self.mix_sum_var.set(f"总和: {total * 1e9:.4g} ppb（{total * 100:.4f}%）")
+        else:
+            self.mix_sum_var.set(f"总和: {total:.6g}（{total * 100:.4f}%）")
+        # 总和 > 1 时红色警告
+        if total > 1.0 + 1e-9:
+            self.mix_sum_label.configure(foreground="#E07A7A")
+        else:
+            self.mix_sum_label.configure(foreground="#8A8A92")
+
     def _add_mix(self):
         name = self.mol_var.get().strip().upper()
         if not name:
@@ -918,13 +945,30 @@ class HitranLab(tk.Tk):
         if err:
             messagebox.showwarning("HitranLab", f"{err}，或留空（纯气体）")
             return
+        # 总和校验：添加后总和不可 > 1
+        current_total = 0.0
+        for item in self.mix_tree.get_children():
+            vals = self.mix_tree.item(item, "values")
+            ds = str(vals[1]) if vals[1] else ""
+            if ds and "纯" not in ds:
+                x = self._parse_any_frac(ds)
+                if x and 0 < x <= 1:
+                    current_total += x
+        if xf is not None and current_total + xf > 1.0 + 1e-9:
+            messagebox.showwarning("HitranLab",
+                f"添加后摩尔分数总和将为 {current_total + xf:.4g}（>1），物理上不可能。\n"
+                f"当前总和: {current_total:.4g}，待添加: {xf:.4g}\n"
+                f"请减少各组分浓度，或删除部分组分。")
+            return
         self.mix_tree.insert("", "end", values=(name, self._frac_to_display(xf)))
         self.frac_var.set("")
+        self._update_mix_sum()
 
     def _del_mix(self):
         sel = self.mix_tree.selection()
         for i in sel:
             self.mix_tree.delete(i)
+        self._update_mix_sum()
 
     def _on_mouse_hover(self, event):
         """鼠标悬停在谱图上时，在状态栏显示精确波数和吸收系数/透过率。"""
