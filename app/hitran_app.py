@@ -48,6 +48,84 @@ PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 # 叠加模式的颜色循环（柔和配色，不刺眼）
 OVERLAY_COLORS = ["#E07A7A", "#6B8FD4", "#7BC47F", "#D4A86B", "#A88BD4", "#6BB8D4", "#D4936B", "#6BB8A8"]
 
+# 分子别名表：别名（小写） -> 标准分子式
+# 包含常见英文名、中文名、HITRAN M 编号
+MOLECULE_ALIASES = {
+    # M=1..10
+    "water": "H2O", "h2o": "H2O", "1": "H2O",
+    "carbon dioxide": "CO2", "co2": "CO2", "2": "CO2",
+    "ozone": "O3", "o3": "O3", "3": "O3",
+    "nitrous oxide": "N2O", "n2o": "N2O", "4": "N2O",
+    "carbon monoxide": "CO", "co": "CO", "5": "CO",
+    "methane": "CH4", "ch4": "CH4", "6": "CH4",
+    "oxygen": "O2", "o2": "O2", "7": "O2",
+    "nitric oxide": "NO", "no": "NO", "8": "NO",
+    "sulfur dioxide": "SO2", "so2": "SO2", "9": "SO2",
+    "nitrogen dioxide": "NO2", "no2": "NO2", "10": "NO2",
+    # M=11..20
+    "ammonia": "NH3", "nh3": "NH3", "11": "NH3",
+    "nitric acid": "HNO3", "hno3": "HNO3", "12": "HNO3",
+    "hydroxyl": "OH", "oh": "OH", "13": "OH",
+    "hydrogen fluoride": "HF", "hf": "HF", "14": "HF",
+    "hydrogen chloride": "HCl", "hcl": "HCl", "15": "HCl",
+    "hydrogen bromide": "HBr", "hbr": "HBr", "16": "HBr",
+    "hydrogen iodide": "HI", "hi": "HI", "17": "HI",
+    "chlorine monoxide": "ClO", "clo": "ClO", "18": "ClO",
+    "carbonyl sulfide": "OCS", "ocs": "OCS", "19": "OCS",
+    "formaldehyde": "H2CO", "h2co": "H2CO", "20": "H2CO",
+    # M=21..30
+    "hypochlorous acid": "HOCl", "hocl": "HOCl", "21": "HOCl",
+    "nitrogen": "N2", "n2": "N2", "22": "N2",
+    "hydrogen cyanide": "HCN", "hcn": "HCN", "23": "HCN",
+    "methyl chloride": "CH3Cl", "ch3cl": "CH3Cl", "24": "CH3Cl",
+    "hydrogen peroxide": "H2O2", "h2o2": "H2O2", "25": "H2O2",
+    "acetylene": "C2H2", "c2h2": "C2H2", "26": "C2H2",
+    "ethane": "C2H6", "c2h6": "C2H6", "27": "C2H6",
+    "phosphine": "PH3", "ph3": "PH3", "28": "PH3",
+    "carbonyl fluoride": "COF2", "cof2": "COF2", "29": "COF2",
+    "sulfur hexafluoride": "SF6", "sf6": "SF6", "30": "SF6",
+    # M=31..40
+    "hydrogen sulfide": "H2S", "h2s": "H2S", "31": "H2S",
+    "formic acid": "HCOOH", "hcooh": "HCOOH", "32": "HCOOH",
+    "hydroperoxyl": "HO2", "ho2": "HO2", "33": "HO2",
+    "oxygen atom": "O", "o": "O", "34": "O",
+    "chlorine nitrate": "ClONO2", "clono2": "ClONO2", "35": "ClONO2",
+    "nitric oxide cation": "NOP", "nop": "NOP", "no+": "NOP", "36": "NOP",
+    "hypobromous acid": "HOBr", "hobr": "HOBr", "37": "HOBr",
+    "ethylene": "C2H4", "c2h4": "C2H4", "38": "C2H4",
+    "methanol": "CH3OH", "ch3oh": "CH3OH", "39": "CH3OH",
+    "methyl bromide": "CH3Br", "ch3br": "CH3Br", "40": "CH3Br",
+    # M=41..50
+    "acetonitrile": "CH3CN", "ch3cn": "CH3CN", "41": "CH3CN",
+    "carbon tetrafluoride": "CF4", "cf4": "CF4", "42": "CF4",
+    "diacetylene": "C4H2", "c4h2": "C4H2", "43": "C4H2",
+    "cyanoacetylene": "HC3N", "hc3n": "HC3N", "44": "HC3N",
+    "hydrogen": "H2", "h2": "H2", "45": "H2",
+    "carbon monosulfide": "CS", "cs": "CS", "46": "CS",
+    "sulfur trioxide": "SO3", "so3": "SO3", "47": "SO3",
+    "cyanogen": "C2N2", "c2n2": "C2N2", "48": "C2N2",
+    "phosgene": "COCl2", "cocl2": "COCl2", "49": "COCl2",
+    "sulfur monoxide": "SO", "so": "SO", "50": "SO",
+    # M=51..61
+    "methyl fluoride": "CH3F", "ch3f": "CH3F", "51": "CH3F",
+    "germane": "GeH4", "geh4": "GeH4", "52": "GeH4",
+    "carbon disulfide": "CS2", "cs2": "CS2", "53": "CS2",
+    "methyl iodide": "CH3I", "ch3i": "CH3I", "54": "CH3I",
+    "nitrogen trifluoride": "NF3", "nf3": "NF3", "55": "NF3",
+}
+
+def resolve_molecule_alias(text):
+    """将用户输入（别名/分子式/M编号）解析为标准 HITRAN 分子式。
+    返回 (标准分子式, 是否匹配到别名)。未匹配返回 (原输入.upper(), False)。
+    """
+    if not text:
+        return "", False
+    key = text.strip().lower()
+    if key in MOLECULE_ALIASES:
+        return MOLECULE_ALIASES[key], True
+    # 直接输入分子式（大写）
+    return text.strip().upper(), False
+
 MODES = {"吸收系数 α (cm⁻¹)": "alpha",
          "截面 σ (cm²/molecule)": "sigma",
          "线强 S(T) (cm/molecule)": "linestrength",
@@ -530,7 +608,9 @@ class HitranLab(tk.Tk):
         f0.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(f0, text="分子:").grid(row=0, column=0, sticky="w")
         self.mol_var = tk.StringVar()
-        self.mol_cb = ttk.Combobox(f0, textvariable=self.mol_var, width=20, state="readonly")
+        self.mol_cb = ttk.Combobox(f0, textvariable=self.mol_var, width=20)
+        self.mol_cb.bind("<KeyRelease>", self._on_mol_search)
+        self.mol_cb.bind("<Return>", self._on_mol_enter)
         self.mol_cb.grid(row=0, column=1, sticky="we", padx=(4, 0))
         self.mol_cb.bind("<MouseWheel>", lambda e: "break")
         ttk.Label(f0, text="窗口 ν (cm⁻¹):").grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -802,6 +882,42 @@ class HitranLab(tk.Tk):
                         sub.bind("<MouseWheel>", _cb_wheel)
 
     # ───────────────────────── 数据加载 ─────────────────────────
+    def _on_mol_search(self, event=None):
+        """用户输入分子名时实时筛选下拉列表，并自动匹配别名。"""
+        text = self.mol_var.get().strip()
+        if not text:
+            # 清空输入时恢复完整列表
+            if hasattr(self, "_all_species"):
+                self.mol_cb["values"] = self._all_species
+            return
+        # 先尝试别名匹配
+        std, matched = resolve_molecule_alias(text)
+        if matched and std in (self._all_species if hasattr(self, "_all_species") else []):
+            # 匹配到别名且在分子表中，自动替换
+            self.mol_var.set(std)
+            self._load_isotopologues()
+            return
+        # 筛选包含输入文本的分子（不区分大小写）
+        if hasattr(self, "_all_species"):
+            filtered = [m for m in self._all_species if text.upper() in m]
+            self.mol_cb["values"] = filtered
+            if filtered:
+                self.mol_cb.event_generate("<Down>")  # 展开下拉
+
+    def _on_mol_enter(self, event=None):
+        """回车时确认分子选择，加载同位素。"""
+        text = self.mol_var.get().strip()
+        if not text:
+            return
+        std, matched = resolve_molecule_alias(text)
+        if std in (self._all_species if hasattr(self, "_all_species") else []):
+            self.mol_var.set(std)
+            self._load_isotopologues()
+        else:
+            # 不在分子表中，恢复完整列表
+            if hasattr(self, "_all_species"):
+                self.mol_cb["values"] = self._all_species
+
     def _load_species(self):
         def job():
             s = hm.t_species()["species"]
@@ -1441,7 +1557,8 @@ class HitranLab(tk.Tk):
         self._set_busy(False, "完成")
         if kind == "species":
             self._species = d["data"]
-            self.mol_cb["values"] = sorted(d["data"].keys())
+            self._all_species = sorted(d["data"].keys())
+            self.mol_cb["values"] = self._all_species
             if "CH4" in d["data"]:
                 self.mol_var.set("CH4")
             self.status_var.set(f"已加载官方分子表（{len(d['data'])} 种）")
