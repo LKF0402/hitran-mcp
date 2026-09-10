@@ -673,6 +673,9 @@ class HitranLab(tk.Tk):
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
         self.canvas.get_tk_widget().configure(bg=self._bg)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
+        # 交互式数据探查：鼠标悬停显示精确波数/吸收系数
+        self.canvas.mpl_connect("motion_notify_event", self._on_mouse_hover)
+        self._hover_last_status = None  # 记录悬停前的状态栏文本，鼠标离开后恢复
 
         # matplotlib 导航工具栏（缩放/平移/取点/保存）
         self.toolbar_frame = ttk.Frame(right)
@@ -838,6 +841,49 @@ class HitranLab(tk.Tk):
         sel = self.mix_tree.selection()
         for i in sel:
             self.mix_tree.delete(i)
+
+    def _on_mouse_hover(self, event):
+        """鼠标悬停在谱图上时，在状态栏显示精确波数和吸收系数/透过率。"""
+        if event.inaxes != self.ax or not self._overlay_data:
+            # 鼠标离开 axes 或无数据时，恢复之前的状态栏
+            if self._hover_last_status is not None:
+                self.status_var.set(self._hover_last_status)
+                self._hover_last_status = None
+            return
+        # 记录当前状态栏（仅记录一次，避免被悬停文本覆盖后无法恢复）
+        if self._hover_last_status is None:
+            self._hover_last_status = self.status_var.get()
+        try:
+            x = float(event.xdata)
+            # 遍历所有图层，找到最近的数据点
+            parts = []
+            for ds in self._overlay_data:
+                tag = ds["tag"]
+                res = ds["data"]["res"]
+                nu = res["nu"]
+                # 确定 y 数据：透过率模式用 trans，否则用 total 或单组分
+                if res.get("trans") is not None:
+                    ydata = res["trans"]
+                    unit = "T"
+                elif len(res["per"]) > 1 and res.get("total") is not None:
+                    ydata = res["total"]
+                    unit = "α"
+                else:
+                    ydata = list(res["per"].values())[0]
+                    unit = "α"
+                # 找到最近的索引
+                idx = int(np.argmin(np.abs(nu - x)))
+                if 0 <= idx < len(ydata):
+                    y_val = float(ydata[idx])
+                    if unit == "T":
+                        parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, T={y_val:.6f}")
+                    else:
+                        # 吸收系数用科学计数法
+                        parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, α={y_val:.4e} cm⁻¹")
+            if parts:
+                self.status_var.set(" | ".join(parts))
+        except Exception:
+            pass  # 悬停探查失败不影响其他功能
 
     def _clear_plot(self):
         """只清空画布，不改变参数。重置叠加计数器和数据。"""

@@ -367,6 +367,93 @@ _ABS_CACHE_MAX = 200
 _ABS_CACHE_HITS = 0
 _ABS_CACHE_MISSES = 0
 
+# ---- 计算缓存持久化（重启后秒出，避免重复 HAPI 计算）----
+_PERSIST_CACHE_DIR = ROOT / "Hitran_Data" / "compute_cache"
+_PERSIST_INDEX_FILE = _PERSIST_CACHE_DIR / "index.json"
+
+
+def _cache_hash(key):
+    """缓存键 -> 文件名（SHA256 前 16 位，避免特殊字符）"""
+    import hashlib
+    return hashlib.sha256(repr(key).encode("utf-8")).hexdigest()[:16]
+
+
+def _tupleize(obj):
+    """递归把 list 转成 tuple（JSON 反序列化后 diluent 等嵌套结构会变成 list，需转回 tuple 才可哈希）。"""
+    if isinstance(obj, list):
+        return tuple(_tupleize(x) for x in obj)
+    return obj
+
+
+def _load_persistent_cache():
+    """启动时从磁盘加载缓存到内存。损坏的条目自动跳过。"""
+    global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
+    if not _PERSIST_INDEX_FILE.exists():
+        return
+    try:
+        import json
+        index = json.loads(_PERSIST_INDEX_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return  # 索引损坏，当作无缓存
+    loaded = 0
+    np = _np()  # 延迟导入 numpy
+    for key_json, fname in index.items():
+        fpath = _PERSIST_CACHE_DIR / fname
+        if not fpath.exists():
+            continue
+        try:
+            data = np.load(fpath, allow_pickle=False)
+            nu = np.asarray(data["nu"], dtype=float)
+            coef = np.asarray(data["coef"], dtype=float)
+            tinfo = json.loads(str(data["tinfo_json"]))
+            key = _tupleize(json.loads(key_json))
+            _ABSORPTION_CACHE[key] = (nu, coef, tinfo)
+            loaded += 1
+        except Exception:
+            continue  # 单个文件损坏不影响其他
+    if loaded:
+        _ABS_CACHE_HITS += loaded  # 从磁盘加载也算命中（避免重复计算）
+
+
+def _save_cache_entry(key, nu, coef, tinfo):
+    """写入内存缓存后同步落盘。失败静默（不影响计算结果）。"""
+    try:
+        import json
+        np = _np()  # 延迟导入 numpy
+        _PERSIST_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        fname = _cache_hash(key) + ".npz"
+        fpath = _PERSIST_CACHE_DIR / fname
+        np.savez_compressed(fpath, nu=nu, coef=coef,
+                            tinfo_json=np.array(json.dumps(tinfo, ensure_ascii=False)))
+        # 更新索引
+        index = {}
+        if _PERSIST_INDEX_FILE.exists():
+            try:
+                index = json.loads(_PERSIST_INDEX_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        index[json.dumps(list(key), ensure_ascii=False)] = fname
+        _PERSIST_INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass  # 落盘失败不影响内存缓存和计算结果
+
+
+def _clear_persistent_cache():
+    """清理磁盘缓存。"""
+    try:
+        import shutil
+        if _PERSIST_CACHE_DIR.exists():
+            shutil.rmtree(_PERSIST_CACHE_DIR)
+    except Exception:
+        pass
+
+
+# 模块加载时自动从磁盘恢复缓存
+try:
+    _load_persistent_cache()
+except Exception:
+    pass
+
 
 def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                     profile, diluent, intensity_cutoff, min_abundance):
@@ -385,11 +472,12 @@ def abs_cache_stats():
 
 
 def abs_cache_clear():
-    """清空缓存。"""
+    """清空缓存（内存 + 磁盘）。"""
     global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
     _ABSORPTION_CACHE.clear()
     _ABS_CACHE_HITS = 0
     _ABS_CACHE_MISSES = 0
+    _clear_persistent_cache()
 
 
 _CHUNK_POINTS = 4000     # 分块粒度：约 4 千点/块，兼顾进度平滑与单次调用开销
@@ -515,6 +603,7 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
         for k in keys[:len(keys)//2]:
             del _ABSORPTION_CACHE[k]
     _ABSORPTION_CACHE[key] = (nu, coef, tinfo)
+    _save_cache_entry(key, nu, coef, tinfo)   # 持久化到磁盘，重启后秒出
 
     return nu, coef, tinfo
 
