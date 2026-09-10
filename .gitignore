@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
 # 运行期自动生成（可由 fetch/工具重生，不入库）
 Hitran_Data/
@@ -10,9 +12,36 @@ xsc_data/
 
 # 个人凭据（严禁入库）
 hitran_api_key.txt
+*.key
+*.pem
+*.crt
+*.cert
+.env
+.env.*
 
 # PyInstaller 构建与发布产物（不入库）
 build/
 dist/
 *.spec
 app/__pycache__/
+
+# 编辑器/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志
+*.log
+logs/
+
+# 临时输出
+outputs/
+*.bak
+*.tmp

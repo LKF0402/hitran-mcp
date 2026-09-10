@@ -24,6 +24,7 @@ hitran — HITRAN 数据库调取与谱计算的统一薄壳（跨项目通用�
 依赖：HAPI 1.3.0.0（pip install hitran-api）；Python 3.9+
 """
 import os
+import sys
 from pathlib import Path
 
 import hapi
@@ -31,27 +32,79 @@ from hapi import (db_begin, tableList, absorptionCoefficient_Voigt)
 import numpy as np
 
 # ---- 统一缓存目录：HITRAN 线表落盘处（fetch 自动写此目录）----
-CACHE_ROOT = Path(__file__).resolve().parent.parent / "Hitran_Data"
-CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-db_begin(str(CACHE_ROOT))  # 必须在 fetch 前调用，决定 .data/.header 落盘位置
+# 兼容源码运行与 PyInstaller 打包：冻结模式下用 exe 所在目录，源码模式用仓库根目录
+if getattr(sys, "frozen", False):
+    _ROOT = Path(sys.executable).resolve().parent
+else:
+    _ROOT = Path(__file__).resolve().parent.parent
+CACHE_ROOT = _ROOT / "Hitran_Data"
 
-# ---- 物种/同位素速查（分子号 M，默认同位素 I）----
-SPECIES = {
-    "H2O": 1, "CO2": 2, "O3": 3, "N2O": 4, "CO": 5, "CH4": 6, "O2": 7,
-    "NO": 8, "SO2": 9, "NO2": 10, "NH3": 11, "HNO3": 12, "OH": 13,
-    "HF": 14, "HCl": 15, "HBr": 16, "HI": 17, "ClO": 18, "OCS": 19,
-    "H2CO": 20, "HOCl": 21, "N2": 22, "HCN": 23, "CH3Cl": 24, "H2O2": 25,
-    "C2H2": 26, "C2H6": 27, "PH3": 28, "COF2": 29, "SF6": 30, "H2S": 31,
-    "HCOOH": 32, "HO2": 33, "O": 34, "ClONO2": 35, "NO+": 36, "HOBr": 37,
-    "C2H4": 38, "CH3OH": 39, "CH3Br": 40, "CH3CN": 41, "CF4": 42,
-    "C4H2": 43, "HC3N": 44, "H2": 45, "CS": 46, "SO3": 47,
+_CACHE_READY = False
+
+
+def _init_cache():
+    """惰性建缓存目录并 db_begin。目录只读/受限时给明确报错，而非 import 期 ImportError。
+
+    幂等：多次调用只生效一次。任何取数入口（fetch/absorption）都先调它。
+    """
+    global _CACHE_READY
+    if _CACHE_READY:
+        return
+    try:
+        CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise RuntimeError(
+            f"[hitran][防呆] 无法创建线表缓存目录 {CACHE_ROOT}：{e}。"
+            f"请确认该路径可写（或把程序放到有写权限的目录）。") from e
+    db_begin(str(CACHE_ROOT))  # 决定 .data/.header 落盘位置，必须在 fetch 前调用
+    _CACHE_READY = True
+
+
+# ---- 物种/同位素速查（全部由 HAPI 官方 ISO 表派生，不硬编码编号）----
+# 表名一律用官方分子式（大写）：与 hitran_mcp 层 _formula(M) 完全一致，
+# 杜绝"CSV 溯源水印里的表名和磁盘上真实缓存文件名对不上"。
+def _build_species():
+    """从 hapi.ISO 构建 {官方分子式: M} 与 {官方分子式: 主同位素 I}。
+
+    主同位素 = 自然丰度最大者（官方口径），取代原先只覆盖 18 种的 ISO_ID 硬编码。
+    """
+    sp, iso_id = {}, {}
+    best = {}                                    # M -> (abundance, I)
+    formula_of = {}                              # M -> 官方分子式
+    for (M, I), rec in hapi.ISO.items():
+        f = str(rec[4]).upper()
+        sp[f] = M
+        formula_of[M] = f
+        ab = float(rec[2])
+        if M not in best or ab > best[M][0]:
+            best[M] = (ab, I)
+    for M, (_, I) in best.items():
+        iso_id[formula_of[M]] = I
+    return sp, iso_id
+
+
+SPECIES, ISO_ID = _build_species()
+
+# 常见别名 → 官方分子式（官方把 NO⁺ 记作 NOP，用户/旧代码惯写 NO+）
+_ALIASES = {
+    "NO+": "NOP", "NOP+": "NOP", "NOPLUS": "NOP",
 }
 
-ISO_ID = {  # 常见同位素 I（默认主同位素）
-    "H2O": 1, "CO2": 1, "N2O": 1, "CO": 1, "CH4": 1, "O2": 1, "NO": 1,
-    "SO2": 1, "NO2": 1, "NH3": 1, "O3": 1, "HF": 1, "HCl": 1, "H2S": 1,
-    "C2H2": 1, "C2H4": 1, "N2": 1, "H2": 1,
-}
+# 名称归一化表：大写输入 → 官方分子式（唯一真源，_resolve 与 _validate_params 共用）
+_NAME_MAP = {f: f for f in SPECIES}
+for _alias, _official in _ALIASES.items():
+    _NAME_MAP[_alias.upper()] = _official
+
+
+def _canonical(name):
+    """任意大小写/别名 → 官方分子式。未知物种抛 KeyError（消息不再罗列全表）。"""
+    s = str(name).strip().upper()
+    if s in _NAME_MAP:
+        return _NAME_MAP[s]
+    raise KeyError(
+        f"[hitran] 未知物种 '{name}'（HITRAN 逐线库官方表无此分子，共 {len(SPECIES)} 种）。"
+        f"若属截面子库（600+ 重分子）请用 hitran_cross_section 读本地文件。")
+
 
 CITATION = (
     "HITRAN2024: Gordon et al., J. Quant. Spectrosc. Radiat. Transfer (2026), "
@@ -62,13 +115,15 @@ CITATION = (
 
 
 def _resolve(name, iso):
-    """返回 (M, I, table_name)。iso=None 时用 SPECIES/ISO_ID 默认主同位素。"""
-    name = name.strip()
-    if name not in SPECIES:
-        raise KeyError(f"[hitran] 未知物种 '{name}'，支持: {sorted(SPECIES)}")
-    M = SPECIES[name]
-    I = iso if iso is not None else ISO_ID.get(name, 1)
-    return M, I, f"{name}_{M}_{I}"
+    """返回 (M, I, table_name)。iso=None 时取官方主同位素（丰度最大者）。
+
+    表名 = 官方分子式_M_I，与 hitran_mcp._ensure_table_for 生成的名字逐字符一致，
+    保证 CSV 溯源水印指向真实缓存文件。
+    """
+    canonical = _canonical(name)
+    M = SPECIES[canonical]
+    I = int(iso) if iso is not None else ISO_ID.get(canonical, 1)
+    return M, I, f"{canonical}_{M}_{I}"
 
 
 # ---- 防呆第 1 层：输入参数校验（防止提问者/操作者把参数填错）----
@@ -81,8 +136,14 @@ def _validate_params(name, numin, numax, T, P, step, *, mole_frac=None):
     """
     errs, warns = [], []
 
-    if not isinstance(name, str) or name.strip() not in SPECIES:
-        errs.append(f"分子名 '{name}' 不在支持列表 {sorted(SPECIES)} 中")
+    # 名称校验与 _resolve 共用 _canonical（同一真源），大小写/别名口径完全一致
+    if not isinstance(name, str):
+        errs.append(f"分子名必须是字符串，收到 {name!r}")
+    else:
+        try:
+            _canonical(name)
+        except KeyError:
+            errs.append(f"分子名 '{name}' 不在 HITRAN 逐线库官方表中（共 {len(SPECIES)} 种）")
 
     try:
         numin_f, numax_f = float(numin), float(numax)
@@ -161,6 +222,7 @@ def fetch(name, numin, numax, iso=None, force=False):
     防呆：先校验输入窗口（_validate_params），抓取/加载后强制校验线数，空表直接报错（见 _guard_nonempty）。
     """
     _validate_params(name, numin, numax, 296.0, 1.01325, 0.01)  # 仅校验分子/窗口，T/P/step 用占位合法值
+    _init_cache()
     M, I, table = _resolve(name, iso)
     if (not force) and table in tableList():
         print(f"[hitran] cached+loaded: {table}  ({numin}-{numax} cm-1)")
@@ -198,8 +260,37 @@ def _guard_nonempty(table, name, numin, numax):
             f"或放宽波数窗口。如需声明'该窗口无收录线'，请在调用侧显式捕获此异常。")
 
 
+
+# ---- 计算结果缓存（相同参数秒出，避免重复 HAPI 计算）----
+_COMPUTE_CACHE = {}
+_CACHE_MAX_ENTRIES = 200  # 最多缓存 200 组结果，防止内存膨胀
+_CACHE_HITS = 0
+_CACHE_MISSES = 0
+
+
+def _cache_key(name, numin, numax, T, P, step, wingHW, iso, hitran_units, env):
+    """生成可哈希的缓存键。env 字典转排序元组。"""
+    env_items = tuple(sorted((k, str(v)) for k, v in (env or {}).items()))
+    return (str(name).strip().upper(), float(numin), float(numax), float(T), float(P),
+            float(step), float(wingHW), iso, bool(hitran_units), env_items)
+
+
+def cache_stats():
+    """返回缓存统计信息。"""
+    return {"entries": len(_COMPUTE_CACHE), "max": _CACHE_MAX_ENTRIES,
+            "hits": _CACHE_HITS, "misses": _CACHE_MISSES}
+
+
+def cache_clear():
+    """清空计算缓存。"""
+    global _CACHE_HITS, _CACHE_MISSES
+    _COMPUTE_CACHE.clear()
+    _CACHE_HITS = 0
+    _CACHE_MISSES = 0
+
+
 def absorption(name, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
-               iso=None, hitran_units=False, poll=True, **env):
+               iso=None, hitran_units=False, poll=True, use_cache=True, **env):
     """返回 (nu, coef) —— 某物种在 [numin,numax] 的吸收系数谱。
 
     单位：hitran_units=False（默认）-> coef 单位 cm-1（吸收系数 α，已含数密度，
@@ -210,7 +301,18 @@ def absorption(name, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     T,K; P,atm; step,cm-1; wingHW,cm-1(线翼半宽)。env 可覆盖 HAPI Environment
     其余字段(Diluent 等)。poll=True 时算完自动跑一次 check_spectrum 轮询自检。
     """
+    global _CACHE_HITS, _CACHE_MISSES
     _validate_params(name, numin, numax, T, P, step)
+
+    # 缓存查找
+    if use_cache:
+        key = _cache_key(name, numin, numax, T, P, step, wingHW, iso, hitran_units, env)
+        if key in _COMPUTE_CACHE:
+            _CACHE_HITS += 1
+            nu, coef = _COMPUTE_CACHE[key]
+            return nu.copy(), coef.copy()
+        _CACHE_MISSES += 1
+
     table = fetch(name, numin, numax, iso=iso)
     M, I, _ = _resolve(name, iso)
     env0 = dict(Environment={"T": float(T), "p": float(P), "Diluent": {"air": 1.0}})
@@ -228,6 +330,15 @@ def absorption(name, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     if poll:
         check_spectrum(nu, coef, name, numin=numin, numax=numax, T=T, P=P,
                        hitran_units=hitran_units)
+
+    # 写入缓存（超限时清空一半旧缓存）
+    if use_cache:
+        if len(_COMPUTE_CACHE) >= _CACHE_MAX_ENTRIES:
+            keys = list(_COMPUTE_CACHE.keys())
+            for k in keys[:len(keys)//2]:
+                del _COMPUTE_CACHE[k]
+        _COMPUTE_CACHE[key] = (nu, coef)
+
     return nu, coef
 
 

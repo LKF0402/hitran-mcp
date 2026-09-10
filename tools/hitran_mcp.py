@@ -27,8 +27,8 @@ if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).resolve().parent   # 冻结(exe)模式：数据/缓存/产物与 exe 同级
 else:
     ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))          # 保证 tools 包可导入（自包含）
+if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))          # 保证 tools 包可导入（自包含）；冻结模式跳过，避免同目录 .py 影子覆盖
 
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
@@ -78,6 +78,9 @@ def _hitran():
             import tools.hitran as m
             import hapi
         _HT = m
+        # 库层已改为惰性建目录：此处统一触发 db_begin，
+        # 保证 _ensure_table_for 直调 hapi.fetch 时缓存落在 CACHE_ROOT 而非 HAPI 默认目录
+        m._init_cache()
         key = _api_key()                     # 预置 key：未来版本 HAPI 自动生效
         if key:
             try:
@@ -230,6 +233,11 @@ def _resolve_M(name):
         M = int(s)
         import hapi
         return str(hapi.moleculeName(M)).upper(), M
+    # 先走别名表规范化（NO+ → NOP 等），未知物种保持原值继续查官方表
+    try:
+        s = _hitran()._canonical(s)
+    except KeyError:
+        pass
     if s in idx:
         return s, idx[s]["M"]
     for f, e in idx.items():                          # 容错：大小写/简写
@@ -321,6 +329,38 @@ def _diluent_dict(diluent):
     return {str(k): float(v) for k, v in dict(diluent).items()}
 
 
+
+# ---- 计算结果缓存（相同参数秒出，避免重复 HAPI 计算）----
+_ABSORPTION_CACHE = {}
+_ABS_CACHE_MAX = 200
+_ABS_CACHE_HITS = 0
+_ABS_CACHE_MISSES = 0
+
+
+def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
+                    profile, diluent, intensity_cutoff, min_abundance):
+    """生成可哈希的缓存键。force 不影响结果，不纳入键。"""
+    dil_items = tuple(sorted((k, float(v)) for k, v in (diluent or {}).items())) if isinstance(diluent, dict) else str(diluent)
+    return (str(name).strip().upper(), str(iso), float(numin), float(numax), float(T), float(P),
+            float(step), float(wingHW), bool(hitran_units), str(profile).lower(), dil_items,
+            float(intensity_cutoff) if intensity_cutoff is not None else None,
+            float(min_abundance))
+
+
+def abs_cache_stats():
+    """返回缓存统计。"""
+    return {"entries": len(_ABSORPTION_CACHE), "max": _ABS_CACHE_MAX,
+            "hits": _ABS_CACHE_HITS, "misses": _ABS_CACHE_MISSES}
+
+
+def abs_cache_clear():
+    """清空缓存。"""
+    global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
+    _ABSORPTION_CACHE.clear()
+    _ABS_CACHE_HITS = 0
+    _ABS_CACHE_MISSES = 0
+
+
 def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                 force=False, min_abundance=1e-4, profile="voigt", diluent=None,
                 intensity_cutoff=None):
@@ -331,9 +371,20 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
       iso='all' → 全同位素近似：各同位素按官方自然丰度加权求和
     单同位素时权重必须是 1.0（纯气体），不可误传自然丰度，否则 α 会凭空少 1%~2%。
     """
+    global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
     ht, np = _hitran(), _np()
     import hapi
     from hapi import absorptionCoefficient_Voigt
+
+    # 缓存查找（force 不影响结果，不纳入键）
+    key = _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
+                          profile, diluent, intensity_cutoff, min_abundance)
+    if key in _ABSORPTION_CACHE:
+        _ABS_CACHE_HITS += 1
+        nu, coef, tinfo = _ABSORPTION_CACHE[key]
+        return nu.copy(), coef.copy(), dict(tinfo)
+    _ABS_CACHE_MISSES += 1
+
     formula, M = _resolve_M(name)
     isos = _isotopologues(M, iso, min_abundance)
     full = len(isos) > 1
@@ -377,7 +428,16 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                             for e in entries]}
     if skipped:
         tinfo["skipped_isotopologues"] = skipped
-    return np.asarray(nu, dtype=float), np.asarray(coef, dtype=float), tinfo
+    nu, coef = np.asarray(nu, dtype=float), np.asarray(coef, dtype=float)
+
+    # 写入缓存（超限时清空一半旧缓存）
+    if len(_ABSORPTION_CACHE) >= _ABS_CACHE_MAX:
+        keys = list(_ABSORPTION_CACHE.keys())
+        for k in keys[:len(keys)//2]:
+            del _ABSORPTION_CACHE[k]
+    _ABSORPTION_CACHE[key] = (nu, coef, tinfo)
+
+    return nu, coef, tinfo
 
 
 DEFAULTS = {"T": 296.0, "P": 1.01325, "step": 0.01, "wingHW": 50.0, "mode": "alpha"}
@@ -422,11 +482,9 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     for sp in specs:
         name, iso, x = sp["name"], sp["iso"], sp["mole_frac"]
         # 输入护栏（沿用 hitran.py 第一层防呆）；纯气体 x=1 不传，免"是否主成分"噪声提示
+        # 库层 SPECIES 已与官方 ISO 表同源、名称归一化大小写不敏感，无需再用占位名绕过
         with _quiet() as gbuf:
-            # 护栏沿用 hitran.py；但它的分子白名单是本地字典，官方表里有的分子可能不在其中，
-            # 此时用合法占位名只走数值校验（分子合法性已由官方 ISO 表确认）。
-            ht._validate_params(name if name in ht.SPECIES else "CO",
-                                numin, numax, T, P, step,
+            ht._validate_params(name, numin, numax, T, P, step,
                                 mole_frac=None if abs(x - 1.0) < 1e-12 else x)
         for ln in gbuf.getvalue().splitlines():      # 软警告也要进 warnings，AI 才看得见
             if "[输入提示]" in ln:
@@ -711,14 +769,14 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
             ax.plot(nu, c, lw=0.9, alpha=0.75, label=label)
         if len(per) > 1:
             ax.plot(nu, total, color="k", lw=1.3, label="TOTAL")
-        ylab = ("Cross section σ (cm²/molecule)" if hitran_units
-                else "Absorption coefficient α (cm⁻¹)")
+        ylab = ("Cross section σ (cm$^2$/molecule)" if hitran_units
+                else "Absorption coefficient α (cm$^{-1}$)")
     if ylog:
         ax.set_yscale("log")
 
-    ax.set_xlabel("Wavenumber (cm⁻¹)")
+    ax.set_xlabel("Wavenumber (cm$^{-1}$)")
     ax.set_ylabel(ylab)
-    ax.set_title(title or f"{'+'.join(per)}  {res['numin']}–{res['numax']} cm⁻¹"
+    ax.set_title(title or f"{'+'.join(per)}  {res['numin']}–{res['numax']} cm$^{-1}$"
                           f"  T={res['T']:g} K  P={res['P']:g} atm")
     ax.grid(alpha=0.25, lw=0.6)
     ax.legend(fontsize=8, framealpha=0.9)
@@ -846,9 +904,9 @@ def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
     if nu_w.size:
         ax.plot(nu_w, coef_w, lw=0.9, color="#1f4e79", label=label)
         ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
-    ax.set_xlabel("Wavenumber (cm⁻¹)")
-    ax.set_ylabel("Cross section σ (cm²/molecule)")
-    ax.set_title(title or f"{label}  {win[0]:g}–{win[1]:g} cm⁻¹")
+    ax.set_xlabel("Wavenumber (cm$^{-1}$)")
+    ax.set_ylabel("Cross section σ (cm$^2$/molecule)")
+    ax.set_title(title or f"{label}  {win[0]:g}–{win[1]:g} cm$^{-1}$")
     ax.grid(alpha=0.25, lw=0.6)
     if nu_w.size:
         ax.legend(fontsize=8, framealpha=0.9)

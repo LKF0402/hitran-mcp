@@ -1,0 +1,65 @@
+# 更新日志
+
+## 2026-09-10 · Bug 修复（v3 审查报告 · 12 项）
+
+**根因修复**（hitran.py 物种表统一为官方单一真源，一次消掉 4 个 bug）：
+- 删除硬编码 `SPECIES`/`ISO_ID`，改由 `hapi.ISO` 派生（`_build_species`），覆盖全部 61 种分子
+- 表名一律用官方分子式大写（HCL 而非 HCl），与 `hitran_mcp._formula(M)` 完全一致，CSV 溯源水印与磁盘缓存文件名 0 处不一致
+- 新增 `_ALIASES` 别名表（NO+/NOP+/NOPLUS → NOP），`_canonical()` 成为名称归一化唯一入口
+- `_validate_params` 统一调用 `_canonical()`，大小写口径与 `_resolve` 一致
+- 建目录 + `db_begin` 从 import 期改为惰性 `_init_cache()`，目录只读时给明确报错而非 ImportError
+
+**GUI 修复**：
+- **_selftest 参数错位**：改用关键字参数，wingHW=50.0（原 0.1 截断线翼）、hitran_units=False（原 True 返回 σ 而非 α）、path_length_cm=None
+- **CSV 导出崩溃**：添加数组长度校验（不同窗口/步长/模式无法合并），`np.column_stack` 包裹 try/except，不一致时报明确错误而非静默崩溃
+- **线强 S(296K) 标注不完整**：标签/y轴/标题统一从 S(T) 改为 S(296K)，读取并显示 `res["warnings"]`（线强为 HITRAN 参考温度 296K，非用户设定温度）
+- **线强硬编码 log 轴**：尊重用户 ylog 复选框；vlines 底端从 0 改为 S.min()/1000（对数轴无法表示 0）
+- **版本比较字符串**：使用 `_vkey()` 元组比较，`1.10.0 > 1.9.0` 不再漏报
+- **检查更新阻塞 UI**：网络请求移到后台线程，结果通过队列回传
+
+**验证**：selftest 通过（exit code 0）；NO+ 别名验证通过（NO+ → NOP，NOP/HCL 均在 SPECIES 中）；打包 103.6 MB。
+
+---
+
+## 2026-09-10 · Bug 修复（v2 审查报告）
+
+**修复清单**（按严重度排序）：
+
+### P1 — 功能不可用
+- **P1-0 `_resolve_M` 别名失效**：`hitran_mcp.py` 的 `_resolve_M()` 自己实现解析，从未调用 `ht._canonical()`，导致 `NO+`/`NOPLUS` 等别名报错。修复：在查询官方表前先调用 `_canonical()` 规范化。
+- **P1-1 换算器输入异常**：波长↔波数换算器双向 `trace_add` 无重入锁，且用 `:.2f` 硬格式化，导致多位数字输入被四舍五入吞掉。修复：添加 `_guard` 重入锁，精度改为 `:.6g`。
+- **P1-2 分子表查询空列**：`_load_species` 只保留 `M` 字段，丢弃其他所有字段，导致分子表查询 3 列全空、中文名搜索失效。修复：保留 `M`/`main_iso` 字段，删除不存在的 `n_lines` 列和「中文名」提示。
+
+### P2 — 行为不符预期
+- **P2-1 全屏绘图区名不副实**：菜单项声称「隐藏左侧参数面板和底部 tab」，实际只改窗口尺寸，且不保存原 geometry。修复：移除该假功能（菜单项 + 方法），避免误导用户。
+- **P2-2 检查更新版本号比较错误**：`"1.10.0" > "1.9.0"` 字符串比较返回 False，导致新版本漏报。修复：使用 `_vkey()` 元组比较。
+- **P2-3 检查更新阻塞 UI**：网络请求直接在主线程执行，无网络时界面冻结最长 10s。修复：移到后台线程 `self.worker.run()`，结果通过队列回传。
+
+### P3 — 小瑕疵
+- **P3-7 `_set_busy` 丢弃 msg**：`busy=False` 时 `msg` 被丢弃，总是显示"就绪"。修复：`msg or "就绪"`。
+- **P3-8 同位素下拉框异常值**：except 分支清空 `values` 后又设 `iso_var` 为不在候选列表的值。修复：except 分支设为空字符串。
+- **P3-9 冻结模式 sys.path 风险**：冻结模式下把 exe 同目录塞进模块搜索路径首位，同目录同名 `.py` 会影子覆盖打包内模块。修复：冻结模式跳过 `sys.path.insert`。
+- **P3-10 叠加标题写死**：叠加时标题固定为"叠加对比"，看不出图层数量。修复：动态显示图层数量。
+
+---
+
+## 2026-09-10 · 物种表统一为官方单一真源
+
+**问题**：`hitran.py` 硬编码物种表与 HAPI 官方 ISO 表并存且写法不同，导致
+NO⁺ 编号错配（写 `NO+`，官方为 `NOP`）、12 处 CSV 溯源水印表名指向不存在的
+缓存文件、`_resolve` 与 `_validate_params` 大小写口径矛盾、`ISO_ID` 只覆盖 18 种。
+
+**改动**：
+- `tools/hitran.py`：删除硬编码 `SPECIES`/`ISO_ID`，改由 `hapi.ISO` 派生（`_build_species`）；
+  主同位素取官方自然丰度最大者；新增 `_NAME_MAP` 别名表（`NO+`/`NOP+`/`NOPLUS` → `NOP`）；
+  `_canonical()` 成为名称归一化唯一入口，`_resolve` 与 `_validate_params` 共用。
+- `tools/hitran.py`：建目录 + `db_begin` 从 import 期改为惰性 `_init_cache()`，
+  目录不可写时给明确报错而非 `ImportError`。
+- `tools/hitran_mcp.py`：`_hitran()` 加载后调用 `_init_cache()`，保证直调 `hapi.fetch`
+  的路径也写入项目缓存目录。
+- `tools/hitran_mcp.py`：删除 `_validate_params(name if name in ht.SPECIES else "CO", ...)`
+  的占位替换 —— 该逻辑会把未识别分子静默换成 CO 校验，绕过护栏。
+
+**验证**（2026-09-10 二次修复后重新验证）：61 种分子全部可解析；水印表名与真实缓存表名 0 处不一致；
+`NOP`/`NO+`/`nop`/`NOplus`/`NOP+`/`NOPLUS` 均解析到 M=36（经 P1-0 修复后成立）；
+大小写口径 7 项测试无分叉；主同位素 0 处错配。

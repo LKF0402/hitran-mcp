@@ -1,7 +1,6 @@
 # hitran-mcp
 
-> HITRAN 光谱数据库的 MCP（Model Context Protocol）服务器：取数、谱计算、绘图一体化的 AI 工具链。
-> 纯标准库 stdio 实现，数据实时取自 HITRANonline（官方 HAPI），仓库本身不含任何数据文件。
+> HITRAN 光谱数据库的 AI 工具链：MCP 服务器 + HitranLab 桌面工作站。取数、谱计算、绘图一体化，数据实时取自 HITRANonline（官方 HAPI），仓库本身不含任何数据文件。
 
 [English](./README.en.md) | 中文
 
@@ -10,7 +9,11 @@
 - [项目概览](#项目概览)
 - [功能特性](#功能特性)
 - [仓库结构](#仓库结构)
-- [快速开始](#快速开始)
+- [HitranLab 桌面工作站](#hitranlab-桌面工作站)
+  - [下载与运行](#下载与运行)
+  - [功能说明](#功能说明)
+  - [从源码打包](#从源码打包)
+- [快速开始（MCP 服务器）](#快速开始mcp-服务器)
   - [环境要求](#环境要求)
   - [安装](#安装)
   - [API Key（可选）](#api-key可选)
@@ -26,12 +29,17 @@
 
 ## 项目概览
 
-`hitran-mcp` 将 HITRAN 光谱数据库的取数、吸收谱计算与绘图能力封装为 AI 可直接调用的 MCP 服务器：
+`hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，包含两套前端：
 
-- **传输层**：stdio JSON-RPC（MCP 协议 2024-11-05），纯 Python 标准库实现，无框架依赖。
+1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用 9 个工具完成取数、谱计算与绘图。
+2. **HitranLab 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
+
+两套前端共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
+
+- **传输层**：MCP 服务器用 stdio JSON-RPC（协议 2024-11-05），纯 Python 标准库实现，无框架依赖。
 - **数据源**：实时取自 HITRANonline，经官方 HAPI 1.3.0.0；物种表与同位素丰度直接读取 HAPI 官方 ISO 表，无硬编码白名单。
-- **覆盖范围**：9 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路。
-- **仓库边界**：仅含代码与文档；线表缓存（`Hitran_Data/`）、产物（`tmp/`）、按需下载的截面数据（`xsc_data/`）与 API key 均属运行期数据，位于 `.gitignore` 区，不入库。
+- **覆盖范围**：MCP 服务器 9 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路；桌面工作站覆盖日常光谱分析全流程。
+- **仓库边界**：仅含代码与文档；线表缓存（`Hitran_Data/`）、产物（`tmp/`）、按需下载的截面数据（`xsc_data/`）、打包产物（`dist/`/`build/`）与 API key 均属运行期数据，位于 `.gitignore` 区，不入库。
 
 ## 功能特性
 
@@ -41,8 +49,9 @@
 | 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）经本地文件读入，统一产物链路 |
 | 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
 | 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 + HAPI + TIPS 版本水印，可追溯到原始文献 |
-| 参数透明 | 未给出的参数使用默认值并在 `assumed_defaults` 中如实列出，`strict` 模式强制先确认工况 |
-| 零数据入库 | 缓存、产物、个人下载的截面文件全部 gitignore，仓库保持轻量 |
+| 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
+| 桌面 GUI | HitranLab 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、CSV/PNG 导出 |
+| 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 仓库结构
 
@@ -50,20 +59,90 @@
 hitran-mcp/
 ├─ README.md                 # 中文文档（本文件）
 ├─ README.en.md              # English documentation
+├─ CHANGELOG.md              # 更新日志
+├─ LICENSE                   # MIT 协议
+├─ requirements.txt          # Python 依赖
 ├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
+├─ app/
+│  ├─ hitran_app.py          # HitranLab 桌面工作站（Tkinter + matplotlib GUI）
+│  └─ hitranlab.ico          # 应用图标
 └─ tools/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
-   ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印）
+   ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印 + 计算缓存）
    └─ __init__.py
 ```
 
 运行期自动生成（可随时删除，由工具重生）：
 
 - `Hitran_Data/` — 线表缓存
-- `tmp/mcp_out/` — 工具产物（CSV/PNG，自带溯源水印）
+- `tmp/mcp_out/` — MCP 工具产物（CSV/PNG，自带溯源水印）
+- `tmp/` — 桌面工作站临时文件与自测输出
 - `xsc_data/` — 用户按需下载的截面文件（个人数据，不入库）
+- `dist/` / `build/` — PyInstaller 打包产物（不入库）
 
-## 快速开始
+## HitranLab 桌面工作站
+
+HitranLab 是无需编程的光谱分析桌面应用，适合日常科研使用。
+
+### 下载与运行
+
+**方式一：下载预编译版本（推荐）**
+
+1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLab-windows-x64.zip`
+2. 解压到任意目录（路径建议不含中文和空格）
+3. 双击 `HitranLab.exe` 即可运行
+
+> 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
+
+**方式二：从源码运行**
+
+```bash
+git clone https://github.com/LKF0402/hitran-mcp.git
+cd hitran-mcp
+pip install -r requirements.txt
+python app/hitran_app.py
+```
+
+### 功能说明
+
+| 功能模块 | 说明 |
+|---|---|
+| 谱计算 | 支持吸收系数 α、截面 σ、线强 S(296K)、透过率 T 四种输出模式 |
+| 多组分叠加 | 默认叠加绘图，可叠加多个分子/不同工况的谱线，图层可单独删除 |
+| 强线列表 | 显示窗口内最强 N 条谱线（ν、S、γ_air、E″），多分子合并时标注每条线来源分子 |
+| Q(T) 曲线 | 配分函数随温度变化曲线，用于评估温度对线强的影响 |
+| 配分函数 | 查询指定温度下的 Q(T) 值（TIPS-2025） |
+| 截面文件 | 读入 HITRAN 截面库（XSC）的 .txt 文件，绘图并导出溯源 CSV |
+| 换算工具 | 波长 ↔ 波数实时换算器 |
+| 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
+| 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
+| 计算缓存 | 相同参数计算结果自动缓存，重复计算瞬时返回 |
+
+**操作流程**：
+1. 选择分子（可多选混合气）、波数窗口、温度、压力、步长
+2. 选择输出模式（吸收系数/截面/线强/透过率）
+3. 点击「计算并绘图」
+4. 可继续调整参数再次计算，谱线会自动叠加到同一画布
+5. 点击「清空图」重置画布，点击「导出 CSV/PNG」保存结果
+
+### 从源码打包
+
+如需自行打包为 exe：
+
+```bash
+pip install pyinstaller
+pyinstaller --noconfirm --clean --name HitranLab --windowed --onedir \
+  --icon app/hitranlab.ico --paths . \
+  --collect-all matplotlib --hidden-import hapi \
+  --exclude-module pandas --exclude-module lxml --exclude-module scipy \
+  app/hitran_app.py
+```
+
+打包产物位于 `dist/HitranLab/`，约 100 MB（one-dir 模式）。将整个 `HitranLab/` 目录压缩即可分发。
+
+> 打包前请确保关闭所有正在运行的 HitranLab 进程，否则可能因文件锁定导致打包失败。
+
+## 快速开始（MCP 服务器）
 
 ### 环境要求
 
@@ -157,14 +236,26 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 
 ## 自测
 
+**MCP 服务器自测**：
+
 ```bash
 python tools/hitran_mcp.py --selftest
 ```
 
 走真实网络抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查。
 
+**桌面工作站自测**：
+
+```bash
+python app/hitran_app.py --selftest selftest.json
+```
+
+验证引擎 + 数据 + 网络在打包环境内完整可用，输出 JSON 含分子数、谱点数、峰值等信息。
+
 ## 常见问题
 
 - **抓取失败 "daily limit"**：官方每日配额超限，次日重试；缓存未删时大部分窗口无需重新抓取。
-- **修改代码不生效**：重启 AI 客户端（MCP 进程随客户端启动）。
+- **修改代码不生效**：重启 AI 客户端（MCP 进程随客户端启动）；桌面工作站需重启程序。
 - **清理缓存**：删除 `Hitran_Data/*.data|*.header` 即可，需要时自动重抓。
+- **截面库分子（如丙烷 C₃H₈）查不到**：HITRAN 截面库无在线 API，需按[双库桥接](#双库桥接)流程手动下载 .txt 文件后用 `hitran_cross_section` 读入。
+- **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
