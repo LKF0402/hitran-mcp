@@ -27,14 +27,8 @@ if str(ROOT) not in sys.path:
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# matplotlib 嵌入式后端必须最先设置
-import matplotlib
-matplotlib.use("TkAgg", force=True)
-import matplotlib as mpl
-mpl.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
-mpl.rcParams["axes.unicode_minus"] = False
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
+# matplotlib 延迟到 _init_canvas 里导入（启动时先显示 UI 框架，画布异步出现）
+_MPL_READY = False
 
 from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI 惰性加载）
 
@@ -128,8 +122,42 @@ class HitranLab(tk.Tk):
         self._build_style()
         self._build_ui()
         self._load_species()
+        self.after(50, self._init_canvas)       # 延迟导入 matplotlib，先显示 UI
         self.after(100, self._drain_queue)
         self._refresh_status()
+
+    def _init_canvas(self):
+        """异步初始化 matplotlib 画布（启动时先显示 UI，画布随后出现）。"""
+        global _MPL_READY
+        if _MPL_READY:
+            return
+        import matplotlib
+        matplotlib.use("TkAgg", force=True)
+        import matplotlib as mpl
+        mpl.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
+        mpl.rcParams["axes.unicode_minus"] = False
+        if hasattr(self, "_mpl_dark_params"):
+            mpl.rcParams.update(self._mpl_dark_params)
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+        from matplotlib.figure import Figure
+
+        self.fig = Figure(figsize=(9, 4.4), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
+        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
+        self.ax.grid(alpha=0.4, lw=0.6)
+        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
+                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
+        # 清空占位 label
+        for child in self.canvas_holder.winfo_children():
+            child.destroy()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.canvas_holder)
+        self.canvas.get_tk_widget().configure(bg=self._bg)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
+        self.toolbar.update()
+        self._style_toolbar()
+        _MPL_READY = True
 
     # ───────────────────────── UI 构建 ─────────────────────────
     def _build_style(self):
@@ -228,8 +256,8 @@ class HitranLab(tk.Tk):
         style.configure("TCheckbutton", background=BG, foreground=TEXT)
         style.map("TCheckbutton", background=[("active", BG)])
 
-        # matplotlib 深色配色
-        mpl.rcParams.update({
+        # matplotlib 深色配色（延迟到 _init_canvas 里应用，因为 mpl 那时才导入）
+        self._mpl_dark_params = {
             "figure.facecolor": BG,
             "axes.facecolor": BG,
             "axes.edgecolor": BORDER,
@@ -244,7 +272,7 @@ class HitranLab(tk.Tk):
             "legend.facecolor": SURFACE,
             "legend.edgecolor": BORDER,
             "legend.labelcolor": TEXT,
-        })
+        }
 
     def _style_toolbar(self):
         """matplotlib 工具栏（tk.Button）深色主题适配。"""
@@ -293,6 +321,11 @@ class HitranLab(tk.Tk):
         ttk.Entry(f0, textvariable=self.numax_var, width=8).grid(row=1, column=3, sticky="w")
         ttk.Label(f0, text="步长:").grid(row=2, column=0, sticky="w", pady=(4, 0))
         ttk.Entry(f0, textvariable=self.step_var, width=8).grid(row=2, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
+        ttk.Label(f0, text="同位素:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        self.iso_var = tk.StringVar(value="主同位素")
+        self.iso_cb = ttk.Combobox(f0, textvariable=self.iso_var, width=20, state="readonly")
+        self.iso_cb.grid(row=3, column=1, columnspan=3, sticky="we", padx=(4, 0), pady=(4, 0))
+        self.mol_cb.bind("<<ComboboxSelected>>", lambda e: self._load_isotopologues())
         f0.columnconfigure(1, weight=1)
 
         # 工况
@@ -327,6 +360,24 @@ class HitranLab(tk.Tk):
         ttk.Entry(f2, textvariable=self.cutoff_var, width=10).grid(row=4, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
         ttk.Label(f2, text="(cm⁻¹/(mol·cm⁻²), 空=不截断)", foreground="#7A82A0").grid(row=5, column=0, columnspan=2, sticky="w")
 
+        # 高级选项
+        f2b = ttk.LabelFrame(inner, text="高级选项", padding=8)
+        f2b.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(f2b, text="强线 TOP N:").grid(row=0, column=0, sticky="w")
+        self.topn_var = tk.StringVar(value="15")
+        ttk.Entry(f2b, textvariable=self.topn_var, width=8).grid(row=0, column=1, sticky="w", padx=(4, 0))
+        ttk.Label(f2b, text="Q(T) 范围:").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        qframe = ttk.Frame(f2b)
+        qframe.grid(row=1, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
+        self.qtmin_var = tk.StringVar(value="200")
+        self.qtmax_var = tk.StringVar(value="400")
+        self.qtstep_var = tk.StringVar(value="20")
+        ttk.Entry(qframe, textvariable=self.qtmin_var, width=6).pack(side="left")
+        ttk.Label(qframe, text="–", foreground="#7A82A0").pack(side="left", padx=2)
+        ttk.Entry(qframe, textvariable=self.qtmax_var, width=6).pack(side="left")
+        ttk.Label(qframe, text="K  步长", foreground="#7A82A0").pack(side="left", padx=(4, 2))
+        ttk.Entry(qframe, textvariable=self.qtstep_var, width=5).pack(side="left")
+
         # 混合气
         f3 = ttk.LabelFrame(inner, text="混合气组分（浓度留空 = 纯气体）", padding=8)
         f3.pack(fill=tk.X, pady=(0, 6))
@@ -344,6 +395,12 @@ class HitranLab(tk.Tk):
                                        values=list(ATM_PRESETS.keys()))
         self.preset_cb.grid(row=2, column=1, sticky="we", padx=(4, 0), pady=(6, 0))
         ttk.Button(f3, text="加载", command=self._load_preset).grid(row=2, column=2, padx=(4, 0), pady=(6, 0))
+        ttk.Label(f3, text="用户预设:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        self.user_preset_var = tk.StringVar(value="")
+        self.user_preset_cb = ttk.Combobox(f3, textvariable=self.user_preset_var, width=14, state="readonly")
+        self.user_preset_cb.grid(row=3, column=1, sticky="we", padx=(4, 0), pady=(4, 0))
+        ttk.Button(f3, text="加载", command=self._load_user_preset).grid(row=3, column=2, padx=(4, 0), pady=(4, 0))
+        self._refresh_user_presets()
 
         # 动作按钮
         fb = ttk.Frame(inner)
@@ -358,7 +415,8 @@ class HitranLab(tk.Tk):
         fbg.pack(fill=tk.X)
         acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
                 ("Q(T) 曲线", self._qcurve), ("导出 CSV", self._export_csv),
-                ("导出 PNG", self._export_png), ("截面文件", self._pick_xsc)]
+                ("导出 PNG", self._export_png), ("截面文件", self._pick_xsc),
+                ("重置参数", self._reset_params), ("保存预设", self._save_user_preset)]
         for i, (txt, cmd) in enumerate(acts):
             ttk.Button(fbg, text=txt, command=cmd).grid(row=i // 2, column=i % 2,
                                                         sticky="we", padx=2, pady=2)
@@ -378,23 +436,15 @@ class HitranLab(tk.Tk):
         right = ttk.Frame(main)
         main.add(right, weight=1)
 
-        self.fig = Figure(figsize=(9, 4.4), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
-        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
-        self.ax.grid(alpha=0.4, lw=0.6)
-        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
-                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=right)
-        self.canvas.get_tk_widget().configure(bg=self._bg)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
+        # 画布占位（matplotlib 延迟导入，启动后异步初始化）
+        self.canvas_holder = ttk.Frame(right)
+        self.canvas_holder.pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
+        ttk.Label(self.canvas_holder, text="加载绘图引擎…",
+                  foreground="#7A82A0", anchor="center").pack(expand=True)
 
-        # matplotlib 导航工具栏（缩放/平移/取点/保存）
+        # matplotlib 导航工具栏占位
         self.toolbar_frame = ttk.Frame(right)
         self.toolbar_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
-        self.toolbar.update()
-        self._style_toolbar()
 
         self.nb = ttk.Notebook(right)
         self.nb.pack(fill=tk.BOTH, expand=True)
@@ -431,10 +481,15 @@ class HitranLab(tk.Tk):
                                   relief="flat", borderwidth=0, padx=8, pady=6)
         self.stat_text.pack(fill=tk.BOTH, expand=True)
 
-        # 底部状态栏
+        # 底部状态栏（文字 + 进度条）
+        sb = ttk.Frame(self)
+        sb.pack(fill=tk.X, padx=10, pady=(0, 6))
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(self, textvariable=self.status_var, anchor="w",
-                  style="Dim.TLabel").pack(fill=tk.X, padx=10, pady=(0, 6))
+        self.status_label = ttk.Label(sb, textvariable=self.status_var, anchor="w",
+                                       style="Dim.TLabel")
+        self.status_label.pack(side="left", fill=tk.X, expand=True)
+        self.progress = ttk.Progressbar(sb, mode="indeterminate", length=120)
+        self.progress.pack(side="right", padx=(8, 0))
 
     # ───────────────────────── 数据加载 ─────────────────────────
     def _load_species(self):
@@ -443,6 +498,31 @@ class HitranLab(tk.Tk):
             return {"kind": "species", "data": {f: e["M"] for f, e in s.items()}}
         self.status_var.set("加载官方分子表…")
         self.worker.run(job)
+
+    def _load_isotopologues(self):
+        """分子改变时加载该分子的同位素列表。"""
+        name = self.mol_var.get().strip()
+        if not name:
+            self.iso_cb["values"] = []
+            self.iso_var.set("")
+            return
+        try:
+            info = hm.t_species(name, with_isotopologues=True)
+            isos = info.get("isotopologues", [])
+            labels = []
+            self._iso_map = {}
+            for iso in isos:
+                label = f"{iso['name']} ({iso['abundance']*100:.2f}%)"
+                labels.append(label)
+                self._iso_map[label] = iso["I"]
+            self.iso_cb["values"] = labels
+            if labels:
+                self.iso_var.set(labels[0])  # 默认主同位素（丰度最高，已排序）
+            else:
+                self.iso_var.set("")
+        except Exception as e:
+            self.iso_cb["values"] = []
+            self.iso_var.set("主同位素")
 
     # ───────────────────────── 交互 ─────────────────────────
     def _add_mix(self):
@@ -477,6 +557,128 @@ class HitranLab(tk.Tk):
             self.mix_tree.insert("", "end", values=(mol, f"{x:g}"))
         self.status_var.set(f"已加载预设: {name}")
 
+    def _user_preset_path(self):
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent / "user_presets.json"
+        return Path(__file__).resolve().parent.parent / "user_presets.json"
+
+    def _refresh_user_presets(self):
+        p = self._user_preset_path()
+        names = []
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                names = sorted(data.keys())
+            except Exception:
+                pass
+        self.user_preset_cb["values"] = names
+
+    def _save_user_preset(self):
+        from tkinter import simpledialog
+        name = simpledialog.askstring("保存预设", "预设名称:", parent=self)
+        if not name:
+            return
+        try:
+            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, wingHW, cutoff = self._params()
+        except ValueError as e:
+            self._show_error(str(e))
+            return
+        preset = {
+            "molecule": self.mol_var.get(),
+            "iso_label": self.iso_var.get(),
+            "numin": numin, "numax": numax, "step": step,
+            "T": T, "P": P, "L": L,
+            "mode": self.mode_var.get(), "profile": profile, "ylog": ylog,
+            "wingHW": wingHW, "cutoff": cutoff,
+            "top_n": self.topn_var.get(),
+            "qtmin": self.qtmin_var.get(), "qtmax": self.qtmax_var.get(), "qtstep": self.qtstep_var.get(),
+            "mixture": [(self.mix_tree.item(it)["values"][0], self.mix_tree.item(it)["values"][1])
+                        for it in self.mix_tree.get_children()],
+        }
+        p = self._user_preset_path()
+        data = {}
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        data[name] = preset
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._refresh_user_presets()
+        self.status_var.set(f"预设已保存: {name}")
+
+    def _load_user_preset(self):
+        name = self.user_preset_var.get().strip()
+        if not name:
+            messagebox.showinfo("HitranLab", "请先选择一个用户预设")
+            return
+        p = self._user_preset_path()
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            preset = data.get(name)
+        except Exception:
+            preset = None
+        if not preset:
+            messagebox.showerror("HitranLab", f"预设 '{name}' 不存在")
+            return
+        self.mol_var.set(preset.get("molecule", "CH4"))
+        self._load_isotopologues()
+        iso_label = preset.get("iso_label")
+        if iso_label and hasattr(self, "_iso_map") and iso_label in self._iso_map:
+            self.iso_var.set(iso_label)
+        self.numin_var.set(str(preset.get("numin", 2950.0)))
+        self.numax_var.set(str(preset.get("numax", 3120.0)))
+        self.step_var.set(str(preset.get("step", 0.01)))
+        self.T_var.set(str(preset.get("T", 296.0)))
+        self.P_var.set(str(preset.get("P", 1.0)))
+        self.L_var.set(str(preset.get("L", 100.0)))
+        self.mode_var.set(preset.get("mode", "吸收系数 α (cm⁻¹)"))
+        self.profile_var.set(preset.get("profile", "voigt"))
+        self.ylog_var.set(preset.get("ylog", False))
+        self.winghw_var.set(str(preset.get("wingHW", 50.0)))
+        self.cutoff_var.set(str(preset.get("cutoff", "")) if preset.get("cutoff") else "")
+        self.topn_var.set(str(preset.get("top_n", 15)))
+        self.qtmin_var.set(str(preset.get("qtmin", 200)))
+        self.qtmax_var.set(str(preset.get("qtmax", 400)))
+        self.qtstep_var.set(str(preset.get("qtstep", 20)))
+        for it in self.mix_tree.get_children():
+            self.mix_tree.delete(it)
+        for mol, x in preset.get("mixture", []):
+            self.mix_tree.insert("", "end", values=(mol, x))
+        self.status_var.set(f"已加载用户预设: {name}")
+
+    def _reset_params(self):
+        self.mol_var.set("CH4")
+        self._load_isotopologues()
+        self.numin_var.set("2950.0")
+        self.numax_var.set("3120.0")
+        self.step_var.set("0.01")
+        self.T_var.set("296.0")
+        self.P_var.set("1.0")
+        self.L_var.set("100.0")
+        self.mode_var.set("吸收系数 α (cm⁻¹)")
+        self.profile_var.set("voigt")
+        self.ylog_var.set(False)
+        self.winghw_var.set("50.0")
+        self.cutoff_var.set("")
+        self.topn_var.set("15")
+        self.qtmin_var.set("200")
+        self.qtmax_var.set("400")
+        self.qtstep_var.set("20")
+        self.frac_var.set("")
+        for it in self.mix_tree.get_children():
+            self.mix_tree.delete(it)
+        self.ax.clear()
+        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
+        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
+        self.ax.grid(alpha=0.4, lw=0.6)
+        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
+                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
+        self.canvas.draw()
+        self._last_fig_data = None
+        self._last_lines_data = None
+        self.status_var.set("参数已重置")
+
     def _pick_xsc(self):
         p = filedialog.askopenfilename(
             title="选择 HITRAN 截面文件", filetypes=[("HOTW 文本", "*.txt"), ("所有文件", "*.*")])
@@ -491,6 +693,15 @@ class HitranLab(tk.Tk):
             xf = float(x) if x and x != "1 (纯)" else None
             rows.append({"name": str(v[0]).strip().upper(), "mole_frac": xf})
         return rows
+
+    def _selected_iso(self):
+        """返回当前选中的同位素 I 值；主同位素或未选返回 None。"""
+        label = self.iso_var.get().strip()
+        if not label or label == "主同位素":
+            return None
+        if hasattr(self, "_iso_map") and label in self._iso_map:
+            return self._iso_map[label]
+        return None
 
     def _params(self):
         """读取参数面板 -> (specs, numin, numax, T, P, step, mode, profile, L, ylog, hitran_units)。"""
@@ -530,7 +741,7 @@ class HitranLab(tk.Tk):
         if rows:
             specs = rows
         else:
-            specs = [{"name": name, "mole_frac": None}]
+            specs = [{"name": name, "mole_frac": None, "iso": self._selected_iso()}]
         return specs, numin, numax, T, P, step, mode, profile, L, ylog, hitran_units, wingHW, intensity_cutoff
 
     # ───────────────────────── 计算（后台线程） ─────────────────────────
@@ -541,7 +752,7 @@ class HitranLab(tk.Tk):
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, wingHW, cutoff = self._params()
         except ValueError as e:
-            messagebox.showerror("HitranLab", str(e))
+            self._show_error(str(e))
             return
         if mode == "alpha":
             cmode = "alpha"
@@ -573,14 +784,21 @@ class HitranLab(tk.Tk):
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
-            messagebox.showerror("HitranLab", str(e))
+            self._show_error(str(e))
             return
         self._set_busy(True, "取强线…")
-        self.worker.run(self._job_lines, name, numin, numax)
+        try:
+            top_n = int(self.topn_var.get())
+            if top_n <= 0:
+                top_n = 15
+        except ValueError:
+            top_n = 15
+        self.worker.run(self._job_lines, name, numin, numax, top_n)
 
-    def _job_lines(self, name, numin, numax):
-        # 取窗口内全部线（top_n 设大），GUI 只显示前 15，完整数据供导出
+    def _job_lines(self, name, numin, numax, top_n=15):
+        # 取窗口内全部线（top_n 设大），GUI 只显示 top_n，完整数据供导出
         data = hm.t_lines(name, numin, numax, top_n=100000)
+        data["display_top_n"] = top_n
         return {"kind": "lines", "data": data}
 
     def _partition(self):
@@ -591,7 +809,7 @@ class HitranLab(tk.Tk):
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
-            messagebox.showerror("HitranLab", str(e))
+            self._show_error(str(e))
             return
         self._set_busy(True, "计算配分函数…")
         self.worker.run(self._job_partition, name, T)
@@ -607,13 +825,21 @@ class HitranLab(tk.Tk):
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             name = specs[0]["name"]
         except ValueError as e:
-            messagebox.showerror("HitranLab", str(e))
+            self._show_error(str(e))
             return
         self._set_busy(True, "Q(T) 扫描…")
-        self.worker.run(self._job_qcurve, name)
+        try:
+            tmin = int(float(self.qtmin_var.get()))
+            tmax = int(float(self.qtmax_var.get()))
+            tstep = int(float(self.qtstep_var.get()))
+            if tmin >= tmax or tstep <= 0:
+                tmin, tmax, tstep = 200, 400, 20
+        except ValueError:
+            tmin, tmax, tstep = 200, 400, 20
+        self.worker.run(self._job_qcurve, name, tmin, tmax, tstep)
 
-    def _job_qcurve(self, name):
-        Ts = [t for t in range(200, 401, 20)]
+    def _job_qcurve(self, name, tmin=200, tmax=400, tstep=20):
+        Ts = list(range(tmin, tmax + 1, tstep))
         qs = []
         for t in Ts:
             if self.worker.cancel_event.is_set():
@@ -663,6 +889,7 @@ class HitranLab(tk.Tk):
             if "CH4" in d["data"]:
                 self.mol_var.set("CH4")
             self.status_var.set(f"已加载官方分子表（{len(d['data'])} 种）")
+            self._load_isotopologues()
             return
         if kind == "spectrum":
             self._render_spectrum(d)
@@ -732,7 +959,8 @@ class HitranLab(tk.Tk):
         self._last_lines_data = data
         self.line_tree.delete(*self.line_tree.get_children())
         all_lines = data.get("lines", [])
-        display = all_lines[:15]
+        display_n = data.get("display_top_n", 15)
+        display = all_lines[:display_n]
         for ln in display:
             self.line_tree.insert("", "end", values=(
                 f"{ln['nu_cm-1']:.4f}", f"{ln['S_cm_per_molecule']:.3e}",
@@ -886,9 +1114,26 @@ class HitranLab(tk.Tk):
             self.worker.cancel()
             self.status_var.set("已请求停止…")
 
+    def _show_error(self, msg):
+        """状态栏红字提示错误，不弹窗打断。"""
+        self.status_label.configure(foreground="#F7768E")
+        self.status_var.set(f"✗ {msg}")
+        self.after(5000, self._restore_status)
+
+    def _restore_status(self):
+        self.status_label.configure(foreground="")
+        if not self.worker.busy:
+            self.status_var.set("就绪")
+
     # ───────────────────────── 工具 ─────────────────────────
     def _set_busy(self, busy, msg):
+        self.status_label.configure(foreground="")
         self.status_var.set(msg if busy else "就绪")
+        if hasattr(self, "progress"):
+            if busy:
+                self.progress.start(10)
+            else:
+                self.progress.stop()
         if hasattr(self, "btn_compute"):
             self.btn_compute.configure(state="disabled" if busy else "normal")
         if hasattr(self, "btn_stop"):
