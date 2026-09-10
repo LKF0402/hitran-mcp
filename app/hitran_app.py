@@ -9,7 +9,7 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
@@ -48,8 +48,8 @@ PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 # 叠加模式的颜色循环（柔和配色，不刺眼）
 OVERLAY_COLORS = ["#E07A7A", "#6B8FD4", "#7BC47F", "#D4A86B", "#A88BD4", "#6BB8D4", "#D4936B", "#6BB8A8"]
 
-MODES = {"吸收系数 α (cm$^{-1}$)": "alpha",
-         "截面 σ (cm$^2$/molecule)": "sigma",
+MODES = {"吸收系数 α (cm⁻¹)": "alpha",
+         "截面 σ (cm²/molecule)": "sigma",
          "线强 S(T) (cm/molecule)": "linestrength",
          "透过率 T": "transmittance"}
 DEFAULT_W = 1280
@@ -531,7 +531,7 @@ class HitranLab(tk.Tk):
         self.mol_cb = ttk.Combobox(f0, textvariable=self.mol_var, width=20, state="readonly")
         self.mol_cb.grid(row=0, column=1, sticky="we", padx=(4, 0))
         self.mol_cb.bind("<MouseWheel>", lambda e: "break")
-        ttk.Label(f0, text="窗口 ν (cm$^{-1}$):").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(f0, text="窗口 ν (cm⁻¹):").grid(row=1, column=0, sticky="w", pady=(4, 0))
         self.numin_var, self.numax_var = tk.StringVar(value="2962.0"), tk.StringVar(value="2969.0")
         self.step_var = tk.StringVar(value="0.01")
         nu_frame = ttk.Frame(f0)
@@ -567,7 +567,7 @@ class HitranLab(tk.Tk):
         f2 = ttk.LabelFrame(inner, text="计算选项", padding=8)
         f2.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(f2, text="输出:").grid(row=0, column=0, sticky="w")
-        self.mode_var = tk.StringVar(value="吸收系数 α (cm$^{-1}$)")
+        self.mode_var = tk.StringVar(value="吸收系数 α (cm⁻¹)")
         self.mode_cb = ttk.Combobox(f2, textvariable=self.mode_var, values=list(MODES), width=20, state="readonly")
         self.mode_cb.grid(row=0, column=1, padx=(4, 0))
         self.mode_cb.bind("<MouseWheel>", lambda e: "break")
@@ -579,7 +579,7 @@ class HitranLab(tk.Tk):
         self.profile_cb.bind("<MouseWheel>", lambda e: "break")
         self.ylog_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(f2, text="对数坐标", variable=self.ylog_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        ttk.Label(f2, text="翼宽 (cm$^{-1}$):").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(f2, text="翼宽 (cm⁻¹):").grid(row=3, column=0, sticky="w", pady=(4, 0))
         self.winghw_var = tk.StringVar(value="50.0")
         ttk.Entry(f2, textvariable=self.winghw_var, width=10).grid(row=3, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
         ttk.Label(f2, text="强度截断:").grid(row=4, column=0, sticky="w", pady=(4, 0))
@@ -717,8 +717,8 @@ class HitranLab(tk.Tk):
         line_frame = ttk.Frame(self.line_tab)
         line_frame.pack(fill=tk.BOTH, expand=True)
         self.line_tree = ttk.Treeview(line_frame, columns=("mol", "nu", "S", "gair", "E"), show="headings", height=7)
-        for c, t, w in (("mol", "分子", 70), ("nu", "ν (cm$^{-1}$)", 110), ("S", "S (cm/molecule)", 130),
-                        ("gair", "γ_air", 90), ("E", "E″ (cm$^{-1}$)", 100)):
+        for c, t, w in (("mol", "分子", 70), ("nu", "ν (cm⁻¹)", 110), ("S", "S (cm/molecule)", 130),
+                        ("gair", "γ_air", 90), ("E", "E″ (cm⁻¹)", 100)):
             self.line_tree.heading(c, text=t); self.line_tree.column(c, width=w)
         self.line_tree.pack(side="left", fill=tk.BOTH, expand=True)
         line_vsb = ttk.Scrollbar(line_frame, orient="vertical", command=self.line_tree.yview)
@@ -919,7 +919,7 @@ class HitranLab(tk.Tk):
         self.T_var.set("296.0")
         self.P_var.set("1.0")
         self.L_var.set("100.0")
-        self.mode_var.set("吸收系数 α (cm$^{-1}$)")
+        self.mode_var.set("吸收系数 α (cm⁻¹)")
         self.profile_var.set("voigt")
         self.ylog_var.set(False)
         self.winghw_var.set("50.0")
@@ -1009,7 +1009,7 @@ class HitranLab(tk.Tk):
         hitran_units = mode == "sigma"
         wingHW = f(self.winghw_var.get(), "wingHW")
         if wingHW <= 0:
-            raise ValueError("翼宽必须 > 0 cm$^{-1}$")
+            raise ValueError("翼宽必须 > 0 cm⁻¹")
         cutoff_str = self.cutoff_var.get().strip()
         intensity_cutoff = float(cutoff_str) if cutoff_str else None
         if intensity_cutoff is not None and intensity_cutoff < 0:
@@ -1872,19 +1872,19 @@ class HitranLab(tk.Tk):
 
         pv1 = tk.StringVar(value=self.numin_var.get())
         pv2 = tk.StringVar(value=self.numax_var.get())
-        ttk.Label(win, text="默认波数范围 (cm$^{-1}$):", background=self._bg).pack(anchor="w", padx=16, pady=(16, 2))
+        ttk.Label(win, text="默认波数范围 (cm⁻¹):", background=self._bg).pack(anchor="w", padx=16, pady=(16, 2))
         pf = ttk.Frame(win); pf.pack(fill="x", padx=16)
         ttk.Entry(pf, textvariable=pv1, width=10).pack(side="left")
         ttk.Label(pf, text="—", background=self._bg).pack(side="left", padx=6)
         ttk.Entry(pf, textvariable=pv2, width=10).pack(side="left")
         sv = tk.StringVar(value=self.step_var.get())
-        row("默认步长 (cm$^{-1}$):", sv)
+        row("默认步长 (cm⁻¹):", sv)
         tv = tk.StringVar(value=self.T_var.get())
         row("默认温度 (K):", tv)
         prv = tk.StringVar(value=self.P_var.get())
         row("默认压力 (atm):", prv)
         wv = tk.StringVar(value=self.winghw_var.get())
-        row("默认翼宽 (cm$^{-1}$):", wv)
+        row("默认翼宽 (cm⁻¹):", wv)
         pvv = tk.StringVar(value=self.profile_var.get())
         ttk.Label(win, text="默认线型:", background=self._bg).pack(anchor="w", padx=16, pady=(10, 2))
         ttk.Combobox(win, textvariable=pvv, values=PROFILES, width=18, state="readonly").pack(anchor="w", padx=16)
@@ -1930,7 +1930,7 @@ class HitranLab(tk.Tk):
         ttk.Label(win, text="波长 λ (nm):", background=self._bg).pack(anchor="w", padx=16, pady=(16, 2))
         wv = tk.StringVar(value="1650")
         we = ttk.Entry(win, textvariable=wv, width=14); we.pack(anchor="w", padx=16)
-        ttk.Label(win, text="波数 ν (cm$^{-1}$):", background=self._bg).pack(anchor="w", padx=16, pady=(12, 2))
+        ttk.Label(win, text="波数 ν (cm⁻¹):", background=self._bg).pack(anchor="w", padx=16, pady=(12, 2))
         nv = tk.StringVar(value="6060.6")
         ne = ttk.Entry(win, textvariable=nv, width=14); ne.pack(anchor="w", padx=16)
         _guard = {"on": False}
@@ -1956,7 +1956,7 @@ class HitranLab(tk.Tk):
                 pass
         wv.trace_add("write", wv_to_nv)
         nv.trace_add("write", nv_to_wv)
-        ttk.Label(win, text="公式: ν(cm$^{-1}$) = 10⁷ / λ(nm)", background=self._bg,
+        ttk.Label(win, text="公式: ν(cm⁻¹) = 10⁷ / λ(nm)", background=self._bg,
                   foreground="#8A8A92").pack(pady=12)
 
     def _show_molecule_table(self):
@@ -2203,7 +2203,7 @@ class HitranLab(tk.Tk):
     def _clear_line_cache(self):
         """清理线表缓存：删除 Hitran_Data/ 下的 .data/.header 文件，清空内存计算缓存。"""
         import shutil
-        cache_dir = Path(getattr(sys, "frozen", False) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent.parent) / "Hitran_Data"
+        cache_dir = ROOT / "Hitran_Data"
         if not cache_dir.exists():
             messagebox.showinfo("清理缓存", "线表缓存目录不存在，无需清理。")
             return

@@ -33,7 +33,7 @@ if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "hitran", "version": "1.2.2"}
+SERVER_INFO = {"name": "hitran", "version": "1.3.1"}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
 _NP = None
@@ -587,7 +587,7 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
         if coef.size and float(coef.max()) == 0.0:
             warnings.append(
                 f"[{label}] 窗口 {numin}–{numax} cm-1 内吸收恒为 0："
-                f"线表 {tinfo['table']} 覆盖 {tinfo['coverage']}，"
+                f"线表 {tinfo['table']} 覆盖 {tinfo['coverage_cm-1']}，"
                 f"窗口内线数 {tinfo['n_lines_in_window']}。"
                 f"不得据此判定'无干扰'——请先确认分子/同位素或窗口。")
 
@@ -860,7 +860,10 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
     ax.legend(fontsize=8, framealpha=0.9)
     if not ylog:                      # ticklabel_format 只支持线性轴（对数轴会抛异常）
         ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
-    fig.text(0.01, 0.01, "HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025 · Voigt/air",
+    _prof = res.get("profile", "voigt")
+    _dil = res.get("diluent") or {"air": 1.0}
+    _dil_str = "+".join(f"{k}:{v:g}" for k, v in _dil.items())
+    fig.text(0.01, 0.01, f"HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025 · {_prof}/{_dil_str}",
              fontsize=6.5, color="#666666")
     fig.tight_layout(rect=(0, 0.02, 1, 1))
 
@@ -1019,7 +1022,7 @@ def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
         csv = OUT_DIR / _slug(f"{label}_{win[0]}-{win[1]}cm-1_XSC.csv")
         with open(csv, "w", encoding="utf-8") as f:
             f.write(head + "\nwavenumber_cm-1,sigma_cm2_per_molecule\n")
-            _np().savetxt(f, _np().column_stack([nu, coef]), delimiter=",", fmt="%.6e")
+            _np().savetxt(f, _np().column_stack([nu_w, coef_w]), delimiter=",", fmt="%.6e")
 
     out = {"source": str(Path(str(file_path)).resolve()), "source_label": label,
            "file_header_lines": header[:20], "skipped_lines": skipped,
