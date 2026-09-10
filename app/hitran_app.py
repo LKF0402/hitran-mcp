@@ -242,6 +242,7 @@ class HitranLab(tk.Tk):
         self._overlay_data = []          # 所有叠加计算的数据（用于导出CSV）
         self._view_mode = "spectrum"     # 当前视图模式: spectrum / qcurve / xsc
         self._mix_rows = []             # [{"name","mole_frac"}]
+        self._mix_unit = "摩尔分数"      # 混合气浓度输入单位：摩尔分数 / ppm / ppb
         self._prog = {"t0": 0.0, "done": 0, "total": 0}   # 进度/倒计时状态
 
         # 主题（深色/浅色），从首选项加载，默认深色
@@ -614,14 +615,21 @@ class HitranLab(tk.Tk):
         mix_frame.grid(row=0, column=0, columnspan=3, sticky="we")
         self.mix_tree = ttk.Treeview(mix_frame, columns=("name", "x"), show="headings", height=5)
         self.mix_tree.heading("name", text="分子"); self.mix_tree.column("name", width=120)
-        self.mix_tree.heading("x", text="摩尔分数"); self.mix_tree.column("x", width=90)
+        self.mix_tree.heading("x", text="浓度"); self.mix_tree.column("x", width=110)
         self.mix_tree.pack(side="left", fill="both", expand=True)
         mix_vsb = ttk.Scrollbar(mix_frame, orient="vertical", command=self.mix_tree.yview)
         mix_vsb.pack(side="right", fill="y")
         self.mix_tree.configure(yscrollcommand=mix_vsb.set)
         self.frac_var = tk.StringVar(value="")
-        self.frac_var_entry = ttk.Entry(f3, textvariable=self.frac_var, width=10)
-        self.frac_var_entry.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        frac_input = ttk.Frame(f3)
+        frac_input.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.frac_var_entry = ttk.Entry(frac_input, textvariable=self.frac_var, width=10)
+        self.frac_var_entry.pack(side="left")
+        self.mix_unit_var = tk.StringVar(value="摩尔分数")
+        self.mix_unit_cb = ttk.Combobox(frac_input, textvariable=self.mix_unit_var,
+                                         values=["摩尔分数", "ppm", "ppb"], width=8, state="readonly")
+        self.mix_unit_cb.pack(side="left", padx=(4, 0))
+        self.mix_unit_cb.bind("<<ComboboxSelected>>", self._on_mix_unit_change)
         ttk.Button(f3, text="添加组分", command=self._add_mix).grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         ttk.Button(f3, text="删除选中", command=self._del_mix).grid(row=1, column=2, padx=(4, 0), pady=(4, 0))
         f3.columnconfigure(0, weight=1)
@@ -821,20 +829,96 @@ class HitranLab(tk.Tk):
             self.iso_var.set("")
 
     # ───────────────────────── 交互 ─────────────────────────
+    def _frac_to_display(self, xf):
+        """摩尔分数 -> 当前单位显示值。"""
+        if xf is None:
+            return "1 (纯)"
+        unit = self.mix_unit_var.get()
+        if unit == "ppm":
+            return f"{xf * 1e6:.4g} ppm"
+        elif unit == "ppb":
+            return f"{xf * 1e9:.4g} ppb"
+        return f"{xf:.6g}"
+
+    def _display_to_frac(self, val_str):
+        """当前单位输入值 -> 摩尔分数。返回 (xf, error_msg)。"""
+        s = str(val_str).strip()
+        if not s:
+            return None, None
+        try:
+            v = float(s)
+        except ValueError:
+            return None, "浓度需为数字"
+        unit = self.mix_unit_var.get()
+        if unit == "ppm":
+            xf = v / 1e6
+        elif unit == "ppb":
+            xf = v / 1e9
+        else:
+            xf = v
+        if not (0 < xf <= 1):
+            if unit == "ppm":
+                return None, f"ppm 需在 (0, 1e6] 区间（当前 {v:g}）"
+            elif unit == "ppb":
+                return None, f"ppb 需在 (0, 1e9] 区间（当前 {v:g}）"
+            return None, "摩尔分数需在 (0,1] 区间"
+        return xf, None
+
+    def _on_mix_unit_change(self, event=None):
+        """单位切换时刷新表格所有行的显示值。"""
+        self._mix_unit = self.mix_unit_var.get()
+        # 刷新表格显示（内部值通过 _params 时重新转换）
+        for item in self.mix_tree.get_children():
+            vals = self.mix_tree.item(item, "values")
+            name = vals[0]
+            # 从显示值解析回摩尔分数（尝试所有单位），再按新单位显示
+            old_display = str(vals[1])
+            xf = self._parse_any_frac(old_display)
+            self.mix_tree.item(item, values=(name, self._frac_to_display(xf)))
+
+    def _parse_any_frac(self, display_str):
+        """从任意单位的显示字符串解析摩尔分数（用于单位切换时的转换）。"""
+        s = str(display_str).strip()
+        if "纯" in s:
+            return None
+        # 根据后缀判断单位
+        unit = "摩尔分数"
+        for suffix, u in [(" ppb", "ppb"), (" ppm", "ppm"), ("ppb", "ppb"), ("ppm", "ppm")]:
+            if s.endswith(suffix):
+                s = s[: -len(suffix)].strip()
+                unit = u
+                break
+        try:
+            v = float(s)
+        except ValueError:
+            try:
+                return float(display_str)
+            except ValueError:
+                return 1.0
+        # 按单位转换
+        if unit == "ppm":
+            return v / 1e6
+        elif unit == "ppb":
+            return v / 1e9
+        # 无后缀：如果值 > 1，大概率是 ppm（旧格式兼容）
+        if v > 1:
+            if v > 1e4:
+                return v / 1e9
+            else:
+                return v / 1e6
+        return v
+
     def _add_mix(self):
         name = self.mol_var.get().strip().upper()
         if not name:
             messagebox.showwarning("HitranLab", "请先选择分子")
             return
         x = self.frac_var.get().strip()
-        try:
-            xf = float(x) if x else None
-            if xf is not None and not (0 < xf <= 1):
-                raise ValueError
-        except ValueError:
-            messagebox.showwarning("HitranLab", "摩尔分数需在 (0,1] 区间或留空（纯气体）")
+        xf, err = self._display_to_frac(x)
+        if err:
+            messagebox.showwarning("HitranLab", f"{err}，或留空（纯气体）")
             return
-        self.mix_tree.insert("", "end", values=(name, xf if xf is not None else "1 (纯)"))
+        self.mix_tree.insert("", "end", values=(name, self._frac_to_display(xf)))
         self.frac_var.set("")
 
     def _del_mix(self):
@@ -1004,14 +1088,11 @@ class HitranLab(tk.Tk):
         rows = []
         for it in self.mix_tree.get_children():
             v = self.mix_tree.item(it, "values")
-            x = v[1]
-            if x and x != "1 (纯)":
-                try:
-                    xf = float(x)
-                except ValueError:
-                    raise ValueError(f"混合气摩尔分数非法: {x!r}（应为数字，或留空=纯气体）")
+            display_str = str(v[1]) if v[1] else ""
+            if display_str and "纯" not in display_str:
+                xf = self._parse_any_frac(display_str)
                 if xf <= 0 or xf > 1:
-                    raise ValueError(f"混合气摩尔分数必须在 (0, 1] 范围内: {x}")
+                    raise ValueError(f"混合气浓度非法: {display_str!r}（转换后摩尔分数 {xf} 不在 (0,1]）")
             else:
                 xf = None
             rows.append({"name": str(v[0]).strip().upper(), "mole_frac": xf})
