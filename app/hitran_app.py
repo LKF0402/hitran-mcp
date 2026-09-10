@@ -27,8 +27,14 @@ if str(ROOT) not in sys.path:
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# matplotlib 延迟到 _init_canvas 里导入（启动时先显示 UI 框架，画布异步出现）
-_MPL_READY = False
+# matplotlib 嵌入式后端必须最先设置
+import matplotlib
+matplotlib.use("TkAgg", force=True)
+import matplotlib as mpl
+mpl.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
+mpl.rcParams["axes.unicode_minus"] = False
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
 
 from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI 惰性加载）
 
@@ -122,42 +128,8 @@ class HitranLab(tk.Tk):
         self._build_style()
         self._build_ui()
         self._load_species()
-        self.after(50, self._init_canvas)       # 延迟导入 matplotlib，先显示 UI
         self.after(100, self._drain_queue)
         self._refresh_status()
-
-    def _init_canvas(self):
-        """异步初始化 matplotlib 画布（启动时先显示 UI，画布随后出现）。"""
-        global _MPL_READY
-        if _MPL_READY:
-            return
-        import matplotlib
-        matplotlib.use("TkAgg", force=True)
-        import matplotlib as mpl
-        mpl.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
-        mpl.rcParams["axes.unicode_minus"] = False
-        if hasattr(self, "_mpl_dark_params"):
-            mpl.rcParams.update(self._mpl_dark_params)
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-        from matplotlib.figure import Figure
-
-        self.fig = Figure(figsize=(9, 4.4), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
-        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
-        self.ax.grid(alpha=0.4, lw=0.6)
-        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
-                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
-        # 清空占位 label
-        for child in self.canvas_holder.winfo_children():
-            child.destroy()
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.canvas_holder)
-        self.canvas.get_tk_widget().configure(bg=self._bg)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
-        self.toolbar.update()
-        self._style_toolbar()
-        _MPL_READY = True
 
     # ───────────────────────── UI 构建 ─────────────────────────
     def _build_style(self):
@@ -256,8 +228,8 @@ class HitranLab(tk.Tk):
         style.configure("TCheckbutton", background=BG, foreground=TEXT)
         style.map("TCheckbutton", background=[("active", BG)])
 
-        # matplotlib 深色配色（延迟到 _init_canvas 里应用，因为 mpl 那时才导入）
-        self._mpl_dark_params = {
+        # matplotlib 深色配色
+        mpl.rcParams.update({
             "figure.facecolor": BG,
             "axes.facecolor": BG,
             "axes.edgecolor": BORDER,
@@ -272,7 +244,7 @@ class HitranLab(tk.Tk):
             "legend.facecolor": SURFACE,
             "legend.edgecolor": BORDER,
             "legend.labelcolor": TEXT,
-        }
+        })
 
     def _style_toolbar(self):
         """matplotlib 工具栏（tk.Button）深色主题适配。"""
@@ -436,15 +408,23 @@ class HitranLab(tk.Tk):
         right = ttk.Frame(main)
         main.add(right, weight=1)
 
-        # 画布占位（matplotlib 延迟导入，启动后异步初始化）
-        self.canvas_holder = ttk.Frame(right)
-        self.canvas_holder.pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
-        ttk.Label(self.canvas_holder, text="加载绘图引擎…",
-                  foreground="#7A82A0", anchor="center").pack(expand=True)
+        self.fig = Figure(figsize=(9, 4.4), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_xlabel("Wavenumber (cm⁻¹)")
+        self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
+        self.ax.grid(alpha=0.4, lw=0.6)
+        self.ax.text(0.5, 0.5, "设置参数后点击「计算并绘图」", ha="center", va="center",
+                     transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=right)
+        self.canvas.get_tk_widget().configure(bg=self._bg)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 2))
 
-        # matplotlib 导航工具栏占位
+        # matplotlib 导航工具栏（缩放/平移/取点/保存）
         self.toolbar_frame = ttk.Frame(right)
         self.toolbar_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
+        self.toolbar.update()
+        self._style_toolbar()
 
         self.nb = ttk.Notebook(right)
         self.nb.pack(fill=tk.BOTH, expand=True)
