@@ -127,6 +127,7 @@ class HitranLab(tk.Tk):
         self._species = {}
         self._last_fig_data = None      # {"kind","nu","per","total","trans","label","mode","meta"}
         self._overlay_count = 0          # 叠加次数（0=首次绘制会清空提示文字）
+        self._overlay_data = []          # 所有叠加计算的数据（用于导出CSV）
         self._mix_rows = []             # [{"name","mole_frac"}]
 
         self._build_style()
@@ -457,6 +458,7 @@ class HitranLab(tk.Tk):
                                   bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                   relief="flat", borderwidth=0, padx=8, pady=6)
         self.peak_text.pack(fill=tk.BOTH, expand=True)
+        self.peak_text.insert("1.0", "计算后显示峰值、窗口积分和警告信息。")
         # 强线
         self.line_tab = ttk.Frame(self.nb)
         self.nb.add(self.line_tab, text="强线列表")
@@ -475,6 +477,7 @@ class HitranLab(tk.Tk):
                                  bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                  relief="flat", borderwidth=0, padx=8, pady=6)
         self.xsc_text.pack(fill=tk.BOTH, expand=True)
+        self.xsc_text.insert("1.0", "导入截面文件（HOTW）后显示分子、波段、温度、压力等信息。")
         # 状态
         self.stat_tab = ttk.Frame(self.nb)
         self.nb.add(self.stat_tab, text="运行状态")
@@ -482,6 +485,12 @@ class HitranLab(tk.Tk):
                                   bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                   relief="flat", borderwidth=0, padx=8, pady=6)
         self.stat_text.pack(fill=tk.BOTH, expand=True)
+        self.stat_text.insert("1.0", "显示计算日志、线表下载状态和引擎警告。\n\n"
+                                     "四个标签页用途：\n"
+                                     "  峰/统计 — 计算后自动显示峰值、积分、警告\n"
+                                     "  强线列表 — 点左侧「强线 TOP N」后显示最强谱线\n"
+                                     "  截面文件信息 — 导入 HOTW 截面文件后显示元数据\n"
+                                     "  运行状态 — 计算日志和引擎状态")
 
         # 底部状态栏（文字 + 进度条）
         sb = ttk.Frame(self)
@@ -650,8 +659,10 @@ class HitranLab(tk.Tk):
         self.status_var.set(f"已加载用户预设: {name}")
 
     def _clear_plot(self):
-        """只清空画布，不改变参数。重置叠加计数器。"""
+        """只清空画布，不改变参数。重置叠加计数器和数据。"""
         self._overlay_count = 0
+        self._overlay_data = []
+        self._last_fig_data = None
         self.ax.clear()
         self.ax.set_xlabel("Wavenumber (cm⁻¹)")
         self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
@@ -660,6 +671,12 @@ class HitranLab(tk.Tk):
                      transform=self.ax.transAxes, color="#7A82A0", fontsize=13)
         self.fig.tight_layout()
         self.canvas.draw()
+        # 清空峰统计和强线列表
+        if hasattr(self, "peak_text"):
+            self.peak_text.delete("1.0", tk.END)
+            self.peak_text.insert("1.0", "（清空画布后无数据）")
+        if hasattr(self, "line_tree"):
+            self.line_tree.delete(*self.line_tree.get_children())
         self.status_var.set("画布已清空")
 
     def _reset_params(self):
@@ -684,6 +701,8 @@ class HitranLab(tk.Tk):
         for it in self.mix_tree.get_children():
             self.mix_tree.delete(it)
         self._overlay_count = 0
+        self._overlay_data = []
+        self._last_fig_data = None
         self.ax.clear()
         self.ax.set_xlabel("Wavenumber (cm⁻¹)")
         self.ax.set_ylabel("Absorption coefficient α (cm⁻¹)")
@@ -925,6 +944,10 @@ class HitranLab(tk.Tk):
         ax = self.ax
         first_draw = (self._overlay_count == 0)
 
+        # 统一标签格式：分子 波段 T P
+        tag = f"{d['label']} {float(res['numin']):g}-{float(res['numax']):g} T={res['T']:g}K P={res['P']:g}atm"
+        self._overlay_data.append({"tag": tag, "data": d})
+
         if first_draw:
             ax.clear()  # 首次绘制清空提示文字
 
@@ -933,30 +956,27 @@ class HitranLab(tk.Tk):
         show_t = res.get("trans") is not None
 
         if first_draw:
-            # 首次绘制：画各组分 + TOTAL，用默认颜色
+            # 首次绘制：画各组分 + TOTAL，图例含参数标签
             if show_t:
-                ax.plot(nu, res["trans"], color="#7AA2F7", lw=1.4,
-                        label=f"transmittance (L={res.get('path_length_cm', 1.0):g} cm)")
+                ax.plot(nu, res["trans"], color="#7AA2F7", lw=1.4, label=f"{tag} transmittance")
                 ylab = "Transmittance"
             else:
                 for lab, c in per.items():
-                    ax.plot(nu, c, lw=0.9, alpha=0.85, label=lab)
+                    ax.plot(nu, c, lw=0.9, alpha=0.85, label=f"{tag} {lab}")
                 if len(per) > 1:
-                    ax.plot(nu, total, color="#F7768E", lw=1.5, label="TOTAL")
+                    ax.plot(nu, total, color="#F7768E", lw=1.5, label=f"{tag} TOTAL")
                 ylab = unit_lab
             if d["ylog"]:
                 ax.set_yscale("log")
             ax.set_xlabel("Wavenumber (cm⁻¹)")
             ax.set_ylabel(ylab)
-            ax.set_title(f"{d['label']}  {float(res['numin']):g}–{float(res['numax']):g} cm⁻¹"
-                         f"  T={res['T']:g} K  P={res['P']:g} atm", fontsize=11, pad=10)
+            ax.set_title(tag, fontsize=10, pad=10)
             ax.grid(alpha=0.4, lw=0.6)
-            if not show_t:
-                ax.legend(fontsize=8, framealpha=0.9)
+            ax.legend(fontsize=7, framealpha=0.9)
             if not d["ylog"] and not show_t:
                 ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
         else:
-            # 叠加绘制：只画 total（或单组分），用循环颜色，标签含参数
+            # 叠加绘制：只画 total（或单组分），用循环颜色
             color = OVERLAY_COLORS[(self._overlay_count - 1) % len(OVERLAY_COLORS)]
             if show_t:
                 ydata = res["trans"]
@@ -964,7 +984,6 @@ class HitranLab(tk.Tk):
             else:
                 ydata = total if len(per) > 1 else list(per.values())[0]
                 ylab = unit_lab
-            tag = f"{d['label']} {float(res['numin']):g}–{float(res['numax']):g} T={res['T']:g}K P={res['P']:g}atm"
             ax.plot(nu, ydata, color=color, lw=1.4, label=tag)
             ax.set_ylabel(ylab)
             ax.legend(fontsize=7, framealpha=0.9)
@@ -1098,43 +1117,49 @@ class HitranLab(tk.Tk):
         messagebox.showinfo("HitranLab", f"完整线表已导出 ({len(lines)} 条):\n{p}")
 
     def _export_csv(self):
-        if not self._last_fig_data or self._last_fig_data["kind"] != "spectrum":
+        if not self._overlay_data:
             messagebox.showinfo("HitranLab", "请先「计算并绘图」")
             return
-        d = self._last_fig_data
         p = filedialog.asksaveasfilename(defaultextension=".csv",
                                          filetypes=[("CSV", "*.csv")],
                                          initialfile="spectrum.csv")
         if not p:
             return
-        res = d["res"]
-        nu = res["nu"]
-        per = res["per"]
-        has_total = res.get("total") is not None and len(per) > 1
-        has_trans = res.get("trans") is not None
-        header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n" \
-                 f"# T={res['T']:g} K  P={res['P']:g} atm  profile={d.get('profile', 'voigt')}\n" \
-                 f"# window={res['numin']:g}-{res['numax']:g} cm-1  step={res['step']:g}\n" \
-                 + ("# units: sigma cm2/molecule\n" if d["hitran_units"] else "# units: alpha cm-1\n")
-        cols = ["nu_cm-1"] + list(per.keys())
-        if has_total:
-            cols.append("total")
-        if has_trans:
-            cols.append("transmittance")
+
+        datasets = self._overlay_data
+        # 用第一个数据集的波数轴作为基准
+        first_res = datasets[0]["data"]["res"]
+        nu = first_res["nu"]
+        hitran_units = datasets[0]["data"]["hitran_units"]
+
+        header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n"
+        header += f"# {len(datasets)} dataset(s) overlaid\n"
+        header += ("# units: sigma cm2/molecule\n" if hitran_units else "# units: alpha cm-1\n")
+
+        # 列：波数 + 每个数据集的 total（或单组分）
+        cols = ["nu_cm-1"]
+        data_cols = []
+        for ds in datasets:
+            tag = ds["tag"]
+            res = ds["data"]["res"]
+            per = res["per"]
+            if len(per) > 1 and res.get("total") is not None:
+                cols.append(f"{tag}_total")
+                data_cols.append(res["total"])
+            else:
+                first_key = list(per.keys())[0]
+                cols.append(f"{tag}_{first_key}")
+                data_cols.append(per[first_key])
+
         with open(p, "w", encoding="utf-8", newline="") as f:
             f.write(header)
             f.write(",".join(cols) + "\n")
-            total_arr = res.get("total")
-            trans_arr = res.get("trans")
             for i in range(len(nu)):
-                row = [f"{nu[i]:.6f}"] + [f"{per[c][i]:.6e}" for c in per]
-                if has_total:
-                    row.append(f"{total_arr[i]:.6e}")
-                if has_trans:
-                    row.append(f"{trans_arr[i]:.6e}")
+                row = [f"{nu[i]:.6f}"] + [f"{c[i]:.6e}" for c in data_cols]
                 f.write(",".join(row) + "\n")
-        self.status_var.set(f"CSV 已导出: {p}")
-        messagebox.showinfo("HitranLab", f"CSV 已导出:\n{p}")
+
+        self.status_var.set(f"CSV 已导出 ({len(datasets)} 组数据): {p}")
+        messagebox.showinfo("HitranLab", f"CSV 已导出 ({len(datasets)} 组数据):\n{p}")
 
     def _export_png(self):
         p = filedialog.asksaveasfilename(defaultextension=".png",
