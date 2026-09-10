@@ -426,7 +426,7 @@ class HitranLab(tk.Tk):
             "axes.labelcolor": TEXT,
             "xtick.color": TEXT_DIM,
             "ytick.color": TEXT_DIM,
-            "grid.color": "#25252B",
+            "grid.color": BORDER,
             "grid.linestyle": "-",
             "grid.alpha": 0.4,
             "text.color": TEXT,
@@ -440,12 +440,13 @@ class HitranLab(tk.Tk):
         })
 
     def _style_toolbar(self):
-        """matplotlib 工具栏（tk.Button）柔和风格适配。"""
+        """matplotlib 工具栏（tk.Button）主题适配。"""
+        c = self._get_colors(self._theme)
         self.toolbar_frame.configure(style="TFrame")
         for child in self.toolbar.winfo_children():
             if isinstance(child, tk.Button):
-                child.configure(bg="#1A1A1F", fg="#6B8FD4",
-                                activebackground="#25252B", activeforeground="#8AAAE5",
+                child.configure(bg=c["SURFACE"], fg=c["ACCENT"],
+                                activebackground=c["SURFACE2"], activeforeground=c["ACCENT_H"],
                                 relief="flat", bd=0, padx=6, pady=3, highlightthickness=0,
                                 cursor="hand2")
             elif isinstance(child, tk.Label):
@@ -1339,8 +1340,14 @@ class HitranLab(tk.Tk):
             ax.set_xlabel("Wavenumber (cm$^{-1}$)")
             ax.set_ylabel(ylab)
             ax.set_title(tag, fontsize=10, pad=10)
-            ax.grid(alpha=0.4, lw=0.6)
-            ax.legend(fontsize=7, framealpha=0.9)
+            if self._show_grid:
+                ax.grid(alpha=0.4, lw=0.6)
+            else:
+                ax.grid(False)
+            if self._show_legend:
+                ax.legend(fontsize=7, framealpha=0.9)
+            elif ax.get_legend():
+                ax.get_legend().remove()
             if not _ylog and not show_t:
                 ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
         else:
@@ -1354,7 +1361,10 @@ class HitranLab(tk.Tk):
                 ylab = unit_lab
             ax.plot(nu, ydata, color=color, lw=1.4, label=tag)
             ax.set_ylabel(ylab)
-            ax.legend(fontsize=7, framealpha=0.9)
+            if self._show_legend:
+                ax.legend(fontsize=7, framealpha=0.9)
+            elif ax.get_legend():
+                ax.get_legend().remove()
             ax.set_title(f"叠加对比（{self._overlay_count + 1} 条曲线）", fontsize=11, pad=10)
 
         # 每次绘制都应用一次（叠加层也生效），避免"切换复选框后再叠加不生效"
@@ -1853,10 +1863,18 @@ class HitranLab(tk.Tk):
                 pass
 
     def _save_prefs(self, d):
-        """把首选项写入 hitran_prefs.json（下次启动自动载入）。"""
+        """把首选项写入 hitran_prefs.json（读-改-写，保留 theme 等其他键）。"""
         try:
             import json
-            PREFS_PATH.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+            # 读-改-写：合并现有配置，避免保存首选项时把 theme 等键洗掉
+            merged = {}
+            if PREFS_PATH.exists():
+                try:
+                    merged = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            merged.update(d)
+            PREFS_PATH.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e:
             self._show_error(f"首选项保存失败: {e}")
 
@@ -2129,8 +2147,13 @@ class HitranLab(tk.Tk):
         newdir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(newdir)
-        subs = [p for p in newdir.iterdir() if p.is_dir()]
-        src = subs[0] if len(subs) == 1 else newdir
+        # 定位策略：先判解压根是否有 HitranLab.exe（扁平 zip），
+        # 再退回唯一子目录（带一层目录的 zip），避免扁平 zip 被误判为 _internal
+        if (newdir / "HitranLab.exe").exists():
+            src = newdir
+        else:
+            subs = [p for p in newdir.iterdir() if p.is_dir()]
+            src = subs[0] if len(subs) == 1 else newdir
         if not (src / "HitranLab.exe").exists():
             raise RuntimeError(f"更新包结构不符合预期（未找到 HitranLab.exe）：{src}")
         return {"kind": "update_prepared", "src": str(src), "zip": str(zip_path)}
@@ -2299,6 +2322,10 @@ class HitranLab(tk.Tk):
                         _leg.get_frame().set_edgecolor(_bc)
                         for _t in _leg.get_texts():
                             _t.set_color(_tc)
+                    # 重设网格线颜色（rcParams 不回溯已有 gridline）
+                    for _gl in _ax.get_xgridlines() + _ax.get_ygridlines():
+                        _gl.set_color(_bc)
+                self._style_toolbar()
                 self.canvas.draw()
             except Exception:
                 pass
