@@ -6,6 +6,7 @@ __pycache__/
 # 运行期自动生成（可由 fetch/工具重生，不入库）
 Hitran_Data/
 tmp/
+hitran_prefs.json
 
 # 用户个人下载的截面文件（工具包不含数据，xsc_data/ 不入库）
 xsc_data/
@@ -21,8 +22,11 @@ hitran_api_key.txt
 
 # PyInstaller 构建与发布产物（不入库）
 build/
+build_*/
 dist/
+# 打包 spec 需入库以保证 exe 可复现：忽略其它 spec，仅放行本项目
 *.spec
+!HitranLab.spec
 app/__pycache__/
 
 # 编辑器/IDE

@@ -53,6 +53,7 @@ MODES = {"吸收系数 α (cm$^{-1}$)": "alpha",
          "透过率 T": "transmittance"}
 DEFAULT_W = 1280
 DEFAULT_H = 880
+PREFS_PATH = ROOT / "hitran_prefs.json"      # 首选项落盘（运行期文件，位于 .gitignore 区）
 
 
 def _set_dark_titlebar(hwnd):
@@ -74,7 +75,15 @@ class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, bg="#6B8FD4", fg="#D8D8DE",
                  hover_bg="#8AAAE5", disabled_bg="#2F2F37", disabled_fg="#8A8A92",
                  radius=14, height=44, font=("Microsoft YaHei", 10, "bold"), **kwargs):
-        super().__init__(parent, bg=parent["bg"] if hasattr(parent, "bg") else "#000000",
+        # 取父容器背景色：ttk.Frame 没有 "bg" 选项（实测 cget 抛 TclError），
+        # 逐级上溯到有 bg 的祖先（如左侧 Canvas），避免底板退化成纯黑与主题面板色不一致
+        _pbg, _w = None, parent
+        while _w is not None and _pbg is None:
+            try:
+                _pbg = _w.cget("bg")
+            except Exception:
+                _w = getattr(_w, "master", None)
+        super().__init__(parent, bg=_pbg or "#0F0F12",
                          highlightthickness=0, height=height, **kwargs)
         self._text = text
         self._command = command
@@ -225,6 +234,7 @@ class HitranLab(tk.Tk):
 
         self._build_style()
         self._build_ui()
+        self._load_prefs()               # 载入上次「首选项」（若有）
         self._on_mode_change()
         self._load_species()
         self.after(100, self._drain_queue)
@@ -400,6 +410,7 @@ class HitranLab(tk.Tk):
         menubar = tk.Menu(self)
         # 文件
         m_file = tk.Menu(menubar, tearoff=0)
+        m_file.add_command(label="打开项目…", command=self._open_project, accelerator="Ctrl+O")
         m_file.add_command(label="保存项目…", command=self._save_project, accelerator="Ctrl+S")
         m_file.add_command(label="导入光谱数据…", command=self._import_spectrum)
         m_file.add_separator()
@@ -436,6 +447,7 @@ class HitranLab(tk.Tk):
         self.config(menu=menubar)
         # 快捷键
         self.bind("<Control-s>", lambda e: self._save_project())
+        self.bind("<Control-o>", lambda e: self._open_project())
 
         main = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         main.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
@@ -690,6 +702,9 @@ class HitranLab(tk.Tk):
                                      "  强线列表 — 点左侧「强线列表」后显示最强谱线\n"
                                      "  截面文件信息 — 导入 HOTW 截面文件后显示元数据\n"
                                      "  运行状态 — 计算日志和引擎状态")
+        stat_btn = ttk.Frame(self.stat_tab)
+        stat_btn.pack(fill=tk.X, padx=8, pady=(4, 8))
+        ttk.Button(stat_btn, text="刷新状态", command=self._refresh_status).pack(side="left")
 
         # 底部状态栏（文字 + 进度条）
         sb = ttk.Frame(self)
@@ -770,6 +785,7 @@ class HitranLab(tk.Tk):
         self._overlay_data = []
         self._view_mode = "spectrum"  # 当前视图模式: spectrum / qcurve / xsc
         self._last_fig_data = None
+        self._last_lines_data = None      # 与已清空的强线列表保持一致，避免"清空后仍能导出上一轮线表"
         self.ax.clear()
         self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
         self.ax.set_ylabel("Absorption coefficient α (cm$^{-1}$)")
@@ -1173,6 +1189,8 @@ class HitranLab(tk.Tk):
             self._render_qcurve(d)
         elif kind == "xsc":
             self._render_xsc(d)
+        if kind in ("spectrum", "linestrength", "lines", "xsc"):
+            self._refresh_status()      # 线表/产物数量会变：动态刷新「运行状态」页，避免永远停在开机快照
 
     def _render_spectrum(self, d):
         res = d["res"]
@@ -1477,21 +1495,28 @@ class HitranLab(tk.Tk):
 
         header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n"
         header += f"# {len(datasets)} dataset(s) overlaid\n"
-        if datasets[0]["data"].get("hitran_units"):
+        if first_res.get("trans") is not None:
+            header += (f"# units: transmittance (dimensionless), "
+                       f"L={first_res.get('path_length_cm') or 1.0:g} cm\n")
+        elif datasets[0]["data"].get("hitran_units"):
             header += "# units: sigma cm2/molecule\n"        # 截面 σ 模式（GUI 里 mode 会被折成 alpha，故按 hitran_units 判定）
         elif first_mode == "linestrength":
             header += "# units: S(296K) cm/molecule\n"       # HITRAN 线强参考温度 296K
         else:
             header += "# units: alpha cm-1\n"
 
-        # 列：波数 + 每个数据集的 total（或单组分）
+        # 列：波数 + 每个数据集的 T（透过率）或 total（多组分）或单组分
         cols = ["nu_cm-1"]
         data_cols = []
         for ds in datasets:
             tag = ds["tag"]
             res = ds["data"]["res"]
             per = res["per"]
-            if len(per) > 1 and res.get("total") is not None:
+            if res.get("trans") is not None:
+                # 透过率模式：导出画布上真正画出来的那条 T（而非 α），否则 CSV 与 PNG 内容不一致
+                cols.append(f"{tag}_transmittance")
+                data_cols.append(res["trans"])
+            elif len(per) > 1 and res.get("total") is not None:
                 cols.append(f"{tag}_total")
                 data_cols.append(res["total"])
             else:
@@ -1584,6 +1609,47 @@ class HitranLab(tk.Tk):
         except Exception as e:
             self._show_error(f"保存失败: {e}")
 
+    def _open_project(self):
+        """打开之前保存的项目 JSON，恢复参数与混合气表格（谱线需重新计算）。"""
+        p = filedialog.askopenfilename(filetypes=[("项目文件", "*.json"), ("所有文件", "*.*")])
+        if not p:
+            return
+        try:
+            import json
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
+            pr = d.get("params", {}) or {}
+            if pr.get("molecule"):
+                self.mol_var.set(str(pr["molecule"]))
+            self._load_isotopologues()          # 先重建同位素候选，再恢复选择
+            for key, var in (("iso", self.iso_var),
+                             ("numin", self.numin_var), ("numax", self.numax_var),
+                             ("step", self.step_var), ("T", self.T_var), ("P", self.P_var),
+                             ("L", self.L_var), ("mode", self.mode_var),
+                             ("profile", self.profile_var), ("wingHW", self.winghw_var),
+                             ("cutoff", self.cutoff_var), ("topn", self.topn_var),
+                             ("qtmin", self.qtmin_var), ("qtmax", self.qtmax_var),
+                             ("qtstep", self.qtstep_var)):
+                v = pr.get(key)
+                if v in (None, ""):
+                    continue
+                try:
+                    var.set(str(v))
+                except Exception:
+                    pass
+            if "ylog" in pr:
+                self.ylog_var.set(bool(pr["ylog"]))
+            for it in self.mix_tree.get_children():
+                self.mix_tree.delete(it)
+            for row in (d.get("mixture") or []):
+                try:
+                    self.mix_tree.insert("", "end", values=(row[0], row[1]))
+                except Exception:
+                    continue
+            self._on_mode_change()
+            self.status_var.set(f"项目已打开: {Path(p).name}（谱线请重新计算）")
+        except Exception as e:
+            self._show_error(f"打开项目失败: {e}")
+
     def _import_spectrum(self):
         """从外部 CSV/TXT 导入光谱数据，叠加到当前图。"""
         p = filedialog.askopenfilename(filetypes=[("数据文件", "*.csv *.txt *.dat"), ("所有文件", "*.*")])
@@ -1658,7 +1724,9 @@ class HitranLab(tk.Tk):
                 res = ds["data"]["res"]
                 nu = res["nu"]
                 per = res["per"]
-                if len(per) > 1 and res.get("total") is not None:
+                if res.get("trans") is not None:
+                    y = res["trans"]                 # 与画布一致：透过率给 T，不给 α
+                elif len(per) > 1 and res.get("total") is not None:
                     y = res["total"]
                 else:
                     y = list(per.values())[0]
@@ -1672,33 +1740,77 @@ class HitranLab(tk.Tk):
         except Exception as e:
             self._show_error(f"复制数据失败: {e}")
 
+    def _load_prefs(self):
+        """启动时载入上次「首选项」；文件缺失/损坏时静默跳过。"""
+        try:
+            import json
+            if not PREFS_PATH.exists():
+                return
+            d = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        for key, attr in (("numin", "numin_var"), ("numax", "numax_var"), ("step", "step_var"),
+                          ("T", "T_var"), ("P", "P_var"), ("wingHW", "winghw_var"),
+                          ("profile", "profile_var"), ("mode", "mode_var")):
+            v = d.get(key)
+            if v in (None, ""):
+                continue
+            try:
+                getattr(self, attr).set(str(v))
+            except Exception:
+                pass
+
+    def _save_prefs(self, d):
+        """把首选项写入 hitran_prefs.json（下次启动自动载入）。"""
+        try:
+            import json
+            PREFS_PATH.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            self._show_error(f"首选项保存失败: {e}")
+
     def _show_preferences(self):
-        """首选项对话框（默认参数设置）。"""
+        """首选项对话框（默认参数，落盘 hitran_prefs.json）。"""
         win = tk.Toplevel(self)
         win.title("首选项")
-        win.geometry("360x280")
+        win.geometry("380x450")
         win.configure(bg=self._bg)
         win.transient(self)
         win.grab_set()
-        ttk.Label(win, text="默认波数范围 (cm$^{-1}$):", background=self._bg).pack(anchor="w", padx=16, pady=(16, 2))
-        pf = ttk.Frame(win); pf.pack(fill="x", padx=16)
+
+        def row(label, var):
+            ttk.Label(win, text=label, background=self._bg).pack(anchor="w", padx=16, pady=(10, 2))
+            ttk.Entry(win, textvariable=var, width=12).pack(anchor="w", padx=16)
+
         pv1 = tk.StringVar(value=self.numin_var.get())
         pv2 = tk.StringVar(value=self.numax_var.get())
+        ttk.Label(win, text="默认波数范围 (cm$^{-1}$):", background=self._bg).pack(anchor="w", padx=16, pady=(16, 2))
+        pf = ttk.Frame(win); pf.pack(fill="x", padx=16)
         ttk.Entry(pf, textvariable=pv1, width=10).pack(side="left")
         ttk.Label(pf, text="—", background=self._bg).pack(side="left", padx=6)
         ttk.Entry(pf, textvariable=pv2, width=10).pack(side="left")
-        ttk.Label(win, text="默认温度 (K):", background=self._bg).pack(anchor="w", padx=16, pady=(12, 2))
+        sv = tk.StringVar(value=self.step_var.get())
+        row("默认步长 (cm$^{-1}$):", sv)
         tv = tk.StringVar(value=self.T_var.get())
-        ttk.Entry(win, textvariable=tv, width=12).pack(anchor="w", padx=16)
-        ttk.Label(win, text="默认压力 (atm):", background=self._bg).pack(anchor="w", padx=16, pady=(12, 2))
+        row("默认温度 (K):", tv)
         prv = tk.StringVar(value=self.P_var.get())
-        ttk.Entry(win, textvariable=prv, width=12).pack(anchor="w", padx=16)
+        row("默认压力 (atm):", prv)
+        wv = tk.StringVar(value=self.winghw_var.get())
+        row("默认翼宽 (cm$^{-1}$):", wv)
+        pvv = tk.StringVar(value=self.profile_var.get())
+        ttk.Label(win, text="默认线型:", background=self._bg).pack(anchor="w", padx=16, pady=(10, 2))
+        ttk.Combobox(win, textvariable=pvv, values=PROFILES, width=18, state="readonly").pack(anchor="w", padx=16)
+
         def apply():
             self.numin_var.set(pv1.get()); self.numax_var.set(pv2.get())
-            self.T_var.set(tv.get()); self.P_var.set(prv.get())
-            self.status_var.set("首选项已应用")
+            self.step_var.set(sv.get()); self.T_var.set(tv.get()); self.P_var.set(prv.get())
+            self.winghw_var.set(wv.get()); self.profile_var.set(pvv.get())
+            self._save_prefs({"numin": pv1.get(), "numax": pv2.get(), "step": sv.get(),
+                              "T": tv.get(), "P": prv.get(), "wingHW": wv.get(),
+                              "profile": pvv.get(), "mode": self.mode_var.get()})
+            self.status_var.set("首选项已保存（下次启动自动载入）")
             win.destroy()
-        ttk.Button(win, text="应用", command=apply).pack(pady=16)
+
+        ttk.Button(win, text="保存并应用", command=apply).pack(pady=16)
 
     def _toggle_grid(self):
         self._show_grid = self._var_grid.get()
@@ -1788,6 +1900,7 @@ class HitranLab(tk.Tk):
     def _show_shortcuts(self):
         """快捷键列表。"""
         shortcuts = [
+            ("Ctrl+O", "打开项目"),
             ("Ctrl+S", "保存项目"),
             ("Alt+F4", "退出"),
             ("鼠标滚轮", "缩放/平移（matplotlib 工具栏）"),

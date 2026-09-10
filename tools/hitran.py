@@ -214,21 +214,47 @@ def _validate_params(name, numin, numax, T, P, step, *, mole_frac=None):
         raise ValueError("[hitran][防呆] 输入参数非法，已阻断计算：\n  - " + "\n  - ".join(errs))
 
 
-def fetch(name, numin, numax, iso=None, force=False):
-    """抓取并注册某物种在 [numin, numax] cm-1 的线表到统一缓存目录。
+def _table_coverage(table):
+    """已加载表的实际覆盖区间 (nu_min, nu_max, n_lines)；表未加载或无线返回 None。"""
+    try:
+        if table not in tableList():
+            return None
+        nu = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
+        if nu.size == 0:
+            return None
+        return float(nu.min()), float(nu.max()), int(nu.size)
+    except Exception:
+        return None
 
-    已存在且非 force 时跳过下载（仅确认已注册进内存）。
-    返回可用于后续计算的表名字符串。
+
+def _wnum(v):
+    """窗口数字 → 表名片段：2172.5 -> 2172p5（与 hitran_mcp 完全一致）。"""
+    return f"{float(v):g}".replace(".", "p").replace("-", "m")
+
+
+def fetch(name, numin, numax, iso=None, force=False):
+    """抓取并注册某物种在 [numin, numax] cm-1 的线表，返回可用于计算的表名。
+
+    窗口安全（与 hitran_mcp._ensure_table_for 同口径）：已缓存表若不覆盖请求窗口，
+    改用带窗口后缀的表名重抓 —— 杜绝历史坑"同名表静默复用旧窗口 → 谱线缺失被误读为无干扰"。
     防呆：先校验输入窗口（_validate_params），抓取/加载后强制校验线数，空表直接报错（见 _guard_nonempty）。
     """
     _validate_params(name, numin, numax, 296.0, 1.01325, 0.01)  # 仅校验分子/窗口，T/P/step 用占位合法值
     _init_cache()
-    M, I, table = _resolve(name, iso)
-    if (not force) and table in tableList():
+    numin, numax = float(numin), float(numax)
+    M, I, base = _resolve(name, iso)
+
+    cov = None if force else _table_coverage(base)
+    if cov is not None and cov[0] <= numin and cov[1] >= numax:
+        table = base
         print(f"[hitran] cached+loaded: {table}  ({numin}-{numax} cm-1)")
     else:
-        print(f"[hitran] fetch: {name} (M={M}, I={I})  {numin}-{numax} cm-1")
-        hapi.fetch(table, M, I, numin, numax)
+        table = f"{base}_{_wnum(numin)}_{_wnum(numax)}"
+        if force or _table_coverage(table) is None:
+            print(f"[hitran] fetch: {name} (M={M}, I={I})  {numin}-{numax} cm-1")
+            hapi.fetch(table, M, I, numin, numax)
+        else:
+            print(f"[hitran] cached+loaded: {table}  ({numin}-{numax} cm-1)")
     _guard_nonempty(table, name, numin, numax)
     return table
 

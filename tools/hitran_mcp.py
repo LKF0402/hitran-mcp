@@ -805,6 +805,8 @@ def _read_hotw_file(path):
     """读 HITRAN-on-the-Web 截面文件（两列：nu, coef[cm2/molecule]）。
 
     兼容：空行/注释行（# 开头）自动跳过；注释行前若干行收集为文件头（溯源用）。
+    分隔符兼容空格/制表符/英文逗号（与 GUI 侧 _read_hotw 同口径）——HOTW 官方为空格，
+    但用户常另存为 .csv，若只认空格会把 .csv 判成"无不数值数据"。
     数据行必须恰好两列浮点；单列或多列行忽略并计数（异常太多则报错）。
     """
     path = Path(str(path))
@@ -822,7 +824,7 @@ def _read_hotw_file(path):
                 if not nu:
                     header.append(s)
                 continue
-            parts = s.split()
+            parts = s.replace(",", " ").replace("\t", " ").split()
             if len(parts) == 2:
                 try:
                     nu.append(float(parts[0]))
