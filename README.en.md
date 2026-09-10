@@ -271,6 +271,13 @@ This software is provided "AS IS" without warranty of any kind. The author shall
 - The author does not guarantee that the software is defect-free, uninterrupted, or meets specific requirements.
 - By using this software, you agree to assume all risks associated with its use.
 
+## References
+
+- https://github.com/hitranonline/hapi
+- https://github.com/hitranonline/hapi2
+- https://github.com/hitranonline/hapiest
+- https://hitran.org
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
