@@ -50,3 +50,61 @@ logs/
 outputs/
 *.bak
 *.tmp
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# Python 包与构建
+*.egg-info/
+*.egg
+build_*/
+dist_*/
+
+# Python 工具缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# 数据库文件（可能含敏感数据）
+*.db
+*.sqlite
+*.sqlite3
+
+# 压缩包（发布资产由 CI 管理，不入库）
+*.zip
+*.tar.gz
+*.rar
+
+# 本地配置与密钥
+config.local.json
+local_config.json
+*.local
+secrets.json
+credentials.json
+
+# 临时下载与输出
+downloads/
+download/
+_temp/
+.tmp/
+
+# 编辑器临时文件
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/

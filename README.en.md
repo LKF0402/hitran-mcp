@@ -259,3 +259,18 @@ Verifies that the engine + data + network are fully usable in the packaged envir
 - **Clear cache**: Delete `Hitran_Data/*.data|*.header` — they will be auto-refetched when needed.
 - **Can't find XSC molecules (e.g., propane C₃H₈)**: HITRAN cross-section database has no online API. Follow the [Bridging the Two Channels](#bridging-the-two-channels) workflow to manually download the .txt file and read it with `hitran_cross_section`.
 - **exe flagged by antivirus**: PyInstaller-packaged Python programs occasionally trigger false positives — add to trust list or run from source.
+
+
+## Disclaimer
+
+This software is provided "AS IS" without warranty of any kind. The author shall not be liable for any direct or indirect damages arising from the use of this software.
+
+- This software is intended for research, educational, and learning purposes only. It does not constitute professional advice or product commitment.
+- Spectral calculation results are based on the HITRAN database and HAPI library, which may have data update delays, calculation approximations, or errors.
+- Users should independently verify the accuracy of calculation results. For critical applications, please refer to official data and professional software.
+- The author does not guarantee that the software is defect-free, uninterrupted, or meets specific requirements.
+- By using this software, you agree to assume all risks associated with its use.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
