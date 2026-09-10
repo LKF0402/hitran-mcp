@@ -277,24 +277,7 @@ python app/hitran_app.py --selftest selftest.json
 
 ## References
 
-本项目设计与实现参考了以下官方仓库与开源项目：
-
-### HITRAN 官方
-
-| 项目 | 仓库 | 说明 |
-|---|---|---|
-| HAPI 1.x | https://github.com/hitranonline/hapi | 当前使用的逐线数据 API |
-| HAPI2 | https://github.com/hitranonline/hapi2 | 第二代 HAPI：SQLAlchemy ORM、JIT 加速、截面下载 |
-| HAPIEST | https://github.com/hitranonline/hapiest | HAPI 图形界面（PyQt5），UI 设计参考 |
-| HITRANonline | https://hitran.org | 官方数据门户与 API 文档 |
-
-### 相关开源项目
-
-| 项目 | 仓库 | 说明 |
-|---|---|---|
-| RADIS | https://github.com/radis/radis | 快速逐线计算，支持 GPU 加速、non-LTE、实验光谱对比 |
-
-### 论文引用
-
-- HITRAN2024: Gordon et al., *JQSRT* (2026), doi:10.1016/j.jqsrt.2026.109807
-- HAPI: Kochanov et al., *JQSRT* 177, 15–30 (2016), doi:10.1016/j.jqsrt.2016.03.005
+- https://github.com/hitranonline/hapi
+- https://github.com/hitranonline/hapi2
+- https://github.com/hitranonline/hapiest
+- https://hitran.org
