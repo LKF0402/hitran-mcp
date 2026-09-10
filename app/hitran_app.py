@@ -338,8 +338,8 @@ class HitranLab(tk.Tk):
         self.profile_var = tk.StringVar(value="voigt")
         ttk.Combobox(f2, textvariable=self.profile_var, values=PROFILES, width=20, state="readonly").grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         self.ylog_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(f2, text="对数轴 (ylog)", variable=self.ylog_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        ttk.Label(f2, text="翼宽 wingHW:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(f2, text="对数坐标", variable=self.ylog_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ttk.Label(f2, text="翼宽 (cm⁻¹):").grid(row=3, column=0, sticky="w", pady=(4, 0))
         self.winghw_var = tk.StringVar(value="50.0")
         ttk.Entry(f2, textvariable=self.winghw_var, width=10).grid(row=3, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
         ttk.Label(f2, text="强度截断:").grid(row=4, column=0, sticky="w", pady=(4, 0))
@@ -350,10 +350,10 @@ class HitranLab(tk.Tk):
         # 高级选项
         f2b = ttk.LabelFrame(inner, text="高级选项", padding=8)
         f2b.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(f2b, text="强线 TOP N:").grid(row=0, column=0, sticky="w")
+        ttk.Label(f2b, text="强线数:").grid(row=0, column=0, sticky="w")
         self.topn_var = tk.StringVar(value="15")
         ttk.Entry(f2b, textvariable=self.topn_var, width=8).grid(row=0, column=1, sticky="w", padx=(4, 0))
-        ttk.Label(f2b, text="Q(T) 范围:").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(f2b, text="Q(T) 温度范围:").grid(row=1, column=0, sticky="w", pady=(4, 0))
         qframe = ttk.Frame(f2b)
         qframe.grid(row=1, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
         self.qtmin_var = tk.StringVar(value="200")
@@ -366,7 +366,7 @@ class HitranLab(tk.Tk):
         ttk.Entry(qframe, textvariable=self.qtstep_var, width=5).pack(side="left")
 
         # 混合气
-        f3 = ttk.LabelFrame(inner, text="混合气组分（浓度留空 = 纯气体）", padding=8)
+        f3 = ttk.LabelFrame(inner, text="混合气（浓度留空=纯气体）", padding=8)
         f3.pack(fill=tk.X, pady=(0, 6))
         mix_frame = ttk.Frame(f3)
         mix_frame.grid(row=0, column=0, columnspan=3, sticky="we")
@@ -394,7 +394,7 @@ class HitranLab(tk.Tk):
         self.btn_stop.pack(fill=tk.X, pady=(0, 6))
         fbg = ttk.Frame(fb)
         fbg.pack(fill=tk.X)
-        acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
+        acts = [("强线列表", self._lines), ("配分函数", self._partition),
                 ("Q(T) 曲线", self._qcurve), ("导出 CSV", self._export_csv),
                 ("导出 PNG", self._export_png), ("截面文件", self._pick_xsc),
                 ("清空图", self._clear_plot), ("重置参数", self._reset_params)]
@@ -404,7 +404,7 @@ class HitranLab(tk.Tk):
         fbg.columnconfigure(0, weight=1); fbg.columnconfigure(1, weight=1)
 
         # 截面导入
-        f4 = ttk.LabelFrame(inner, text="截面文件（HOTW，xsc 下载）", padding=8)
+        f4 = ttk.LabelFrame(inner, text="截面文件 (HOTW)", padding=8)
         f4.pack(fill=tk.X, pady=(0, 6))
         self.xsc_var = tk.StringVar()
         ttk.Entry(f4, textvariable=self.xsc_var).pack(fill=tk.X)
@@ -494,7 +494,7 @@ class HitranLab(tk.Tk):
         self.stat_text.insert("1.0", "显示计算日志、线表下载状态和引擎警告。\n\n"
                                      "四个标签页用途：\n"
                                      "  峰/统计 — 计算后自动显示峰值、积分、警告\n"
-                                     "  强线列表 — 点左侧「强线 TOP N」后显示最强谱线\n"
+                                     "  强线列表 — 点左侧「强线列表」后显示最强谱线\n"
                                      "  截面文件信息 — 导入 HOTW 截面文件后显示元数据\n"
                                      "  运行状态 — 计算日志和引擎状态")
 
@@ -517,7 +517,7 @@ class HitranLab(tk.Tk):
         self.worker.run(job)
 
     def _load_isotopologues(self):
-        """分子改变时加载该分子的同位素列表。"""
+        """分子改变时加载该分子的同位素列表。默认选所有同位素（自然丰度）。"""
         name = self.mol_var.get().strip()
         if not name:
             self.iso_cb["values"] = []
@@ -526,20 +526,17 @@ class HitranLab(tk.Tk):
         try:
             info = hm.t_species(name, with_isotopologues=True)
             isos = info.get("isotopologues", [])
-            labels = []
-            self._iso_map = {}
+            labels = ["所有同位素（自然丰度）"]
+            self._iso_map = {"所有同位素（自然丰度）": "all"}
             for iso in isos:
                 label = f"{iso['name']} ({iso['abundance']*100:.2f}%)"
                 labels.append(label)
                 self._iso_map[label] = iso["I"]
             self.iso_cb["values"] = labels
-            if labels:
-                self.iso_var.set(labels[0])  # 默认主同位素（丰度最高，已排序）
-            else:
-                self.iso_var.set("")
+            self.iso_var.set("所有同位素（自然丰度）")  # 默认所有同位素
         except Exception as e:
             self.iso_cb["values"] = []
-            self.iso_var.set("主同位素")
+            self.iso_var.set("所有同位素（自然丰度）")
 
     # ───────────────────────── 交互 ─────────────────────────
     def _add_mix(self):
@@ -635,12 +632,13 @@ class HitranLab(tk.Tk):
         return rows
 
     def _selected_iso(self):
-        """返回当前选中的同位素 I 值；主同位素或未选返回 None。"""
+        """返回当前选中的同位素：'all'=所有同位素(自然丰度)，int=指定同位素，None=主同位素。"""
         label = self.iso_var.get().strip()
-        if not label or label == "主同位素":
+        if not label:
             return None
         if hasattr(self, "_iso_map") and label in self._iso_map:
-            return self._iso_map[label]
+            val = self._iso_map[label]
+            return val if val == "all" else int(val)
         return None
 
     def _params(self):
@@ -672,7 +670,7 @@ class HitranLab(tk.Tk):
         hitran_units = mode == "sigma"
         wingHW = f(self.winghw_var.get(), "wingHW")
         if wingHW <= 0:
-            raise ValueError("翼宽 wingHW 必须 > 0")
+            raise ValueError("翼宽必须 > 0 cm⁻¹")
         cutoff_str = self.cutoff_var.get().strip()
         intensity_cutoff = float(cutoff_str) if cutoff_str else None
         if intensity_cutoff is not None and intensity_cutoff < 0:
@@ -998,7 +996,7 @@ class HitranLab(tk.Tk):
     # ───────────────────────── 导出 ─────────────────────────
     def _export_lines(self):
         if not getattr(self, "_last_lines_data", None):
-            messagebox.showinfo("HitranLab", "请先点击「强线 TOP N」获取线表")
+            messagebox.showinfo("HitranLab", "请先点击「强线列表」获取线表")
             return
         data = self._last_lines_data
         lines = data.get("lines", [])
