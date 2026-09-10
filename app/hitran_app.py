@@ -2296,6 +2296,7 @@ class HitranLab(tk.Tk):
         if theme not in ("dark", "light"):
             return
         self._theme = theme
+        c = self._get_colors(self._theme)     # 必须在 try 块之前定义，否则重着色全部 NameError 被吞
         # 重新应用样式
         self._build_style()
         # 更新窗口背景
@@ -2351,7 +2352,6 @@ class HitranLab(tk.Tk):
         except Exception:
             pass
         # 更新 RoundedButton 颜色（计算按钮/停止按钮）
-        c = self._get_colors(self._theme)
         if hasattr(self, 'btn_compute'):
             self.btn_compute.configure(bg=c["ACCENT"], hover_bg=c["ACCENT_H"])
         if hasattr(self, 'btn_stop'):
