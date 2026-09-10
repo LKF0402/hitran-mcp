@@ -1106,6 +1106,8 @@ class HitranLab(tk.Tk):
         self.frac_var.set("")
         for it in self.mix_tree.get_children():
             self.mix_tree.delete(it)
+        self.mix_unit_var.set("摩尔分数")  # 重置单位为默认
+        self._update_mix_sum()              # 更新总和显示为 0
         self._overlay_count = 0
         self._overlay_data = []
         self._view_mode = "spectrum"  # 当前视图模式: spectrum / qcurve / xsc
@@ -1873,6 +1875,7 @@ class HitranLab(tk.Tk):
             },
             "mixture": [(self.mix_tree.item(it)["values"][0], self.mix_tree.item(it)["values"][1])
                         for it in self.mix_tree.get_children()],
+            "mix_unit": self.mix_unit_var.get(),
             "n_layers": len(self._overlay_data),
         }
         try:
@@ -1918,6 +1921,11 @@ class HitranLab(tk.Tk):
                     self.mix_tree.insert("", "end", values=(row[0], row[1]))
                 except Exception:
                     continue
+            # 恢复单位选择（兼容旧项目：无单位字段时默认摩尔分数）
+            saved_unit = d.get("mix_unit", "摩尔分数")
+            if saved_unit in ("摩尔分数", "ppm", "ppb"):
+                self.mix_unit_var.set(saved_unit)
+            self._update_mix_sum()
             self._on_mode_change()
             self.status_var.set(f"项目已打开: {Path(p).name}（谱线请重新计算）")
         except Exception as e:
