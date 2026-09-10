@@ -7,6 +7,7 @@ __pycache__/
 Hitran_Data/
 tmp/
 hitran_prefs.json
+_update/
 
 # 用户个人下载的截面文件（工具包不含数据，xsc_data/ 不入库）
 xsc_data/

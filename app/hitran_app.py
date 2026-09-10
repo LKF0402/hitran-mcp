@@ -9,12 +9,13 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
 import sys
 import threading
+import time
 import traceback
 import ctypes
 from pathlib import Path
@@ -54,6 +55,8 @@ MODES = {"吸收系数 α (cm$^{-1}$)": "alpha",
 DEFAULT_W = 1280
 DEFAULT_H = 880
 PREFS_PATH = ROOT / "hitran_prefs.json"      # 首选项落盘（运行期文件，位于 .gitignore 区）
+UPDATE_ASSET = "HitranLab-windows-x64.zip"   # Release 中的免安装包名
+UPDATE_DIR = ROOT / "_update"                # 更新包下载/解压目录（gitignore 区）
 
 
 def _set_dark_titlebar(hwnd):
@@ -231,6 +234,7 @@ class HitranLab(tk.Tk):
         self._overlay_data = []          # 所有叠加计算的数据（用于导出CSV）
         self._view_mode = "spectrum"     # 当前视图模式: spectrum / qcurve / xsc
         self._mix_rows = []             # [{"name","mole_frac"}]
+        self._prog = {"t0": 0.0, "done": 0, "total": 0}   # 进度/倒计时状态
 
         self._build_style()
         self._build_ui()
@@ -530,7 +534,8 @@ class HitranLab(tk.Tk):
         ttk.Label(f2, text="强度截断:").grid(row=4, column=0, sticky="w", pady=(4, 0))
         self.cutoff_var = tk.StringVar(value="")
         ttk.Entry(f2, textvariable=self.cutoff_var, width=10).grid(row=4, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
-        ttk.Label(f2, text="(cm$^{-1}$/(mol·cm⁻²), 空=不截断)", foreground="#8A8A92").grid(row=5, column=0, columnspan=2, sticky="w")
+        ttk.Label(f2, text="(单位 cm/molecule，如 1e-26；空=不截断)",
+                  foreground="#8A8A92").grid(row=5, column=0, columnspan=2, sticky="w")
 
         # 高级选项
         f2b = ttk.LabelFrame(inner, text="辅助功能参数", padding=8)
@@ -713,8 +718,11 @@ class HitranLab(tk.Tk):
         self.status_label = ttk.Label(sb, textvariable=self.status_var, anchor="w",
                                        style="Dim.TLabel")
         self.status_label.pack(side="left", fill=tk.X, expand=True)
-        self.progress = ttk.Progressbar(sb, mode="indeterminate", length=120)
+        # 确定性进度条（原先 indeterminate 只会在两端来回滑动，看不出真实进度）
+        self.progress = ttk.Progressbar(sb, mode="determinate", maximum=100, value=0, length=180)
         self.progress.pack(side="right", padx=(8, 0))
+        self.eta_var = tk.StringVar(value="")
+        ttk.Label(sb, textvariable=self.eta_var, style="Dim.TLabel").pack(side="right", padx=(0, 6))
 
         # 阻止 Combobox 鼠标滚轮误触改变选项
         def _cb_wheel(e):
@@ -999,14 +1007,39 @@ class HitranLab(tk.Tk):
         else:
             cmode = "alpha"
         path_cm = L if cmode == "transmittance" else None
-        self._set_busy(True, "计算谱线…")
+        self._set_busy(True, "准备中（首次需联网抓取线表，之后走本地缓存）…")
         self.worker.run(self._job_spectrum, specs, numin, numax, T, P, step,
                         cmode, profile, path_cm, hunits, ylog, wingHW, cutoff)
+
+    def _prog_cb(self):
+        """给后台线程用的进度回调：只往队列投消息，绝不直接碰 Tk（跨线程安全）。"""
+        def cb(done, total, label):
+            try:
+                self.worker.q.put(("progress", {"done": int(done), "total": int(total),
+                                                "label": str(label)}))
+            except Exception:
+                pass
+        return cb
+
+    def _on_progress(self, d):
+        """主线程更新进度条 + 倒计时（剩余时间按已用时间线性外推）。"""
+        done = int(d.get("done", 0))
+        total = max(1, int(d.get("total", 1)))
+        pct = min(100, int(done * 100 / total))
+        self.progress.configure(value=pct)
+        if not self._prog.get("t0"):
+            self._prog["t0"] = time.time()
+        self._prog["done"], self._prog["total"] = done, total
+        el = time.time() - self._prog["t0"]
+        eta = (el / done * (total - done)) if done else 0.0
+        self.eta_var.set(f"{pct}%  ·  已用 {el:.0f}s  ·  预计剩余 ~{eta:.0f}s")
+        self.status_var.set(f"{d.get('label', '计算中')}（{done}/{total}）")
 
     def _job_spectrum(self, specs, numin, numax, T, P, step, cmode, profile, path_cm, hunits, ylog, wingHW, cutoff):
         res = hm._compute(specs, numin, numax, T=T, P=P, step=step, wingHW=wingHW,
                           mode=cmode, path_length_cm=path_cm, hitran_units=hunits,
-                          profile=profile, intensity_cutoff=cutoff)
+                          profile=profile, intensity_cutoff=cutoff,
+                          progress=self._prog_cb())
         label = "+".join(res["per"].keys())
         return {"kind": "spectrum", "res": res, "label": label,
                 "mode": cmode, "hitran_units": hunits, "ylog": ylog,
@@ -1149,6 +1182,8 @@ class HitranLab(tk.Tk):
                 if tag == "err":
                     self._set_busy(False, "出错")
                     self._show_error(payload)
+                elif tag == "progress":        # 后台线程上报的进度（不结束忙碌态）
+                    self._on_progress(payload)
                 else:
                     try:
                         self._render(payload)
@@ -1176,6 +1211,9 @@ class HitranLab(tk.Tk):
             return
         if kind == "check_update":
             self._render_check_update(d)
+            return
+        if kind == "update_ready":
+            self._render_update_ready(d)
             return
         if kind == "spectrum":
             self._render_spectrum(d)
@@ -1960,18 +1998,118 @@ class HitranLab(tk.Tk):
         txt.configure(state="disabled")
 
     def _render_check_update(self, d):
-        """处理检查更新结果。"""
+        """处理检查更新结果：有新版本则询问是否下载并自动升级。"""
         if "error" in d:
             self._show_error(f"检查更新失败: {d['error']}")
             return
-        if d["has_update"]:
-            messagebox.showinfo("检查更新",
-                f"发现新版本！\n\n当前版本: v{d['current']}\n最新版本: v{d['latest']}\n\n"
-                f"发布说明: {d['body']}\n\n"
-                f"下载地址: {d['url']}")
-        else:
+        if not d.get("has_update"):
             messagebox.showinfo("检查更新", f"当前已是最新版本 v{d['current']}")
-        self.status_var.set("检查更新完成")
+            self.status_var.set("检查更新完成")
+            return
+        if not getattr(sys, "frozen", False):
+            messagebox.showinfo("检查更新",
+                f"发现新版本 v{d['latest']}（当前 v{d['current']}）\n\n"
+                f"源码模式下不做自动替换，请到发布页取新版：\n{d['url']}")
+            self.status_var.set("检查更新完成")
+            return
+        if not d.get("asset_url"):
+            messagebox.showwarning("检查更新",
+                f"发现新版本 v{d['latest']}，但该发布未附带 {UPDATE_ASSET}。\n\n"
+                f"请到发布页手动下载：\n{d['url']}")
+            self.status_var.set("检查更新完成")
+            return
+        if not messagebox.askyesno("检查更新",
+                f"发现新版本！\n\n当前版本: v{d['current']}\n最新版本: v{d['latest']}\n\n"
+                f"发布说明: {d['body']}\n\n现在下载并自动升级吗？\n"
+                f"（下载完成后需重启程序，替换时保留 Hitran_Data 线表缓存）"):
+            self.status_var.set(f"已有新版本 v{d['latest']}，可到 {d['url']} 下载")
+            return
+        self._set_busy(True, "下载更新包…")
+        self.worker.run(self._job_download_update, d["asset_url"], UPDATE_ASSET)
+
+    def _job_download_update(self, url, name):
+        """后台下载新版免安装包到 _update/（复用进度通道，按字节上报）。"""
+        import urllib.request
+        UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+        dst = UPDATE_DIR / (name or UPDATE_ASSET)
+        cb = self._prog_cb()
+        req = urllib.request.Request(url, headers={"User-Agent": "HitranLab"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            total = int(r.headers.get("Content-Length") or 0)
+            got = 0
+            with open(dst, "wb") as f:
+                while True:
+                    chunk = r.read(262144)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        cb(got, total, "下载更新包")
+        if dst.stat().st_size < 1_000_000:
+            raise RuntimeError(f"下载的更新包异常（仅 {dst.stat().st_size} 字节），已放弃")
+        return {"kind": "update_ready", "zip": str(dst), "dir": str(UPDATE_DIR)}
+
+    def _render_update_ready(self, d):
+        """更新包下载完成 → 解压 → 询问是否立即替换并重启。"""
+        try:
+            import zipfile
+            import shutil
+            zip_path = Path(d["zip"])
+            newdir = Path(d["dir"]) / "new"
+            if newdir.exists():
+                shutil.rmtree(newdir)
+            newdir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path) as z:
+                z.extractall(newdir)
+            subs = [p for p in newdir.iterdir() if p.is_dir()]
+            src = subs[0] if len(subs) == 1 else newdir
+            if not (src / "HitranLab.exe").exists():
+                self._show_error(f"更新包结构不符合预期（未找到 HitranLab.exe）：{src}")
+                return
+        except Exception as e:
+            self._show_error(f"解压更新包失败: {e}")
+            return
+        if not messagebox.askyesno("自动升级",
+                f"新版已就绪：\n{zip_path}\n\n"
+                f"现在关闭程序、替换文件并自动重启吗？\n"
+                f"（替换用 robocopy 覆盖，不会删除你的 Hitran_Data 线表缓存）"):
+            self.status_var.set("更新包已就绪，可手动解压 _update 目录替换")
+            return
+        bat = self._write_update_bat(src, zip_path)
+        if not bat:
+            return
+        try:
+            os.startfile(str(bat))            # 独立进程执行，不阻塞本程序退出
+        except Exception as e:
+            self._show_error(f"无法启动升级脚本: {e}")
+            return
+        self.after(600, self.destroy)
+
+    def _write_update_bat(self, src, zip_path):
+        """生成"等本程序退出 → robocopy 覆盖 → 重启 → 清理"的批处理。"""
+        try:
+            appdir = Path(sys.executable).resolve().parent
+            exe_name = Path(sys.executable).name
+            exe_full = appdir / exe_name
+            root = str(ROOT)
+            lines = [
+                "@echo off",
+                "chcp 65001 >nul",
+                ":wait",
+                f'tasklist /FI "IMAGENAME eq {exe_name}" | find /I "{exe_name}" >nul && (timeout /t 1 /nobreak >nul & goto wait)',
+                f'robocopy "{src}" "{appdir}" /E /NFL /NDL /NJH /NJS /R:2 /W:1',
+                f'start "" "{exe_full}"',
+                f'rmdir /S /Q "{root}\\_update\\new"',
+                f'del /Q "{zip_path}"',
+                'del /Q "%~f0"',
+            ]
+            bat = UPDATE_DIR / "apply_update.bat"
+            bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+            return bat
+        except Exception as e:
+            self._show_error(f"生成升级脚本失败: {e}")
+            return None
 
     @staticmethod
     def _vkey(s):
@@ -2000,10 +2138,13 @@ class HitranLab(tk.Tk):
             latest = data.get("tag_name", "").lstrip("v")
             current = APP_VERSION.lstrip("v")
             has_update = bool(latest) and self._vkey(latest) > self._vkey(current)
+            assets = {a.get("name"): a.get("browser_download_url")
+                      for a in (data.get("assets") or [])}
             return {"kind": "check_update", "has_update": has_update,
                     "latest": latest, "current": current,
                     "body": data.get("body", "无")[:200],
-                    "url": data.get("html_url", APP_REPO)}
+                    "url": data.get("html_url", APP_REPO),
+                    "asset_url": assets.get(UPDATE_ASSET)}
         except Exception as e:
             return {"kind": "check_update", "error": str(e)}
 
@@ -2032,11 +2173,14 @@ class HitranLab(tk.Tk):
     def _set_busy(self, busy, msg):
         self.status_label.configure(foreground="")
         self.status_var.set(msg or "就绪")
+        if busy:
+            self._prog = {"t0": time.time(), "done": 0, "total": 0}
         if hasattr(self, "progress"):
-            if busy:
-                self.progress.start(10)
-            else:
-                self.progress.stop()
+            self.progress.stop()
+            self.progress.configure(mode="determinate", maximum=100,
+                                    value=0)
+        if hasattr(self, "eta_var"):
+            self.eta_var.set("")
         if hasattr(self, "btn_compute"):
             self.btn_compute.configure(state="disabled" if busy else "normal")
         if hasattr(self, "btn_stop"):

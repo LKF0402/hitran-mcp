@@ -33,7 +33,7 @@ if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "hitran", "version": "1.2.1"}
+SERVER_INFO = {"name": "hitran", "version": "1.2.2"}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
 _NP = None
@@ -268,38 +268,66 @@ def _isotopologues(M, iso, min_abundance=1e-4, max_n=6):
     return [(I, dict(avail).get(I, 1.0))]
 
 
+def _load_local_table(table):
+    """本地已落盘的线表直接载入内存，返回 coverage；文件缺失/损坏返回 None。
+
+    HAPI 的 fetch 只检查内存 tableList()，**不查磁盘** —— 于是"表早就下载过"在
+    新开的进程里仍会重新联网抓取（实测同一 1000 cm-1 窗口白等近 10 s）。
+    这里补上"先读磁盘"这一步：有 .data/.header 就 storage2cache 载入，零联网。
+    """
+    import hapi
+    root = _hitran().CACHE_ROOT
+    if not (root / f"{table}.data").exists() or not (root / f"{table}.header").exists():
+        return None
+    if table not in hapi.tableList():
+        try:
+            with _quiet():
+                hapi.storage2cache(table)
+        except Exception:
+            return None
+    return _coverage(table)
+
+
 def _ensure_table_for(M, I, numin, numax, force=False):
     """保证拿到一张**真正覆盖** [numin,numax] 的线表。
 
     修掉的坑：hapi/ht.fetch 看到同名表已存在就跳过下载，于是请求新窗口时
     仍用旧线表 → 谱线静默缺失 → 被误读成"该气体无干扰"。
-    策略：先查覆盖区间，未覆盖则用带窗口后缀的表名重抓（互不污染）。
+    策略：先查覆盖区间（内存 + 本地磁盘），未覆盖则用带窗口后缀的表名重抓（互不污染）。
     返回 (table, coverage, refetched)。
     """
     import hapi
     formula = _formula(M)
     base = f"{formula}_{M}_{I}"
     wtable = f"{base}_{_wnum(numin)}_{_wnum(numax)}"
+
     if not force:
-        if _coverage(wtable) is not None:      # 之前已按此精确窗口抓过 → 直接复用
-            return wtable, _coverage(wtable), False   # （谱线位置≠窗口边界，勿再查覆盖）
+        # 1) 精确窗口表（内存或本地磁盘）→ 直接复用（谱线位置≠窗口边界，勿再查覆盖）
+        cov = _coverage(wtable)
+        if cov is None:
+            cov = _load_local_table(wtable)
+        if cov is not None:
+            return wtable, cov, False
+        # 2) 基础表覆盖足够 → 复用
         cov = _coverage(base)
+        if cov is None:
+            cov = _load_local_table(base)
         if cov and cov[0] <= numin and cov[1] >= numax:
             return base, cov, False
+
     table = wtable
-    if force or _coverage(table) is None:
-        with _quiet():                       # HAPI 下载日志不能进协议流
-            try:
-                hapi.fetch(table, M, I, numin, numax)
-            except Exception as e:
-                hint = ""
-                if "daily limit" in str(e).lower() or "exceeded" in str(e).lower():
-                    hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
-                            "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
-                raise RuntimeError(
-                    f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{e}。"
-                    f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
-                    f"严禁把失败当作'无干扰'。") from e
+    with _quiet():                       # HAPI 下载日志不能进协议流
+        try:
+            hapi.fetch(table, M, I, numin, numax)
+        except Exception as e:
+            hint = ""
+            if "daily limit" in str(e).lower() or "exceeded" in str(e).lower():
+                hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
+                        "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
+            raise RuntimeError(
+                f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{e}。"
+                f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
+                f"严禁把失败当作'无干扰'。") from e
     cov = _coverage(table)
     if cov is None:
         raise RuntimeError(f"[hitran][防呆] 抓取失败：{formula} 在 {numin}-{numax} cm-1 无线表")
@@ -361,9 +389,17 @@ def abs_cache_clear():
     _ABS_CACHE_MISSES = 0
 
 
+_CHUNK_POINTS = 4000     # 分块粒度：约 4 千点/块，兼顾进度平滑与单次调用开销
+
+
+def _n_grid(numin, numax, step):
+    """网格点数（与 HAPI 取点规则一致：numin, numin+step, ... <= numax）。"""
+    return int(round((float(numax) - float(numin)) / float(step))) + 1
+
+
 def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                 force=False, min_abundance=1e-4, profile="voigt", diluent=None,
-                intensity_cutoff=None):
+                intensity_cutoff=None, progress=None):
     """窗口安全的吸收谱计算（绕开 ht.absorption 的表名复用问题）。
 
     同位素口径（需在结论中显式声明主同位素近似或全同位素近似）：
@@ -389,17 +425,30 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     isos = _isotopologues(M, iso, min_abundance)
     full = len(isos) > 1
 
+    # 进度规划：前半段按同位素上报"抓取"，后半段按波数分块上报"计算"
+    n_pts = _n_grid(numin, numax, step)
+    n_seg = max(0, n_pts - 1)
+    n_chunks = max(1, (n_seg + _CHUNK_POINTS - 1) // _CHUNK_POINTS) if progress else 1
+    total_steps = (len(isos) + n_chunks) if progress else 0
+    steps_done = 0
+
     entries, skipped = [], []
     for I, ab in isos:
         try:
             table, cov, refetched = _ensure_table_for(M, I, numin, numax, force)
         except Exception as e:                 # 稀有同位素抓不到 → 跳过并报告，不拖垮整体
             skipped.append({"I": I, "abundance": ab, "reason": str(e)[:160]})
+            steps_done += 1
+            if progress:
+                progress(steps_done, total_steps, "抓取线表")
             continue
         nu_all = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
         entries.append({"table": table, "I": I, "ab": ab, "cov": cov,
                         "refetched": refetched,
                         "n_in": int(((nu_all >= numin) & (nu_all <= numax)).sum())})
+        steps_done += 1
+        if progress:
+            progress(steps_done, total_steps, "抓取线表")
     if not entries:
         raise RuntimeError(f"[hitran][防呆] {formula} 的所有同位素在 {numin}-{numax} cm-1 均抓取失败：{skipped}")
 
@@ -415,7 +464,34 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
         Environment={"T": float(T), "p": float(P), "Diluent": bath})
     if intensity_cutoff is not None and float(intensity_cutoff) > 0:
         _hapi_kwargs["IntensityThreshold"] = float(intensity_cutoff)
-    nu, coef = getattr(hapi, PROFILES[pkey])(**_hapi_kwargs)
+
+    func = getattr(hapi, PROFILES[pkey])
+    if not progress or n_chunks <= 1:
+        nu, coef = func(**_hapi_kwargs)
+    else:
+        # 分块计算：把窗口按整点均分，逐块调用（物理上与整窗一次调用等价：
+        # 同一批 SourceTables/Components，线翼仍由 WavenumberWingHW 控制），
+        # 每块完成即回调一次，进度条才有真实推进。
+        base_pts, extra = divmod(n_seg, n_chunks)
+        nus, coefs, cursor = [], [], 0
+        for k in range(n_chunks):
+            pts = base_pts + (1 if k < extra else 0)
+            i0, i1 = cursor, cursor + pts
+            cursor = i1
+            kw = dict(_hapi_kwargs)
+            kw["WavenumberRange"] = (float(numin) + i0 * float(step),
+                                     float(numin) + i1 * float(step))
+            nu_k, coef_k = func(**kw)
+            nu_k = np.asarray(nu_k, dtype=float)
+            coef_k = np.asarray(coef_k, dtype=float)
+            if k:                                  # 丢掉与前一块重复的边界点
+                nu_k, coef_k = nu_k[1:], coef_k[1:]
+            nus.append(nu_k)
+            coefs.append(coef_k)
+            steps_done += 1
+            progress(steps_done, total_steps, "计算谱线")
+        nu = np.concatenate(nus)
+        coef = np.concatenate(coefs)
     tinfo = {"molecule": formula, "M": M, "profile": pkey, "diluent": bath,
              "isotope_mode": "all(自然丰度加权)" if full else f"single(I={entries[0]['I']})",
              "table": ",".join(e["table"] for e in entries),
@@ -463,7 +539,8 @@ def _resolve_defaults(kw, strict=False):
 
 def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
              mode="alpha", path_length_cm=None, hitran_units=False,
-             profile="voigt", diluent=None, min_abundance=1e-4, intensity_cutoff=None):
+             profile="voigt", diluent=None, min_abundance=1e-4, intensity_cutoff=None,
+             progress=None):
     """算谱核心：返回 dict(nu, per{label:coef}, total, trans, meta)。
 
     混合气纪律（物理正确性要求）：α_i = x_i · α_pure_i(T, P, 空气浴)，
@@ -491,7 +568,8 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
                 warnings.append(ln.strip())
         nu_i, coef, tinfo = _absorption(name, iso, numin, numax, T, P, step,
                                         wingHW, hitran_units, sp.get("force", False),
-                                        min_abundance, profile, diluent, intensity_cutoff)
+                                        min_abundance, profile, diluent, intensity_cutoff,
+                                        progress=progress)
         nu_i = np.asarray(nu_i, dtype=float)
         coef = np.asarray(coef, dtype=float)
         if not hitran_units:
