@@ -572,7 +572,7 @@ class HitranLab(tk.Tk):
         m_file.add_command(label="保存项目…", command=self._save_project, accelerator="Ctrl+S")
         m_file.add_command(label="导入光谱数据…", command=self._import_spectrum)
         m_file.add_separator()
-        m_file.add_command(label="退出", command=self.destroy, accelerator="Alt+F4")
+        m_file.add_command(label="退出", command=self._on_exit, accelerator="Alt+F4")
         menubar.add_cascade(label="文件", menu=m_file)
         # 编辑
         m_edit = tk.Menu(menubar, tearoff=0)
@@ -1587,10 +1587,20 @@ class HitranLab(tk.Tk):
             self._species = d["data"]
             self._all_species = sorted(d["data"].keys())
             self.mol_cb["values"] = self._all_species
-            if "CH4" in d["data"]:
+            # 恢复上次选择的分子（如果在列表中）
+            if hasattr(self, "_pending_mol") and self._pending_mol and self._pending_mol in self._all_species:
+                self.mol_var.set(self._pending_mol)
+            elif "CH4" in d["data"]:
                 self.mol_var.set("CH4")
             self.status_var.set(f"已加载官方分子表（{len(d['data'])} 种）")
             self._load_isotopologues()
+            # 恢复上次选择的同位素（在同位素列表加载后）
+            if hasattr(self, "_pending_iso") and self._pending_iso:
+                try:
+                    if self._pending_iso in self.iso_cb["values"]:
+                        self.iso_var.set(self._pending_iso)
+                except Exception:
+                    pass
             return
         if kind == "check_update":
             self._render_check_update(d)
@@ -2201,14 +2211,25 @@ class HitranLab(tk.Tk):
             d = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
         except Exception:
             return
+        # 保存分子/同位素选择，等 _load_species 完成后再恢复
+        self._pending_mol = d.get("molecule", "")
+        self._pending_iso = d.get("iso", "")
         for key, attr in (("numin", "numin_var"), ("numax", "numax_var"), ("step", "step_var"),
-                          ("T", "T_var"), ("P", "P_var"), ("wingHW", "winghw_var"),
-                          ("profile", "profile_var"), ("mode", "mode_var")):
+                          ("T", "T_var"), ("P", "P_var"), ("L", "L_var"),
+                          ("wingHW", "winghw_var"), ("profile", "profile_var"), ("mode", "mode_var"),
+                          ("cutoff", "cutoff_var"), ("topn", "topn_var"),
+                          ("qtmin", "qtmin_var"), ("qtmax", "qtmax_var"), ("qtstep", "qtstep_var")):
             v = d.get(key)
             if v in (None, ""):
                 continue
             try:
                 getattr(self, attr).set(str(v))
+            except Exception:
+                pass
+        # ylog 复选框
+        if "ylog" in d and hasattr(self, "ylog_var"):
+            try:
+                self.ylog_var.set(bool(d["ylog"]))
             except Exception:
                 pass
         # 恢复混合气单位（mix_unit_var 在 _build_ui 中已初始化）
@@ -2235,6 +2256,46 @@ class HitranLab(tk.Tk):
             PREFS_PATH.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e:
             self._show_error(f"首选项保存失败: {e}")
+
+    def _save_all_prefs(self):
+        """保存所有当前设置到首选项文件（退出时自动调用）。"""
+        try:
+            import json
+            d = {}
+            # 基本参数
+            for key, attr in (("molecule", "mol_var"), ("iso", "iso_var"),
+                              ("numin", "numin_var"), ("numax", "numax_var"), ("step", "step_var"),
+                              ("T", "T_var"), ("P", "P_var"), ("L", "L_var"),
+                              ("wingHW", "winghw_var"), ("profile", "profile_var"), ("mode", "mode_var"),
+                              ("cutoff", "cutoff_var"), ("topn", "topn_var"),
+                              ("qtmin", "qtmin_var"), ("qtmax", "qtmax_var"), ("qtstep", "qtstep_var")):
+                try:
+                    d[key] = getattr(self, attr).get()
+                except Exception:
+                    pass
+            # ylog
+            if hasattr(self, "ylog_var"):
+                d["ylog"] = bool(self.ylog_var.get())
+            # mix_unit
+            if hasattr(self, "mix_unit_var"):
+                d["mix_unit"] = self.mix_unit_var.get()
+            # theme
+            d["theme"] = self._theme
+            self._save_prefs(d)
+        except Exception:
+            pass  # 保存失败不影响退出
+
+    def _on_exit(self):
+        """退出程序：保存所有设置后销毁窗口。"""
+        try:
+            self._save_all_prefs()
+        except Exception:
+            pass
+        try:
+            self.worker.stop()
+        except Exception:
+            pass
+        self.destroy()
 
     def _show_preferences(self):
         """首选项对话框（默认参数，落盘 hitran_prefs.json）。"""
@@ -2833,6 +2894,7 @@ def main():
         return
     try:
         app = HitranLab()
+        app.protocol("WM_DELETE_WINDOW", app._on_exit)
         app.mainloop()
     except Exception:
         root = tk.Tk(); root.withdraw()
