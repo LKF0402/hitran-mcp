@@ -114,6 +114,34 @@ MOLECULE_ALIASES = {
     "nitrogen trifluoride": "NF3", "nf3": "NF3", "55": "NF3",
 }
 
+# 反向别名表：标准分子式 -> 英文名（用于图例显示）
+MOLECULE_NAMES = {
+    "H2O": "Water", "CO2": "Carbon dioxide", "O3": "Ozone", "N2O": "Nitrous oxide",
+    "CO": "Carbon monoxide", "CH4": "Methane", "O2": "Oxygen", "NO": "Nitric oxide",
+    "SO2": "Sulfur dioxide", "NO2": "Nitrogen dioxide", "NH3": "Ammonia",
+    "HNO3": "Nitric acid", "OH": "Hydroxyl", "HF": "Hydrogen fluoride",
+    "HCl": "Hydrogen chloride", "HBr": "Hydrogen bromide", "HI": "Hydrogen iodide",
+    "ClO": "Chlorine monoxide", "OCS": "Carbonyl sulfide", "H2CO": "Formaldehyde",
+    "HOCl": "Hypochlorous acid", "N2": "Nitrogen", "HCN": "Hydrogen cyanide",
+    "CH3Cl": "Methyl chloride", "H2O2": "Hydrogen peroxide", "C2H2": "Acetylene",
+    "C2H6": "Ethane", "PH3": "Phosphine", "COF2": "Carbonyl fluoride",
+    "SF6": "Sulfur hexafluoride", "H2S": "Hydrogen sulfide", "HCOOH": "Formic acid",
+    "HO2": "Hydroperoxyl", "O": "Oxygen atom", "ClONO2": "Chlorine nitrate",
+    "NOP": "NO+ cation", "HOBr": "Hypobromous acid", "C2H4": "Ethylene",
+    "CH3OH": "Methanol", "CH3Br": "Methyl bromide", "CH3CN": "Acetonitrile",
+    "CF4": "Carbon tetrafluoride", "C4H2": "Diacetylene", "HC3N": "Cyanoacetylene",
+    "H2": "Hydrogen", "CS": "Carbon monosulfide", "SO3": "Sulfur trioxide",
+    "C2N2": "Cyanogen", "COCl2": "Phosgene", "SO": "Sulfur monoxide",
+    "CH3F": "Methyl fluoride", "GeH4": "Germane", "CS2": "Carbon disulfide",
+    "CH3I": "Methyl iodide", "NF3": "Nitrogen trifluoride",
+}
+
+def molecule_display_name(formula):
+    """返回分子式的显示名：'CH4 (Methane)'，无别名时返回原分子式。"""
+    if formula in MOLECULE_NAMES:
+        return f"{formula} ({MOLECULE_NAMES[formula]})"
+    return formula
+
 def resolve_molecule_alias(text):
     """将用户输入（别名/分子式/M编号）解析为标准 HITRAN 分子式。
     返回 (标准分子式, 是否匹配到别名)。未匹配返回 (原输入.upper(), False)。
@@ -1607,10 +1635,12 @@ class HitranLab(tk.Tk):
         numax = res.get("numax", "")
         T = res.get("T", "")
         P = res.get("P", "")
+        # 将 label 中的分子式替换为显示名（如 CH4 -> CH4 (Methane)）
+        disp_label = "+".join(molecule_display_name(part) for part in label.split("+"))
         if numin and numax and T and P:
-            tag = f"{label} {float(numin):g}-{float(numax):g} T={float(T):g}K P={float(P):g}atm"
+            tag = f"{disp_label} {float(numin):g}-{float(numax):g} T={float(T):g}K P={float(P):g}atm"
         else:
-            tag = label
+            tag = disp_label
         self._overlay_data.append({"tag": tag, "data": d})
 
         if first_draw:
@@ -1710,7 +1740,8 @@ class HitranLab(tk.Tk):
         numin = res.get("numin", "")
         numax = res.get("numax", "")
         if numin and numax:
-            tag = f"{name} {float(numin):g}-{float(numax):g} S(296K)"
+            disp = molecule_display_name(name)
+            tag = f"{disp} {float(numin):g}-{float(numax):g} S(296K)"
         else:
             tag = f"{name} S(296K)"
         # 如果当前是 Q(T) 或截面视图，切换回谱线视图（清空旧图层数据）
@@ -1727,6 +1758,16 @@ class HitranLab(tk.Tk):
         # 对数轴无法表示 0，底端用 S.min()/1000 代替
         ymin = float(S.min()) / 1000.0 if len(S) > 0 and S.min() > 0 else 1e-30
         self.ax.vlines(nu, ymin, S, color=color, lw=0.8, alpha=0.8, label=tag)
+        # 为前 5 条最强线添加波数标注
+        if len(nu) > 0 and len(S) > 0:
+            import numpy as np
+            S_arr = np.array(S)
+            top_idx = np.argsort(S_arr)[-5:][::-1]  # 前 5 强线
+            for idx in top_idx:
+                self.ax.annotate(f"{nu[idx]:.2f}", xy=(nu[idx], float(S[idx])),
+                                  xytext=(0, 5), textcoords="offset points",
+                                  fontsize=7, color=color, alpha=0.9,
+                                  ha="center", va="bottom")
         self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
         self.ax.set_ylabel("Line strength S(296K) (cm/molecule)")
         # 与吸收谱统一口径：尊重「对数坐标」复选框（默认线性，勾选才对数）
