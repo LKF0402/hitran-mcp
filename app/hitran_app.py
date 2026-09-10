@@ -9,7 +9,7 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.3.0"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
@@ -137,9 +137,17 @@ class RoundedButton(tk.Canvas):
             self._command()
 
     def configure(self, **kwargs):
+        # 支持颜色更新（用于主题切换）
+        color_keys = ["bg", "fg", "hover_bg", "disabled_bg", "disabled_fg"]
+        for key in color_keys:
+            if key in kwargs:
+                setattr(self, f"_{key}", kwargs[key])
+        if "bg" in kwargs or "hover_bg" in kwargs or "disabled_bg" in kwargs:
+            self._current_color = self._bg if self._enabled else self._disabled_bg
         if "state" in kwargs:
             self._enabled = (kwargs["state"] != "disabled")
             self._current_color = self._bg if self._enabled else self._disabled_bg
+        if any(k in kwargs for k in color_keys + ["state"]):
             self._draw()
         if "text" in kwargs:
             self._text = kwargs["text"]
@@ -236,6 +244,18 @@ class HitranLab(tk.Tk):
         self._mix_rows = []             # [{"name","mole_frac"}]
         self._prog = {"t0": 0.0, "done": 0, "total": 0}   # 进度/倒计时状态
 
+        # 主题（深色/浅色），从首选项加载，默认深色
+        self._theme = "dark"
+        try:
+            import json as _json
+            _prefs_path = ROOT / "hitran_prefs.json"
+            if _prefs_path.exists():
+                _p = _json.loads(_prefs_path.read_text(encoding="utf-8"))
+                if _p.get("theme") in ("dark", "light"):
+                    self._theme = _p["theme"]
+        except Exception:
+            pass
+
         self._build_style()
         self._build_ui()
         self._load_prefs()               # 载入上次「首选项」（若有）
@@ -261,6 +281,39 @@ class HitranLab(tk.Tk):
             pass
 
     # ───────────────────────── UI 构建 ─────────────────────────
+
+    @staticmethod
+    def _get_colors(theme="dark"):
+        """根据主题返回配色字典。浅色参考 iOS 系统语义色。"""
+        if theme == "light":
+            return {
+                "BG": "#F2F2F7",        # iOS 系统背景
+                "SURFACE": "#FFFFFF",    # 卡片/面板
+                "SURFACE2": "#E5E5EA",   # 输入框/悬停
+                "SURFACE3": "#D1D1D6",   # 按下/激活
+                "ACCENT": "#007AFF",     # iOS 蓝
+                "ACCENT_H": "#0A84FF",   # 悬停蓝
+                "ACCENT_P": "#0056CC",   # 按下蓝
+                "GREEN": "#34C759",      # iOS 绿
+                "TEXT": "#000000",       # 主文本
+                "TEXT_DIM": "#3C3C43",   # 次要文本（60%）
+                "BORDER": "#C6C6C8",     # 分隔线
+            }
+        else:  # dark
+            return {
+                "BG": "#0F0F12",
+                "SURFACE": "#1A1A1F",
+                "SURFACE2": "#25252B",
+                "SURFACE3": "#2F2F37",
+                "ACCENT": "#6B8FD4",
+                "ACCENT_H": "#8AAAE5",
+                "ACCENT_P": "#5275B8",
+                "GREEN": "#7BC47F",
+                "TEXT": "#D8D8DE",
+                "TEXT_DIM": "#8A8A92",
+                "BORDER": "#2E2E35",
+            }
+
     def _build_style(self):
         """iOS 风格深色主题：纯黑背景、大圆角、柔和层次、iOS 蓝强调色。"""
         style = ttk.Style(self)
@@ -269,18 +322,11 @@ class HitranLab(tk.Tk):
         except Exception:
             pass
 
-        # 柔和深色配色（不刺眼，倒角矩形风格）
-        BG       = "#0F0F12"   # 深灰蓝背景
-        SURFACE  = "#1A1A1F"   # 卡片/面板
-        SURFACE2 = "#25252B"   # 输入框/悬停
-        SURFACE3 = "#2F2F37"   # 按下/激活
-        ACCENT   = "#6B8FD4"   # 柔和蓝
-        ACCENT_H = "#8AAAE5"   # 悬停蓝
-        ACCENT_P = "#5275B8"   # 按下蓝
-        GREEN    = "#7BC47F"   # 柔和绿
-        TEXT     = "#D8D8DE"   # 柔和主文本
-        TEXT_DIM = "#8A8A92"   # 次要文本
-        BORDER   = "#2E2E35"   # 分隔线
+        # 根据当前主题获取配色
+        c = self._get_colors(self._theme)
+        BG, SURFACE, SURFACE2, SURFACE3 = c["BG"], c["SURFACE"], c["SURFACE2"], c["SURFACE3"]
+        ACCENT, ACCENT_H, ACCENT_P, GREEN = c["ACCENT"], c["ACCENT_H"], c["ACCENT_P"], c["GREEN"]
+        TEXT, TEXT_DIM, BORDER = c["TEXT"], c["TEXT_DIM"], c["BORDER"]
 
         self._bg, self._surface, self._accent = BG, SURFACE, ACCENT
         self.configure(bg=BG)
@@ -431,9 +477,12 @@ class HitranLab(tk.Tk):
         m_view = tk.Menu(menubar, tearoff=0)
         self._var_grid = tk.BooleanVar(value=True)
         self._var_legend = tk.BooleanVar(value=True)
+        self._var_theme = tk.StringVar(value=self._theme)
         m_view.add_checkbutton(label="显示网格", variable=self._var_grid, command=self._toggle_grid)
         m_view.add_checkbutton(label="显示图例", variable=self._var_legend, command=self._toggle_legend)
         m_view.add_separator()
+        m_view.add_radiobutton(label="浅色模式", variable=self._var_theme, value="light", command=lambda: self._switch_theme("light"))
+        m_view.add_radiobutton(label="深色模式", variable=self._var_theme, value="dark", command=lambda: self._switch_theme("dark"))
         menubar.add_cascade(label="视图", menu=m_view)
         # 工具
         m_tools = tk.Menu(menubar, tearoff=0)
@@ -2188,6 +2237,69 @@ class HitranLab(tk.Tk):
             self.status_var.set(f"已清理 {deleted} 个线表缓存文件")
         except Exception as e:
             messagebox.showerror("清理失败", f"清理缓存时出错：{e}")
+
+
+    def _switch_theme(self, theme=None):
+        """切换浅色/深色主题，实时更新 UI。"""
+        if theme is None:
+            theme = "light" if self._theme == "dark" else "dark"
+        if theme not in ("dark", "light"):
+            return
+        self._theme = theme
+        # 重新应用样式
+        self._build_style()
+        # 更新窗口背景
+        self.configure(bg=self._bg)
+        # 更新左侧滚动画布背景
+        if hasattr(self, 'left_cv'):
+            self.left_cv.configure(bg=self._bg)
+        # 更新 matplotlib 画布背景
+        if hasattr(self, 'canvas'):
+            self.canvas.get_tk_widget().configure(bg=self._bg)
+            # 重绘当前图形（如果有）
+            try:
+                self.fig.patch.set_facecolor(self._bg)
+                self.ax.set_facecolor(self._bg)
+                self.canvas.draw()
+            except Exception:
+                pass
+        # 更新菜单栏单选按钮状态
+        if hasattr(self, '_var_theme'):
+            self._var_theme.set(self._theme)
+        # 保存到首选项
+        try:
+            import json as _json
+            _prefs_path = ROOT / "hitran_prefs.json"
+            _p = {}
+            if _prefs_path.exists():
+                try:
+                    _p = _json.loads(_prefs_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            _p["theme"] = self._theme
+            _prefs_path.write_text(_json.dumps(_p, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        # 更新 RoundedButton 颜色（计算按钮/停止按钮）
+        c = self._get_colors(self._theme)
+        if hasattr(self, 'btn_compute'):
+            self.btn_compute.configure(bg=c["ACCENT"], hover_bg=c["ACCENT_H"])
+        if hasattr(self, 'btn_stop'):
+            stop_bg = c["SURFACE"] if self._theme == "dark" else c["SURFACE2"]
+            stop_hover = c["SURFACE2"] if self._theme == "dark" else c["SURFACE3"]
+            self.btn_stop.configure(bg=stop_bg, hover_bg=stop_hover,
+                                     disabled_bg=stop_bg)
+        # 更新 Listbox/Text 等直接设置颜色的控件
+        for attr in ['layer_list', 'peak_text', 'xsc_text', 'stat_text']:
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                try:
+                    widget.configure(bg=c["SURFACE"], fg=c["TEXT"])
+                    if hasattr(widget, 'configure') and 'selectbackground' in widget.keys():
+                        widget.configure(selectbackground=c["ACCENT"], selectforeground=c["TEXT"])
+                except Exception:
+                    pass
+        self.status_var.set(f"已切换到{'浅色' if self._theme == 'light' else '深色'}模式")
 
     def _show_about(self):
         """关于对话框。"""
