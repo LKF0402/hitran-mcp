@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import threading
 import traceback
 from pathlib import Path
 
@@ -37,6 +38,7 @@ SERVER_INFO = {"name": "hitran", "version": "1.3.1"}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
 _NP = None
+_FETCH_LOCK = threading.RLock()   # hapi.fetch 串行化，防 .data 并发写（TOCTOU）
 
 
 # ───────────────────────── 基础设施 ─────────────────────────

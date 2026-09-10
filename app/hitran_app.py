@@ -2276,10 +2276,15 @@ class HitranLab(tk.Tk):
                 ht.cache_clear()
             except Exception as _e:
                 _cache_warn.append(f"线表缓存清理失败: {_e}")
+            _warn_msg = ""
             if _cache_warn:
-                self.status_var.set("已清理文件缓存（" + "；".join(_cache_warn) + "）")
-            messagebox.showinfo("清理完成", f"已删除 {deleted} 个缓存文件。\n下次计算将重新联网抓取线表。")
-            self.status_var.set(f"已清理 {deleted} 个线表缓存文件")
+                _warn_msg = "\n\n注意（内存缓存）：\n" + "\n".join(f"• {w}" for w in _cache_warn)
+            messagebox.showinfo("清理完成",
+                f"已删除 {deleted} 个缓存文件。\n下次计算将重新联网抓取线表。{_warn_msg}")
+            _status = f"已清理 {deleted} 个线表缓存文件"
+            if _cache_warn:
+                _status += f"（{len(_cache_warn)} 项内存缓存清理失败，见弹窗）"
+            self.status_var.set(_status)
         except Exception as e:
             messagebox.showerror("清理失败", f"清理缓存时出错：{e}")
 
