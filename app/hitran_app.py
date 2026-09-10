@@ -2712,6 +2712,19 @@ class HitranLab(tk.Tk):
                     if key_file.exists():
                         key_file.unlink()
                     self.status_var.set("API key 已清除")
+                # 同步更新 HAPI2 config.json（HAPI2 从此文件读取 api_key）
+                hapi2_config = ROOT / "config.json"
+                try:
+                    if hapi2_config.exists():
+                        with open(hapi2_config, "r", encoding="utf-8") as f:
+                            cfg = json.load(f)
+                    else:
+                        cfg = {}
+                    cfg["api_key"] = key if key else None
+                    with open(hapi2_config, "w", encoding="utf-8") as f:
+                        json.dump(cfg, f, indent=3, ensure_ascii=False)
+                except Exception:
+                    pass  # config.json 更新失败不影响主功能
             except Exception as e:
                 self._show_error(f"保存失败: {e}")
             win.destroy()
