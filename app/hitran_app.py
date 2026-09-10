@@ -44,13 +44,6 @@ PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 # 叠加模式的颜色循环（每次叠加取下一个颜色）
 OVERLAY_COLORS = ["#F7768E", "#7AA2F7", "#9ECE6A", "#E0AF68", "#BB9AF7", "#7DCFFF", "#FF9E64", "#4ABCF9"]
 
-# 标准大气/常见气体浓度预设（仅含 HITRAN 逐线分子，Ar/Ne/He 等无红外谱线的已排除）
-ATM_PRESETS = {
-    "干燥空气": [("N2", 0.7808), ("O2", 0.2095), ("CO2", 0.00042)],
-    "呼气": [("N2", 0.74), ("O2", 0.16), ("CO2", 0.04), ("H2O", 0.06)],
-    "燃烧烟气": [("CO2", 0.12), ("H2O", 0.10), ("N2", 0.73), ("O2", 0.04), ("CO", 0.001)],
-    "天然气": [("CH4", 0.95), ("C2H6", 0.03), ("N2", 0.02)],
-}
 MODES = {"吸收系数 α (cm⁻¹)": "alpha",
          "透过率 T": "transmittance",
          "两者 both": "both",
@@ -375,26 +368,20 @@ class HitranLab(tk.Tk):
         # 混合气
         f3 = ttk.LabelFrame(inner, text="混合气组分（浓度留空 = 纯气体）", padding=8)
         f3.pack(fill=tk.X, pady=(0, 6))
-        self.mix_tree = ttk.Treeview(f3, columns=("name", "x"), show="headings", height=5)
+        mix_frame = ttk.Frame(f3)
+        mix_frame.grid(row=0, column=0, columnspan=3, sticky="we")
+        self.mix_tree = ttk.Treeview(mix_frame, columns=("name", "x"), show="headings", height=5)
         self.mix_tree.heading("name", text="分子"); self.mix_tree.column("name", width=120)
         self.mix_tree.heading("x", text="摩尔分数"); self.mix_tree.column("x", width=90)
-        self.mix_tree.grid(row=0, column=0, columnspan=3, sticky="we")
+        self.mix_tree.pack(side="left", fill="both", expand=True)
+        mix_vsb = ttk.Scrollbar(mix_frame, orient="vertical", command=self.mix_tree.yview)
+        mix_vsb.pack(side="right", fill="y")
+        self.mix_tree.configure(yscrollcommand=mix_vsb.set)
         self.frac_var = tk.StringVar(value="")
         ttk.Entry(f3, textvariable=self.frac_var, width=10).grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Button(f3, text="添加组分", command=self._add_mix).grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         ttk.Button(f3, text="删除选中", command=self._del_mix).grid(row=1, column=2, padx=(4, 0), pady=(4, 0))
-        ttk.Label(f3, text="预设:").grid(row=2, column=0, sticky="w", pady=(6, 0))
-        self.preset_var = tk.StringVar(value="")
-        self.preset_cb = ttk.Combobox(f3, textvariable=self.preset_var, width=14, state="readonly",
-                                       values=list(ATM_PRESETS.keys()))
-        self.preset_cb.grid(row=2, column=1, sticky="we", padx=(4, 0), pady=(6, 0))
-        ttk.Button(f3, text="加载", command=self._load_preset).grid(row=2, column=2, padx=(4, 0), pady=(6, 0))
-        ttk.Label(f3, text="用户预设:").grid(row=3, column=0, sticky="w", pady=(4, 0))
-        self.user_preset_var = tk.StringVar(value="")
-        self.user_preset_cb = ttk.Combobox(f3, textvariable=self.user_preset_var, width=14, state="readonly")
-        self.user_preset_cb.grid(row=3, column=1, sticky="we", padx=(4, 0), pady=(4, 0))
-        ttk.Button(f3, text="加载", command=self._load_user_preset).grid(row=3, column=2, padx=(4, 0), pady=(4, 0))
-        self._refresh_user_presets()
+        f3.columnconfigure(0, weight=1)
 
         # 动作按钮
         fb = ttk.Frame(inner)
@@ -410,8 +397,7 @@ class HitranLab(tk.Tk):
         acts = [("强线 TOP N", self._lines), ("配分函数", self._partition),
                 ("Q(T) 曲线", self._qcurve), ("导出 CSV", self._export_csv),
                 ("导出 PNG", self._export_png), ("截面文件", self._pick_xsc),
-                ("清空图", self._clear_plot), ("重置参数", self._reset_params),
-                ("保存预设", self._save_user_preset)]
+                ("清空图", self._clear_plot), ("重置参数", self._reset_params)]
         for i, (txt, cmd) in enumerate(acts):
             ttk.Button(fbg, text=txt, command=cmd).grid(row=i // 2, column=i % 2,
                                                         sticky="we", padx=2, pady=2)
@@ -454,37 +440,57 @@ class HitranLab(tk.Tk):
         # 峰统计
         self.peak_tab = ttk.Frame(self.nb)
         self.nb.add(self.peak_tab, text="峰 / 统计")
-        self.peak_text = tk.Text(self.peak_tab, height=7, font=("Consolas", 10),
+        peak_frame = ttk.Frame(self.peak_tab)
+        peak_frame.pack(fill=tk.BOTH, expand=True)
+        self.peak_text = tk.Text(peak_frame, height=7, font=("Consolas", 10),
                                   bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                   relief="flat", borderwidth=0, padx=8, pady=6)
-        self.peak_text.pack(fill=tk.BOTH, expand=True)
+        self.peak_text.pack(side="left", fill=tk.BOTH, expand=True)
+        peak_vsb = ttk.Scrollbar(peak_frame, orient="vertical", command=self.peak_text.yview)
+        peak_vsb.pack(side="right", fill="y")
+        self.peak_text.configure(yscrollcommand=peak_vsb.set)
         self.peak_text.insert("1.0", "计算后显示峰值、窗口积分和警告信息。")
         # 强线
         self.line_tab = ttk.Frame(self.nb)
         self.nb.add(self.line_tab, text="强线列表")
-        self.line_tree = ttk.Treeview(self.line_tab, columns=("nu", "S", "gair", "E"), show="headings", height=7)
+        line_frame = ttk.Frame(self.line_tab)
+        line_frame.pack(fill=tk.BOTH, expand=True)
+        self.line_tree = ttk.Treeview(line_frame, columns=("nu", "S", "gair", "E"), show="headings", height=7)
         for c, t, w in (("nu", "ν (cm⁻¹)", 110), ("S", "S (cm/molecule)", 130),
                         ("gair", "γ_air", 90), ("E", "E″ (cm⁻¹)", 100)):
             self.line_tree.heading(c, text=t); self.line_tree.column(c, width=w)
-        self.line_tree.pack(fill=tk.BOTH, expand=True)
+        self.line_tree.pack(side="left", fill=tk.BOTH, expand=True)
+        line_vsb = ttk.Scrollbar(line_frame, orient="vertical", command=self.line_tree.yview)
+        line_vsb.pack(side="right", fill="y")
+        self.line_tree.configure(yscrollcommand=line_vsb.set)
         line_btn = ttk.Frame(self.line_tab)
         line_btn.pack(fill=tk.X, pady=(4, 0))
         ttk.Button(line_btn, text="导出完整线表 CSV", command=self._export_lines).pack(side="left")
         # 截面
         self.xsc_tab = ttk.Frame(self.nb)
         self.nb.add(self.xsc_tab, text="截面文件信息")
-        self.xsc_text = tk.Text(self.xsc_tab, height=7, font=("Consolas", 10),
+        xsc_frame = ttk.Frame(self.xsc_tab)
+        xsc_frame.pack(fill=tk.BOTH, expand=True)
+        self.xsc_text = tk.Text(xsc_frame, height=7, font=("Consolas", 10),
                                  bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                  relief="flat", borderwidth=0, padx=8, pady=6)
-        self.xsc_text.pack(fill=tk.BOTH, expand=True)
+        self.xsc_text.pack(side="left", fill=tk.BOTH, expand=True)
+        xsc_vsb = ttk.Scrollbar(xsc_frame, orient="vertical", command=self.xsc_text.yview)
+        xsc_vsb.pack(side="right", fill="y")
+        self.xsc_text.configure(yscrollcommand=xsc_vsb.set)
         self.xsc_text.insert("1.0", "导入截面文件（HOTW）后显示分子、波段、温度、压力等信息。")
         # 状态
         self.stat_tab = ttk.Frame(self.nb)
         self.nb.add(self.stat_tab, text="运行状态")
-        self.stat_text = tk.Text(self.stat_tab, height=7, font=("Consolas", 10),
+        stat_frame = ttk.Frame(self.stat_tab)
+        stat_frame.pack(fill=tk.BOTH, expand=True)
+        self.stat_text = tk.Text(stat_frame, height=7, font=("Consolas", 10),
                                   bg="#24283B", fg="#C0CAF5", insertbackground="#C0CAF5",
                                   relief="flat", borderwidth=0, padx=8, pady=6)
-        self.stat_text.pack(fill=tk.BOTH, expand=True)
+        self.stat_text.pack(side="left", fill=tk.BOTH, expand=True)
+        stat_vsb = ttk.Scrollbar(stat_frame, orient="vertical", command=self.stat_text.yview)
+        stat_vsb.pack(side="right", fill="y")
+        self.stat_text.configure(yscrollcommand=stat_vsb.set)
         self.stat_text.insert("1.0", "显示计算日志、线表下载状态和引擎警告。\n\n"
                                      "四个标签页用途：\n"
                                      "  峰/统计 — 计算后自动显示峰值、积分、警告\n"
@@ -556,107 +562,6 @@ class HitranLab(tk.Tk):
         sel = self.mix_tree.selection()
         for i in sel:
             self.mix_tree.delete(i)
-
-    def _load_preset(self):
-        name = self.preset_var.get().strip()
-        if not name or name not in ATM_PRESETS:
-            messagebox.showinfo("HitranLab", "请先选择一个预设")
-            return
-        for it in self.mix_tree.get_children():
-            self.mix_tree.delete(it)
-        for mol, x in ATM_PRESETS[name]:
-            self.mix_tree.insert("", "end", values=(mol, f"{x:g}"))
-        self.status_var.set(f"已加载预设: {name}")
-
-    def _user_preset_path(self):
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).resolve().parent / "user_presets.json"
-        return Path(__file__).resolve().parent.parent / "user_presets.json"
-
-    def _refresh_user_presets(self):
-        p = self._user_preset_path()
-        names = []
-        if p.exists():
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                names = sorted(data.keys())
-            except Exception:
-                pass
-        self.user_preset_cb["values"] = names
-
-    def _save_user_preset(self):
-        from tkinter import simpledialog
-        name = simpledialog.askstring("保存预设", "预设名称:", parent=self)
-        if not name:
-            return
-        try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, wingHW, cutoff = self._params()
-        except ValueError as e:
-            self._show_error(str(e))
-            return
-        preset = {
-            "molecule": self.mol_var.get(),
-            "iso_label": self.iso_var.get(),
-            "numin": numin, "numax": numax, "step": step,
-            "T": T, "P": P, "L": L,
-            "mode": self.mode_var.get(), "profile": profile, "ylog": ylog,
-            "wingHW": wingHW, "cutoff": cutoff,
-            "top_n": self.topn_var.get(),
-            "qtmin": self.qtmin_var.get(), "qtmax": self.qtmax_var.get(), "qtstep": self.qtstep_var.get(),
-            "mixture": [(self.mix_tree.item(it)["values"][0], self.mix_tree.item(it)["values"][1])
-                        for it in self.mix_tree.get_children()],
-        }
-        p = self._user_preset_path()
-        data = {}
-        if p.exists():
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        data[name] = preset
-        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        self._refresh_user_presets()
-        self.status_var.set(f"预设已保存: {name}")
-
-    def _load_user_preset(self):
-        name = self.user_preset_var.get().strip()
-        if not name:
-            messagebox.showinfo("HitranLab", "请先选择一个用户预设")
-            return
-        p = self._user_preset_path()
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            preset = data.get(name)
-        except Exception:
-            preset = None
-        if not preset:
-            messagebox.showerror("HitranLab", f"预设 '{name}' 不存在")
-            return
-        self.mol_var.set(preset.get("molecule", "CH4"))
-        self._load_isotopologues()
-        iso_label = preset.get("iso_label")
-        if iso_label and hasattr(self, "_iso_map") and iso_label in self._iso_map:
-            self.iso_var.set(iso_label)
-        self.numin_var.set(str(preset.get("numin", 2950.0)))
-        self.numax_var.set(str(preset.get("numax", 3120.0)))
-        self.step_var.set(str(preset.get("step", 0.01)))
-        self.T_var.set(str(preset.get("T", 296.0)))
-        self.P_var.set(str(preset.get("P", 1.0)))
-        self.L_var.set(str(preset.get("L", 100.0)))
-        self.mode_var.set(preset.get("mode", "吸收系数 α (cm⁻¹)"))
-        self.profile_var.set(preset.get("profile", "voigt"))
-        self.ylog_var.set(preset.get("ylog", False))
-        self.winghw_var.set(str(preset.get("wingHW", 50.0)))
-        self.cutoff_var.set(str(preset.get("cutoff", "")) if preset.get("cutoff") else "")
-        self.topn_var.set(str(preset.get("top_n", 15)))
-        self.qtmin_var.set(str(preset.get("qtmin", 200)))
-        self.qtmax_var.set(str(preset.get("qtmax", 400)))
-        self.qtstep_var.set(str(preset.get("qtstep", 20)))
-        for it in self.mix_tree.get_children():
-            self.mix_tree.delete(it)
-        for mol, x in preset.get("mixture", []):
-            self.mix_tree.insert("", "end", values=(mol, x))
-        self.status_var.set(f"已加载用户预设: {name}")
 
     def _clear_plot(self):
         """只清空画布，不改变参数。重置叠加计数器和数据。"""
