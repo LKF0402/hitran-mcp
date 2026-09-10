@@ -135,6 +135,22 @@ class HitranLab(tk.Tk):
         self.after(100, self._drain_queue)
         self._refresh_status()
 
+    def _on_left_scroll(self, event):
+        """全局鼠标滚轮回调：鼠标在左侧面板内时滚动左侧面板。"""
+        try:
+            x, y = self.winfo_pointerxy()
+            widget = self.winfo_containing(x, y)
+            if widget is not None:
+                # 检查该控件是否在 left_cv 内
+                w = widget
+                while w is not None:
+                    if w is self.left_cv:
+                        self.left_cv.yview_scroll(int(-event.delta / 120), "units")
+                        return
+                    w = w.master
+        except Exception:
+            pass
+
     # ───────────────────────── UI 构建 ─────────────────────────
     def _build_style(self):
         """现代深色主题（Tokyo Night 风格）。"""
@@ -271,16 +287,17 @@ class HitranLab(tk.Tk):
         left = ttk.Frame(main, width=340)
         left.pack_propagate(False)
         main.add(left, weight=0)
-        left_cv = tk.Canvas(left, width=340, highlightthickness=0, bg=self._bg)
-        left_vsb = ttk.Scrollbar(left, orient="vertical", command=left_cv.yview)
-        left_cv.configure(yscrollcommand=left_vsb.set)
-        left_cv.pack(side="left", fill="both", expand=True)
+        self.left_cv = tk.Canvas(left, width=340, highlightthickness=0, bg=self._bg)
+        left_vsb = ttk.Scrollbar(left, orient="vertical", command=self.left_cv.yview)
+        self.left_cv.configure(yscrollcommand=left_vsb.set)
+        self.left_cv.pack(side="left", fill="both", expand=True)
         left_vsb.pack(side="right", fill="y")
-        inner = ttk.Frame(left_cv)
-        _win = left_cv.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda e: left_cv.configure(scrollregion=left_cv.bbox("all")))
-        left_cv.bind("<Configure>", lambda e: left_cv.itemconfigure(_win, width=e.width))
-        left_cv.bind("<MouseWheel>", lambda e: left_cv.yview_scroll(int(-e.delta / 120), "units"))
+        inner = ttk.Frame(self.left_cv)
+        _win = self.left_cv.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: self.left_cv.configure(scrollregion=self.left_cv.bbox("all")))
+        self.left_cv.bind("<Configure>", lambda e: self.left_cv.itemconfigure(_win, width=e.width))
+        # 全局鼠标滚轮绑定（子控件也能触发，判断鼠标是否在左侧面板内）
+        self.bind_all("<MouseWheel>", self._on_left_scroll)
 
         # 分子与窗口
         f0 = ttk.LabelFrame(inner, text="分子与波段", padding=8)
