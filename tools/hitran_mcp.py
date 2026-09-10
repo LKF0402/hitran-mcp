@@ -296,46 +296,47 @@ def _ensure_table_for(M, I, numin, numax, force=False):
     策略：先查覆盖区间（内存 + 本地磁盘），未覆盖则用带窗口后缀的表名重抓（互不污染）。
     返回 (table, coverage, refetched)。
     """
-    import hapi
-    formula = _formula(M)
-    base = f"{formula}_{M}_{I}"
-    wtable = f"{base}_{_wnum(numin)}_{_wnum(numax)}"
+    with _FETCH_LOCK:
+        import hapi
+        formula = _formula(M)
+        base = f"{formula}_{M}_{I}"
+        wtable = f"{base}_{_wnum(numin)}_{_wnum(numax)}"
 
-    if not force:
-        # 1) 精确窗口表（内存或本地磁盘）→ 直接复用（谱线位置≠窗口边界，勿再查覆盖）
-        cov = _coverage(wtable)
-        if cov is None:
-            cov = _load_local_table(wtable)
-        if cov is not None:
-            return wtable, cov, False
-        # 2) 基础表覆盖足够 → 复用
-        cov = _coverage(base)
-        if cov is None:
-            cov = _load_local_table(base)
-        if cov and cov[0] <= numin and cov[1] >= numax:
-            return base, cov, False
+        if not force:
+            # 1) 精确窗口表（内存或本地磁盘）→ 直接复用（谱线位置≠窗口边界，勿再查覆盖）
+            cov = _coverage(wtable)
+            if cov is None:
+                cov = _load_local_table(wtable)
+            if cov is not None:
+                return wtable, cov, False
+            # 2) 基础表覆盖足够 → 复用
+            cov = _coverage(base)
+            if cov is None:
+                cov = _load_local_table(base)
+            if cov and cov[0] <= numin and cov[1] >= numax:
+                return base, cov, False
 
-    table = wtable
-    with _quiet():                       # HAPI 下载日志不能进协议流
-        try:
-            hapi.fetch(table, M, I, numin, numax)
-        except Exception as e:
-            hint = ""
-            if "daily limit" in str(e).lower() or "exceeded" in str(e).lower():
-                hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
-                        "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
+        table = wtable
+        with _quiet():                       # HAPI 下载日志不能进协议流
+            try:
+                hapi.fetch(table, M, I, numin, numax)
+            except Exception as e:
+                hint = ""
+                if "daily limit" in str(e).lower() or "exceeded" in str(e).lower():
+                    hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
+                            "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
+                raise RuntimeError(
+                    f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{e}。"
+                    f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
+                    f"严禁把失败当作'无干扰'。") from e
+        cov = _coverage(table)
+        if cov is None:
+            raise RuntimeError(f"[hitran][防呆] 抓取失败：{formula} 在 {numin}-{numax} cm-1 无线表")
+        if cov[2] == 0:
             raise RuntimeError(
-                f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{e}。"
-                f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
-                f"严禁把失败当作'无干扰'。") from e
-    cov = _coverage(table)
-    if cov is None:
-        raise RuntimeError(f"[hitran][防呆] 抓取失败：{formula} 在 {numin}-{numax} cm-1 无线表")
-    if cov[2] == 0:
-        raise RuntimeError(
-            f"[hitran][防呆] 表 '{table}' 在 {numin}-{numax} cm-1 返回 0 条谱线。"
-            f"该分子/同位素在此窗口无 HITRAN 收录线，严禁当作'无干扰/平谱'使用。")
-    return table, cov, True
+                f"[hitran][防呆] 表 '{table}' 在 {numin}-{numax} cm-1 返回 0 条谱线。"
+                f"该分子/同位素在此窗口无 HITRAN 收录线，严禁当作'无干扰/平谱'使用。")
+        return table, cov, True
 
 
 PROFILES = {                      # 官方 HAPI 谱函数（同名直调，不自己造线型）

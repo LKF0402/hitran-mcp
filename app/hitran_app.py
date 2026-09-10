@@ -1266,6 +1266,9 @@ class HitranLab(tk.Tk):
         if kind == "update_ready":
             self._render_update_ready(d)
             return
+        if kind == "update_prepared":
+            self._render_update_prepared(d)
+            return
         if kind == "spectrum":
             self._render_spectrum(d)
         elif kind == "linestrength":
@@ -2102,31 +2105,40 @@ class HitranLab(tk.Tk):
         return {"kind": "update_ready", "zip": str(dst), "dir": str(UPDATE_DIR)}
 
     def _render_update_ready(self, d):
-        """更新包下载完成 → 解压 → 询问是否立即替换并重启。"""
-        try:
-            import zipfile
-            import shutil
-            zip_path = Path(d["zip"])
-            newdir = Path(d["dir"]) / "new"
-            if newdir.exists():
-                shutil.rmtree(newdir)
-            newdir.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(zip_path) as z:
-                z.extractall(newdir)
-            subs = [p for p in newdir.iterdir() if p.is_dir()]
-            src = subs[0] if len(subs) == 1 else newdir
-            if not (src / "HitranLab.exe").exists():
-                self._show_error(f"更新包结构不符合预期（未找到 HitranLab.exe）：{src}")
-                return
-        except Exception as e:
-            self._show_error(f"解压更新包失败: {e}")
-            return
+        """更新包下载完成 → 询问是否立即更新 → 后台解压 → 替换重启。"""
+        zip_path = Path(d["zip"])
         if not messagebox.askyesno("自动升级",
-                f"新版已就绪：\n{zip_path}\n\n"
-                f"现在关闭程序、替换文件并自动重启吗？\n"
+                f"新版已下载：\n{zip_path}\n\n"
+                f"是否立即解压、替换文件并自动重启？\n"
                 f"（替换用 robocopy 覆盖，不会删除你的 Hitran_Data 线表缓存）"):
-            self.status_var.set("更新包已就绪，可手动解压 _update 目录替换")
+            self.status_var.set("更新包已下载，可手动解压 _update 目录替换")
             return
+        # 解压挪到 worker，避免大文件解压阻塞主线程
+        self._set_busy(True, "正在解压更新包…")
+        if not self.worker.run(self._job_prepare_update, d["zip"], d["dir"]):
+            self._set_busy(False, "启动解压失败")
+
+    def _job_prepare_update(self, zip_path, update_dir):
+        """后台解压更新包，返回解压后的源目录路径。"""
+        import zipfile
+        import shutil
+        zip_path = Path(zip_path)
+        newdir = Path(update_dir) / "new"
+        if newdir.exists():
+            shutil.rmtree(newdir)
+        newdir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(newdir)
+        subs = [p for p in newdir.iterdir() if p.is_dir()]
+        src = subs[0] if len(subs) == 1 else newdir
+        if not (src / "HitranLab.exe").exists():
+            raise RuntimeError(f"更新包结构不符合预期（未找到 HitranLab.exe）：{src}")
+        return {"kind": "update_prepared", "src": str(src), "zip": str(zip_path)}
+
+    def _render_update_prepared(self, d):
+        """解压完成 → 生成升级脚本 → 启动 → 退出本程序。"""
+        src = Path(d["src"])
+        zip_path = Path(d["zip"])
         bat = self._write_update_bat(src, zip_path)
         if not bat:
             return
@@ -2135,6 +2147,7 @@ class HitranLab(tk.Tk):
         except Exception as e:
             self._show_error(f"无法启动升级脚本: {e}")
             return
+        self.status_var.set("升级脚本已启动，程序即将退出…")
         self.after(600, self.destroy)
 
     def _write_update_bat(self, src, zip_path):
@@ -2146,17 +2159,23 @@ class HitranLab(tk.Tk):
             root = str(ROOT)
             lines = [
                 "@echo off",
-                "chcp 65001 >nul",
+                "rem 使用系统默认编码（mbcs/GBK），避免中文路径在 chcp 65001 下解析异常",
                 ":wait",
                 f'tasklist /FI "IMAGENAME eq {exe_name}" | find /I "{exe_name}" >nul && (timeout /t 1 /nobreak >nul & goto wait)',
                 f'robocopy "{src}" "{appdir}" /E /NFL /NDL /NJH /NJS /R:2 /W:1',
+                "if errorlevel 8 (",
+                "    echo 更新失败：robocopy 返回错误码 %errorlevel%",
+                "    echo 请手动解压更新包替换文件",
+                "    pause",
+                "    exit /b 1",
+                ")",
                 f'start "" "{exe_full}"',
                 f'rmdir /S /Q "{root}\\_update\\new"',
                 f'del /Q "{zip_path}"',
                 'del /Q "%~f0"',
             ]
             bat = UPDATE_DIR / "apply_update.bat"
-            bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+            bat.write_text("\r\n".join(lines) + "\r\n", encoding="mbcs")
             return bat
         except Exception as e:
             self._show_error(f"生成升级脚本失败: {e}")
@@ -2223,16 +2242,19 @@ class HitranLab(tk.Tk):
                 f.unlink()
                 deleted += 1
             # 清空内存中的计算缓存
+            _cache_warn = []
             try:
                 from tools import hitran_mcp as hm
                 hm.abs_cache_clear()
-            except Exception:
-                pass
+            except Exception as _e:
+                _cache_warn.append(f"内存计算缓存清理失败: {_e}")
             try:
                 from tools import hitran as ht
                 ht.cache_clear()
-            except Exception:
-                pass
+            except Exception as _e:
+                _cache_warn.append(f"线表缓存清理失败: {_e}")
+            if _cache_warn:
+                self.status_var.set("已清理文件缓存（" + "；".join(_cache_warn) + "）")
             messagebox.showinfo("清理完成", f"已删除 {deleted} 个缓存文件。\n下次计算将重新联网抓取线表。")
             self.status_var.set(f"已清理 {deleted} 个线表缓存文件")
         except Exception as e:
@@ -2260,24 +2282,40 @@ class HitranLab(tk.Tk):
             try:
                 self.fig.patch.set_facecolor(self._bg)
                 self.ax.set_facecolor(self._bg)
+                # 重设坐标轴文字/tick/spines/图例颜色（rcParams 不回溯已有 artist）
+                _tc = c["TEXT"]
+                _bc = c["BORDER"]
+                for _ax in self.fig.axes:
+                    _ax.tick_params(colors=_tc, which="both")
+                    _ax.xaxis.label.set_color(_tc)
+                    _ax.yaxis.label.set_color(_tc)
+                    if _ax.title:
+                        _ax.title.set_color(_tc)
+                    for _sp in _ax.spines.values():
+                        _sp.set_color(_bc)
+                    if _ax.get_legend():
+                        _leg = _ax.get_legend()
+                        _leg.get_frame().set_facecolor(c["SURFACE"])
+                        _leg.get_frame().set_edgecolor(_bc)
+                        for _t in _leg.get_texts():
+                            _t.set_color(_tc)
                 self.canvas.draw()
             except Exception:
                 pass
         # 更新菜单栏单选按钮状态
         if hasattr(self, '_var_theme'):
             self._var_theme.set(self._theme)
-        # 保存到首选项
+        # 保存到首选项（复用 _save_prefs，合并现有配置）
         try:
             import json as _json
-            _prefs_path = ROOT / "hitran_prefs.json"
             _p = {}
-            if _prefs_path.exists():
+            if PREFS_PATH.exists():
                 try:
-                    _p = _json.loads(_prefs_path.read_text(encoding="utf-8"))
+                    _p = _json.loads(PREFS_PATH.read_text(encoding="utf-8"))
                 except Exception:
                     pass
             _p["theme"] = self._theme
-            _prefs_path.write_text(_json.dumps(_p, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._save_prefs(_p)
         except Exception:
             pass
         # 更新 RoundedButton 颜色（计算按钮/停止按钮）
