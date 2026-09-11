@@ -34,7 +34,7 @@ if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.4.1"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.4.2"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -292,7 +292,13 @@ def _load_local_table(table):
     """
     import hapi
     root = _hitran().CACHE_ROOT
-    if not (root / f"{table}.data").exists() or not (root / f"{table}.header").exists():
+    data_path = root / f"{table}.data"
+    header_path = root / f"{table}.header"
+    if not data_path.exists() or not header_path.exists():
+        return None
+    # 完整性校验：下载中断被截断的文件通常远小于正常大小（<1KB）
+    # 正常线表（至少几十条线）至少几 KB；太小视为损坏，强制重下
+    if data_path.stat().st_size < 1024:
         return None
     if table not in hapi.tableList():
         try:
@@ -602,6 +608,14 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
             progress(steps_done, total_steps, "计算谱线")
         nu = np.concatenate(nus)
         coef = np.concatenate(coefs)
+        # 分块拼接可能因浮点数精度多出/少 1 个点，统一截断到整窗预期点数
+        expected = n_seg + 1
+        if len(nu) > expected:
+            nu, coef = nu[:expected], coef[:expected]
+        elif len(nu) < expected:
+            pad = expected - len(nu)
+            nu = np.concatenate([nu, np.full(pad, nu[-1])])
+            coef = np.concatenate([coef, np.full(pad, coef[-1])])
     tinfo = {"molecule": formula, "M": M, "profile": pkey, "diluent": bath,
              "isotope_mode": "all(自然丰度加权)" if full else f"single(I={entries[0]['I']})",
              "table": ",".join(e["table"] for e in entries),
