@@ -2,24 +2,51 @@
 
 <h1>hitran-mcp</h1>
 
-<p><b>HITRAN 光谱数据库的 AI 工具链 —— MCP 服务器 + HitranLab 桌面工作站</b><br>
-取数 · 谱计算 · 绘图 · 溯源一条链路走完；数据实时取自 HITRANonline（官方 HAPI），仓库不含任何数据文件</p>
+<p><b>HITRAN 光谱数据库的 AI 工具链</b><br>
+MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
 <img src="https://img.shields.io/badge/Python-3.9%2B-3776AB" alt="Python">
-<img src="https://img.shields.io/badge/MCP-stdio%20JSON--RPC-6B8FD4" alt="MCP">
-<img src="https://img.shields.io/badge/Data-HITRAN2024-red" alt="HITRAN2024">
 
 </div>
 
 [English](./README.en.md) | 中文
 
+---
+
+## 🚀 快速开始
+
+> 💡 快速上手入口，详细文档见下文。
+
+### 🖥️ 方式一：桌面 GUI（新手推荐）
+
+> 无需编程，直接使用
+
+前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLab.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
+
+---
+
+### 🤖 方式二：接入 AI 助手（科研推荐）
+
+> 自然语言驱动，AI 直接调用
+
+将以下内容发送给您的 AI 助手（豆包 / Claude / Cursor）：
+
+> "请帮我配置 HITRAN MCP 服务器，仓库地址：https://github.com/LKF0402/hitran-mcp"
+
+配置完成后，您可以直接用自然语言描述计算需求：
+> "帮我计算 CH₄ 在 2950-3100 cm⁻¹、296 K、1 atm 条件下的吸收谱"
+
+---
+
+*以下为详细技术文档，供深入使用时参考。*
+
 ## 效果预览
 
-**HitranLab 桌面工作站** —— CH4 + H2O 混合气吸收谱（CH4 2000 ppm、H2O 1%，296 K、1 atm）：
+**HitranLab 桌面工作站** —— CH₄ + H₂O 混合气吸收谱（CH₄ 2000 ppm、H₂O 1%，296 K、1 atm）：
 
 ![HitranLab 主界面](docs/images/hitranlab.png)
 
@@ -29,6 +56,7 @@
 
 ## 目录
 
+- [快速开始](#快速开始)
 - [效果预览](#效果预览)
 - [项目概览](#项目概览)
 - [功能特性](#功能特性)
