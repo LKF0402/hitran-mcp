@@ -1,113 +1,134 @@
 ---
 name: hitran-mcp
-description: HITRAN spectroscopic database MCP server. Use when the user mentions HITRAN, absorption spectrum, line strength, cross section, gas sensing spectroscopy, TDLAS, WMS, or asks to calculate molecular absorption, line parameters, spectral simulation, or atmospheric transmission.
+description: HITRAN spectroscopic database MCP server. Triggers on HITRAN, absorption spectrum, line strength, absorption cross section, gas sensing spectroscopy, TDLAS, WMS, molecular absorption calculation, spectral simulation, or atmospheric transmission queries.
 ---
 
 # hitran-mcp：HITRAN 光谱数据库 MCP 服务器
 
-通过 MCP 协议接入 AI 助手，用自然语言完成 HITRAN 光谱计算，包括吸收系数、透过率、线强、截面、配分函数等。
+基于 HITRAN2024 数据库的光谱计算 MCP 服务器，提供直接吸收光谱（DAS）、线表查询、截面分析与配分函数计算。
 
-## 触发条件
+## 触发域
 
-当用户提到以下关键词时触发：
+当用户请求涉及以下任一领域时触发：
 
-- HITRAN / 吸收谱 / 透过率 / 吸收系数
-- 线强 / 谱线参数 / line strength
-- 吸收截面 / cross section
-- 气体传感 / 光谱仿真
-- TDLAS / WMS（需要光谱数据时）
-- 分子吸收 / 红外光谱
-- 配分函数 / partition sum
+| 领域 | 关键词示例 |
+|------|-----------|
+| 分子光谱计算 | absorption spectrum, transmittance, absorption coefficient α |
+| 线参数分析 | line strength S(T), line list, spectral lines |
+| 截面数据 | absorption cross section σ, HITRAN cross-sections |
+| 气体传感 | gas sensing, TDLAS, WMS, concentration retrieval |
+| 热力学参数 | partition function Q(T), TIPS |
 
-## 前提条件
+## 工具接口
 
-- Python ≥ 3.10
-- 依赖：hitran-api（HAPI）、numpy、matplotlib
-- 首次使用会自动下载线表数据到本地缓存
+### 光谱计算类
 
-## 工具列表
+| 工具 | 功能 | 输入参数 | 输出 |
+|------|------|---------|------|
+| `hitran_spectrum` | 吸收系数 / 透过率谱计算 | `name`, `numin`, `numax`, `T`, `P`, `mole_frac`, `step`, `profile` | CSV 数据 + 溯源元数据 |
+| `hitran_lines` | 窗口内强线列表 | `name`, `numin`, `numax`, `top_n` | 线参数表（ν, S, γ, E″） |
+| `hitran_fetch` | 线表下载与缓存 | `name`, `numin`, `numax`, `iso` | 缓存状态 |
+| `hitran_plot` | 谱图绘制 | 同 `hitran_spectrum` + `ylog`, `dpi` | PNG 图像 |
 
-### 🔬 光谱计算
+### 分子与数据类
 
-| 工具 | 说明 | 关键输入 |
-|------|------|---------|
-| `hitran_spectrum` | 吸收系数 α / 透过率谱计算 | `name`, `numin`, `numax`, `T`, `P`, `mole_frac` |
-| `hitran_lines` | 窗口内最强 N 条谱线列表 | `name`, `numin`, `numax`, `top_n` |
-| `hitran_fetch` | 抓取线表到本地缓存 | `name`, `numin`, `numax`, `iso` |
-| `hitran_plot` | 谱图 PNG 绘制 | 同 spectrum，加 `ylog`, `title`, `dpi` |
-
-### 📊 分子与数据
-
-| 工具 | 说明 |
+| 工具 | 功能 |
 |------|------|
-| `hitran_species` | 查询分子表（M 号、同位素、丰度） |
-| `hitran_partition_sum` | 配分函数 Q(T) 查询（TIPS 2025） |
+| `hitran_species` | 官方分子表查询（M 编号、同位素、丰度） |
+| `hitran_partition_sum` | 配分函数 Q(T) 计算（TIPS 2025） |
 | `hitran_apikey_status` | API key / 缓存 / 产物状态 |
 
-### 🧪 截面库（XSC）
+### 截面库（XSC）类
 
-| 工具 | 说明 |
+| 工具 | 功能 |
 |------|------|
-| `hitran_xsc_search` | 在线搜索截面分子（中文名模糊匹配） |
-| `hitran_xsc_download` | 一键下载截面文件 |
-| `hitran_cross_section` | 读入截面文件并绘图/导出 |
+| `hitran_xsc_search` | 截面分子在线检索（中文名模糊匹配） |
+| `hitran_xsc_download` | 截面文件批量下载 |
+| `hitran_cross_section` | 截面文件读取与分析 |
 
-## 使用规范
+## 参数规范
 
-### 📏 单位标准
+### 物理单位
 
-| 参数 | 单位 | 默认值 |
-|------|------|--------|
-| 波数范围 | cm⁻¹ | 必填，无默认 |
-| 温度 T | K | 296 K（室温） |
-| 压力 P | atm | 1.0 atm |
-| 摩尔分数 | 无量纲（0~1） | 1.0（纯气体） |
-| 光程 L | cm | 1.0 cm（透过率模式用） |
-| 步长 step | cm⁻¹ | 0.01 |
+| 参数 | 单位 | 类型 | 默认值 |
+|------|------|------|--------|
+| `numin`, `numax` | cm⁻¹ | 浮点数 | **无默认，必填** |
+| `T`（温度） | K | 浮点数 | 296.0 |
+| `P`（压力） | atm | 浮点数 | 1.0 |
+| `mole_frac`（摩尔分数） | 无量纲 [0, 1] | 浮点数 | 1.0 |
+| `step`（步长） | cm⁻¹ | 浮点数 | 0.01 |
+| `L`（光程） | cm | 浮点数 | 1.0 |
 
-### ⚠️ 主动澄清规则（重要）
+### 物种标识
 
-**当用户说的参数不全时，必须主动问，不要瞎猜：**
+- `name`：分子式（大小写不敏感）或 HITRAN M 编号（1~61）
+- `iso`：同位素编号，`"all"` 表示按自然丰度加权，默认主同位素
 
-#### 必须问用户的情况：
-1. **没说波数范围** → 问："要算哪个波数范围？"
-2. **没说温度** → 可以用 296 K 默认值，但要告诉用户："用了默认温度 296 K，需要改吗？"
-3. **没说压力** → 可以用 1 atm 默认值，但要告诉用户
-4. **没说浓度** → 默认纯气体，但要告诉用户
+## 参数完整性校验流程
 
-#### 绝对不能瞎猜的情况：
-- ❌ 不知道要算什么分子 → 必须问
-- ❌ 波数范围完全不知道 → 必须问
-- ❌ 用户说的分子不在 HITRAN 表里 → 告诉用户，不要瞎算
+### 必须显式确认的参数
 
-### 📋 典型工作流
+以下参数缺失时，**必须向用户确认，不得使用默认值自动计算**：
 
-```
-① 用户说："帮我算 CH4 的吸收谱"
-② AI 应该：
-   → 先问："波数范围？（比如 2950-3100 cm⁻¹）"
-   → 用户回答后，再确认："温度 296 K，压力 1 atm，可以吗？"
-   → 确认后调用 hitran_spectrum
-③ 工具返回 needs_confirm=true 时：
-   → 把 assumed_defaults 列给用户看
-   → 问："这些默认值可以吗？需要改吗？"
-```
+1. **波数范围（`numin`, `numax`）**——物理窗口必须由用户指定
+2. **物种名称（`name`）**——计算目标必须明确
 
-### 🔢 输出模式
+### 可使用默认值的参数
 
-| 模式 | 说明 |
-|------|------|
-| `alpha` | 吸收系数 α（cm⁻¹）—— 默认 |
-| `transmittance` | 透过率 T（无量纲） |
-| `both` | 同时输出 α 和 T |
+以下参数可使用默认值，但**必须在结果中显式标注**：
 
-## 注意事项
+- 温度 T：默认 296 K
+- 压力 P：默认 1 atm
+- 摩尔分数：默认 1.0（纯气体）
+- 步长：默认 0.01 cm⁻¹
 
-- **数据实时取自 HITRANonline**，缓存后离线可用
-- **混合气按 α_i = x_i · α_pure_i 计算**，不是简单叠加
-- **结果带溯源水印**：任何 CSV/PNG 都标注 HITRAN2024 + HAPI + TIPS 版本
-- **首次使用较慢**：需要下载线表数据，后续自动复用缓存
+### 默认值标注规则
+
+当使用了默认参数时，工具返回 `assumed_defaults` 字段。Agent 收到此字段后：
+
+1. 必须向用户展示本次使用的默认参数列表
+2. 询问用户是否需要调整
+3. 用户确认后再进行后续计算
+
+### 禁止行为
+
+- ❌ 不得在用户未明确请求时，自行选择分子或波数范围
+- ❌ 不得将假设的参数值直接用于计算而不告知用户
+- ❌ 不得在物种未识别时，猜测分子进行计算
+
+## 输出模式
+
+| 模式 | 输出物理量 | 单位 |
+|------|-----------|------|
+| `alpha`（默认） | 吸收系数 α | cm⁻¹ |
+| `transmittance` | 透过率 T | 无量纲 |
+| `both` | 同时输出 α 和 T | — |
+
+## 物理口径
+
+- **混合气叠加**：α_total = Σ xᵢ · α_pure,i(T, P, 浴气)
+- **透过率**：T(ν) = exp(-α(ν) · L)
+- **截面换算**：σ = α / N（N = 数密度，molecules/cm³）
+- **线强**：S(T) = S(T_ref) · Q(T_ref)/Q(T) · Boltzmann 修正
+
+## 数据溯源
+
+所有 CSV / PNG 输出均包含：
+- HITRAN 版本（2024）
+- HAPI 版本
+- TIPS 版本
+- 计算参数（T, P, step, profile）
+- 生成时间
+
+## 错误处理
+
+| 错误类型 | 处理方式 |
+|---------|---------|
+| 物种未识别 | 返回可用分子列表，请用户确认 |
+| 波数窗口未覆盖 | 自动扩展窗口重抓线表 |
+| 0 条谱线 | 显式报错，禁止返回空平谱 |
+| 参数单位错误 | 明确指出单位错误，请用户修正 |
 
 ## 项目地址
 
-- GitHub: https://github.com/LKF0402/hitran-mcp
+https://github.com/LKF0402/hitran-mcp
