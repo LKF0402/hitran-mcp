@@ -1704,6 +1704,10 @@ class HitranLab(tk.Tk):
     def _job_xsc(self, path):
         out = hm.t_cross_section(file_path=path)
         nu, coef, header, skipped = _read_hotw(path)
+        if skipped:
+            # 解析时被跳过的行必须如实上报，否则用户不知道数据被裁过
+            out.setdefault("warnings", []).append(
+                f"解析时跳过了 {skipped} 行无法识别的数据（前两列非数值）")
         return {"kind": "xsc", "path": path, "out": out, "nu": nu, "coef": coef}
 
     # ───────────────────────── 结果回填（主线程） ─────────────────────────
@@ -2322,6 +2326,11 @@ class HitranLab(tk.Tk):
             if not nu:
                 self._show_error("文件中无有效数据（需要两列：波数, 值）")
                 return
+            # 按波数排序：源文件若乱序，直接画折线会出现来回穿插的错乱图形
+            nu = np.asarray(nu, dtype=float)
+            coef = np.asarray(coef, dtype=float)
+            _order = np.argsort(nu)
+            nu, coef = nu[_order], coef[_order]
             tag = f"{Path(p).stem} (imported)"
             # 若当前处于 Q(T)/截面视图，先切回谱线视图（清空旧图层）
             if self._view_mode != "spectrum":
