@@ -387,6 +387,18 @@ class HitranLab(tk.Tk):
 
         _log_error(title, message)
 
+        # 取主题色：原先误用不存在的 self._colors，会让"错误弹窗"本身抛
+        # AttributeError（错误处理路径上的错误，用户反而看不到错误内容）。
+        # 这里用 _get_colors 并兜底，保证弹窗在任何情况下都能显示出来。
+        try:
+            c = self._get_colors(getattr(self, "_theme", "dark"))
+        except Exception:
+            c = {}
+        bg = c.get("SURFACE", "#2B2B2B")
+        fg = c.get("TEXT", "#E8E8E8")
+        fg2 = c.get("TEXT_SECONDARY", "#8A8A92")
+        accent = c.get("ACCENT", "#4A90D9")
+
         # 弹出可复制的错误对话框
         dlg = tk.Toplevel(self)
         dlg.title(title)
@@ -395,29 +407,25 @@ class HitranLab(tk.Tk):
 
         # 标题
         tk.Label(dlg, text=title, font=("Segoe UI", 12, "bold"),
-                 bg=self._colors["SURFACE"], fg=self._colors["TEXT"]).pack(
-            fill="x", padx=10, pady=(10, 5))
+                 bg=bg, fg=fg).pack(fill="x", padx=10, pady=(10, 5))
 
         # 可滚动文本框（可选中复制）
         text = scrolledtext.ScrolledText(dlg, wrap="word",
                                          font=("Consolas", 10),
-                                         bg=self._colors["SURFACE"],
-                                         fg=self._colors["TEXT"],
-                                         insertbackground=self._colors["TEXT"])
+                                         bg=bg, fg=fg, insertbackground=fg)
         text.pack(fill="both", expand=True, padx=10, pady=5)
         text.insert("1.0", message)
         text.config(state="disabled")  # 只读，但可选中复制
 
         # 按钮
-        btn_frame = tk.Frame(dlg, bg=self._colors["SURFACE"])
+        btn_frame = tk.Frame(dlg, bg=bg)
         btn_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         tk.Label(btn_frame, text=f"错误已记录到: Hitran_Data/error.log",
-                 font=("Segoe UI", 9), fg=self._colors["TEXT_SECONDARY"],
-                 bg=self._colors["SURFACE"]).pack(side="left")
+                 font=("Segoe UI", 9), fg=fg2, bg=bg).pack(side="left")
 
         RoundedButton(btn_frame, "关闭", lambda: dlg.destroy(),
-                      bg=self._colors["ACCENT"], fg=self._colors["TEXT"]).pack(side="right")
+                      bg=accent, fg=fg).pack(side="right")
 
         dlg.wait_window()
 
@@ -895,7 +903,7 @@ class HitranLab(tk.Tk):
         fbg.columnconfigure(0, weight=1); fbg.columnconfigure(1, weight=1)
 
         # 截面导入
-        f4 = ttk.LabelFrame(inner, text="截面文件 (HOTW)", padding=8)
+        f4 = ttk.LabelFrame(inner, text="截面文件", padding=8)
         f4.pack(fill=tk.X, pady=(0, 6))
         self.xsc_var = tk.StringVar()
         ttk.Entry(f4, textvariable=self.xsc_var).pack(fill=tk.X)
@@ -903,6 +911,8 @@ class HitranLab(tk.Tk):
         xr.pack(fill=tk.X, pady=(4, 0))
         ttk.Button(xr, text="浏览…", command=self._pick_xsc).pack(side="left", fill="x", expand=True, padx=(0, 2))
         ttk.Button(xr, text="导入并绘图", command=self._import_xsc).pack(side="left", fill="x", expand=True, padx=(2, 0))
+        ttk.Button(f4, text="搜索并下载（HITRAN 在线）…",
+                   command=self._open_xsc_download).pack(fill="x", pady=(4, 0))
 
         # ── 右：图谱 + 数据页 ──
         right = ttk.Frame(main)
@@ -988,7 +998,7 @@ class HitranLab(tk.Tk):
         xsc_vsb = ttk.Scrollbar(xsc_frame, orient="vertical", command=self.xsc_text.yview)
         xsc_vsb.pack(side="right", fill="y")
         self.xsc_text.configure(yscrollcommand=xsc_vsb.set)
-        self.xsc_text.insert("1.0", "导入截面文件（HOTW）后显示分子、波段、温度、压力等信息。")
+        self.xsc_text.insert("1.0", "导入截面文件（HITRAN 原生 .xsc 或两列 HOTW 文本）后显示分子、波段、温度、压力等信息。")
         # 状态
         self.stat_tab = ttk.Frame(self.nb)
         self.nb.add(self.stat_tab, text="运行状态")
@@ -1433,7 +1443,11 @@ class HitranLab(tk.Tk):
 
     def _pick_xsc(self):
         p = filedialog.askopenfilename(
-            title="选择 HITRAN 截面文件", filetypes=[("HOTW 文本", "*.txt"), ("所有文件", "*.*")])
+            title="选择 HITRAN 截面文件",
+            filetypes=[("截面文件", "*.xsc *.txt *.dat *.csv"),
+                       ("HITRAN 原生", "*.xsc"),
+                       ("HOTW / CSV 文本", "*.txt *.dat *.csv"),
+                       ("所有文件", "*.*")])
         if p:
             self.xsc_var.set(p)
 
@@ -1689,6 +1703,234 @@ class HitranLab(tk.Tk):
                 return {"kind": "cancelled"}
             qs.append(hm.t_partition_sum(name, T=float(t))["Q"])
         return {"kind": "qcurve", "name": name, "Ts": Ts, "Qs": qs}
+
+    def _open_xsc_download(self):
+        """「下载 HITRAN 截面文件」对话框：列清单 → 勾选 → 下载到 xsc_data/。
+
+        链路：官方 API 列清单（需 API key，免 Portal 登录）→ 勾选 → 下载 → 可直接导入绘图。
+        所有网络操作走后台线程 + after 轮询，不阻塞界面；跳过/失败如实上报。
+        """
+        win = tk.Toplevel(self)
+        win.title("下载 HITRAN 截面文件")
+        win.geometry("940x600")
+        win.minsize(780, 480)
+        state = {"files": [], "search": None, "progress": None, "dl_result": None}
+
+        def fmt(v):
+            if v is None:
+                return "-"
+            try:
+                return f"{float(v):g}"
+            except Exception:
+                return str(v)
+
+        top = ttk.Frame(win, padding=(10, 10, 10, 4))
+        top.pack(fill="x")
+        ttk.Label(top, text="分子名").pack(side="left")
+        name_var = tk.StringVar(value="Propane")
+        ent = ttk.Entry(top, textvariable=name_var, width=22)
+        ent.pack(side="left", padx=6)
+        btn_search = ttk.Button(top, text="搜索")
+        btn_search.pack(side="left")
+        ttk.Label(top, text="（HITRAN 页面上的英文名，如 Propane / n-Butane / Acetone）",
+                  foreground="#8A8A92").pack(side="left", padx=8)
+
+        mid = ttk.Frame(win, padding=(10, 0))
+        mid.pack(fill="both", expand=True)
+        cols = ("T", "p", "rng", "res", "npts", "size", "brd", "file")
+        tv = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
+        for c, txt, w, anchor in (("T", "T (K)", 64, "center"), ("p", "p (Torr)", 74, "center"),
+                                  ("rng", "波数范围 (cm-1)", 176, "w"), ("res", "分辨率", 64, "center"),
+                                  ("npts", "点数", 74, "center"), ("size", "大小(MB)", 70, "center"),
+                                  ("brd", "展宽气", 58, "center"), ("file", "文件名", 330, "w")):
+            tv.heading(c, text=txt)
+            tv.column(c, width=w, anchor=anchor)
+        vsb = ttk.Scrollbar(mid, orient="vertical", command=tv.yview)
+        hsb = ttk.Scrollbar(mid, orient="horizontal", command=tv.xview)
+        tv.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        tv.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="we")
+        mid.rowconfigure(0, weight=1)
+        mid.columnconfigure(0, weight=1)
+
+        stat_var = tk.StringVar(value="输入分子名后点「搜索」；列表中单击行即可选中/取消（默认全选）")
+        foot = ttk.Frame(win, padding=(10, 6, 10, 10))
+        foot.pack(fill="x")
+        btn_all = ttk.Button(foot, text="全选")
+        btn_all.pack(side="left")
+        btn_none = ttk.Button(foot, text="清空")
+        btn_none.pack(side="left", padx=4)
+        btn_close = ttk.Button(foot, text="关闭", command=lambda: self._close_modal(win))
+        btn_close.pack(side="right")
+        btn_dl = ttk.Button(foot, text="下载选中")
+        btn_dl.pack(side="right", padx=6)
+        ttk.Label(foot, textvariable=stat_var, foreground="#4A4A52").pack(side="left", padx=10)
+
+        def sel_rows():
+            return [int(i) for i in tv.selection() if str(i).isdigit()]
+
+        def update_stat(*_):
+            idx = sel_rows()
+            files = state.get("files") or []
+            est = sum((files[i].get("est_size_mb") or 0) for i in idx if i < len(files))
+            if files:
+                stat_var.set(f"已选 {len(idx)}/{len(files)} 个，预计 {est:.1f} MB"
+                             f"（单次上限 {hm.XSC_DL_LIMIT_MB} MB）")
+
+        def toggle_row(event):
+            row = tv.identify_row(event.y)
+            if not row:
+                return
+            if row in tv.selection():
+                tv.selection_remove(row)
+            else:
+                tv.selection_add(row)
+            update_stat()
+            return "break"          # 拦住默认选择行为，实现"单击=勾选/取消"
+
+        def pick_all():
+            tv.selection_set(tv.get_children())
+            update_stat()
+
+        def pick_none():
+            tv.selection_remove(*tv.get_children())
+            update_stat()
+
+        def fill(files):
+            state["files"] = files
+            tv.delete(*tv.get_children())
+            for i, it in enumerate(files):
+                mark = "✓ " if it.get("downloaded") else ""
+                tv.insert("", "end", iid=str(i), values=(
+                    fmt(it.get("T_K")), fmt(it.get("p_Torr")),
+                    f"{fmt(it.get('nu_min_cm-1'))} ~ {fmt(it.get('nu_max_cm-1'))}",
+                    fmt(it.get("resolution_cm-1")), fmt(it.get("n_points")),
+                    fmt(it.get("est_size_mb")), fmt(it.get("broadener")),
+                    mark + str(it.get("filename") or "")))
+            if files:
+                pick_all()
+            else:
+                stat_var.set("未找到可下载的截面文件")
+
+        def poll_search():
+            r = state["search"]
+            if r == "pending":
+                win.after(200, poll_search)
+                return
+            state["search"] = None
+            btn_search.configure(state="normal")
+            btn_dl.configure(state="normal")           # 搜索结束后恢复下载按钮
+            if not isinstance(r, dict):
+                return
+            if r.get("error"):
+                stat_var.set("查询失败")
+                self.show_error_dialog("查询截面清单失败", r["error"])
+                return
+            if not r.get("found"):
+                stat_var.set(r.get("hint") or "未找到")
+                return
+            files = r.get("files") or []
+            fill(files)
+            if files:
+                stat_var.set(f"共 {len(files)} 个文件，合计约 {r.get('total_est_mb')} MB"
+                             f"（已全部选中，单击行可取消）")
+
+        def do_search():
+            nm = name_var.get().strip()
+            if not nm:
+                messagebox.showwarning("HitranLab", "请输入分子名", parent=win)
+                return
+            state["search"] = "pending"
+            btn_search.configure(state="disabled")
+            btn_dl.configure(state="disabled")
+            stat_var.set(f"正在查询 '{nm}' …")
+            tv.delete(*tv.get_children())
+            state["files"] = []
+
+            def bg():
+                try:
+                    state["search"] = hm.t_xsc_files(name=nm)
+                except Exception:
+                    state["search"] = {"error": traceback.format_exc()}
+            threading.Thread(target=bg, daemon=True).start()
+            win.after(200, poll_search)
+
+        def poll_download():
+            if state.get("dl_result") is None:
+                pr = state.get("progress") or (0, 0, "", 0)
+                stat_var.set(f"下载中 {pr[0] + 1}/{pr[1]}：{pr[2]}")
+                win.after(300, poll_download)
+                return
+            res = state["dl_result"]
+            state["dl_result"] = None
+            btn_dl.configure(state="normal")
+            btn_search.configure(state="normal")
+            btn_close.configure(state="normal")
+            win.protocol("WM_DELETE_WINDOW", lambda w=win: self._close_modal(w))
+            if res.get("error"):
+                stat_var.set("下载失败")
+                self.show_error_dialog("下载截面文件失败", res["error"])
+                return
+            paths = [d["path"] for d in (res.get("downloaded") or [])]
+            msg = f"已下载 {res.get('n_downloaded', 0)} 个文件（{res.get('total_mb', 0)} MB）\n→ {res.get('dest_dir')}"
+            if res.get("skipped"):
+                msg += f"\n\n跳过已存在 {len(res['skipped'])} 个（不重复下载）"
+            if res.get("failed"):
+                msg += f"\n\n失败 {len(res['failed'])} 个：\n" + "\n".join(
+                    f"  {f.get('filename')}: {f.get('error', '')[:110]}" for f in res["failed"][:4])
+            if paths:
+                self.xsc_var.set(paths[0])
+                msg += "\n\n第一个文件已填入「截面文件」输入框，可直接点「导入并绘图」。"
+            stat_var.set(f"完成：下载 {res.get('n_downloaded', 0)} 个，跳过 "
+                         f"{len(res.get('skipped') or [])} 个，失败 {len(res.get('failed') or [])} 个")
+            messagebox.showinfo("HitranLab", msg, parent=win)
+            if paths:
+                do_search()          # 刷新"已下载"标记
+            elif res.get("skipped"):
+                do_search()
+
+        def do_download():
+            files = state.get("files") or []
+            nm = name_var.get().strip()      # Tk 变量只能在主线程读，后台线程读会抛 RuntimeError
+            idx = [i for i in sel_rows() if i < len(files)]
+            if not idx:
+                messagebox.showinfo("HitranLab", "请先选中要下载的文件", parent=win)
+                return
+            sel = [files[i] for i in idx]
+            est = sum((it.get("est_size_mb") or 0) for it in sel)
+            if not messagebox.askyesno(
+                    "HitranLab",
+                    f"将下载 {len(sel)} 个文件，预计 {est:.1f} MB，保存到：\n"
+                    f"{hm.XSC_DIR}\n\n继续？", parent=win):
+                return
+            state["progress"] = (0, len(sel), "", 0)
+            btn_dl.configure(state="disabled")
+            btn_search.configure(state="disabled")
+            btn_close.configure(state="disabled")
+            win.protocol("WM_DELETE_WINDOW", lambda: None)      # 下载中不允许关闭
+
+            def prog(done, total, fname, nbytes):
+                state["progress"] = (done, total, fname, nbytes)
+
+            def bg():
+                try:
+                    state["dl_result"] = hm.t_xsc_download(
+                        name=nm,
+                        filenames=[it["filename"] for it in sel], progress=prog)
+                except Exception:
+                    state["dl_result"] = {"error": traceback.format_exc()}
+            threading.Thread(target=bg, daemon=True).start()
+            win.after(300, poll_download)
+
+        btn_search.configure(command=do_search)
+        btn_dl.configure(command=do_download)
+        btn_all.configure(command=pick_all)
+        btn_none.configure(command=pick_none)
+        tv.bind("<Button-1>", toggle_row)
+        tv.bind("<<TreeviewSelect>>", update_stat)
+        ent.bind("<Return>", lambda e: do_search())
+        self._modal(win)
 
     def _import_xsc(self):
         if self.worker.busy:
@@ -2668,8 +2910,9 @@ class HitranLab(tk.Tk):
 - 浓度留空表示纯气体
 
 【截面文件】
-- 支持 HOTW 格式（两列：波数, 截面）
-- 用于 HITRAN 未收录的分子
+- 支持 HITRAN 原生 .xsc（1 行定宽头 + 每行 10 个 σ）与两列 HOTW/CSV 文本，自动识别
+- 用于 HITRAN 逐线库未收录的重分子（截面子库 600+ 种）
+- 「搜索并下载」：按分子名在线列出全部 T/p 版本，勾选后下载到 xsc_data/（需 API Key）
 
 【导出】
 - CSV：导出所有叠加曲线数据
@@ -2866,8 +3109,9 @@ class HitranLab(tk.Tk):
     def _show_api_key_config(self):
         """配置 HITRAN API key（保存到 Hitran_Data/hitran_api_key.txt，已 gitignore）。
 
-        key 的实际用途：HAPI2 经由 HITRAN 官方 v2 API 下载线表（key 带在 URL 里）；
-        HAPI 1.x 的旧下载接口不校验 key。
+        key 的实际用途：① 线表下载经 HAPI2 走 HITRAN 官方 v2 API（key 带在 URL 里）；
+        ② 截面文件的在线清单与下载（「搜索并下载」）同样走官方 v2 API。
+        HAPI 1.x 的旧下载接口不校验 key（仅在官方 API 不可用回退时才会用到）。
         """
         import os
         win = tk.Toplevel(self)
@@ -3177,8 +3421,16 @@ class HitranLab(tk.Tk):
 
 
 def _read_hotw(path):
-    """读两列 ν–σ 截面文件（跳过 #/空行/非数值行），返回 (nu, coef, header, skipped)。"""
+    """读截面文件 → (nu, coef, header, skipped)。
+
+    自动识别两种格式：① HITRAN 原生 .xsc（定宽头 + 每行 10 个 σ 值，即
+    hitran_xsc_download 下载的那种，波数网格由头部 numin/numax/npnts 重建）；
+    ② 两列 ν–σ 文本（HOTW/CSV，跳过 #/空行/非数值行）。
+    原先只认两列，会把 .xsc 的 10 列行前两列当成 (ν, σ) —— 静默读入错误数据。
+    """
     import numpy as np
+    if hm._looks_like_native_xsc(path):
+        return hm._read_xsc_native(path)
     nu_l, coef_l, header, skipped = [], [], [], 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for ln in f:

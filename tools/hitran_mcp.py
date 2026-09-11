@@ -69,9 +69,10 @@ def _quiet():
 def _api_key():
     """读取本机 HITRAN API key（文件已 gitignore，不入库；优先读环境变量）。
 
-    注意：HAPI 1.3.0.0 官方代码的 getLinelist() 接收 api_key 但并未使用，
-    下载走旧接口不校验 key；此 key 属"预置"——升级到支持 key 的 HAPI/官方 API
-    版本时自动生效，同时便于官方配额问题的排查与登记。
+    该 key **已经生效**，有两处用途：
+      ① 线表下载：经 tools/hitran.py 的 HAPI2 接入走 HITRAN 官方 v2 API（URL 携带 key）；
+      ② 截面清单/下载：hitran_xsc_files / hitran_xsc_download 同样走官方 v2 API。
+    仅当回退到 HAPI 1.x 旧接口（官方 API 不可用时）key 才不参与 —— 旧接口不校验 key。
     """
     env = os.environ.get("HITRAN_API_KEY", "").strip()
     if env:
@@ -98,7 +99,7 @@ def _hitran():
         # 库层已改为惰性建目录：此处统一触发 db_begin，
         # 保证 _ensure_table_for 直调 hapi.fetch 时缓存落在 CACHE_ROOT 而非 HAPI 默认目录
         m._init_cache()
-        key = _api_key()                     # 预置 key：未来版本 HAPI 自动生效
+        key = _api_key()                     # 官方 v2 API（线表/截面下载）需要它
         if key:
             try:
                 if not getattr(hapi, "API_KEY", None):
@@ -1075,6 +1076,72 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
     return out
 
 
+def _looks_like_native_xsc(path):
+    """首行是否为半 HITRAN 定宽头（即 hitran.org/data/xsec 那种原生 .xsc）。
+
+    头格式：[0:20] 分子式 | [20:30] numin | [30:40] numax | [40:47] npnts
+            | [47:54] T(K) | [54:60] p(Torr) | [60:] 参考/展宽气。
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            h = f.readline()
+        if len(h) < 60:
+            return False
+        float(h[20:30]); float(h[30:40]); int(h[40:47])
+        float(h[47:54]); float(h[54:60])
+        return True
+    except Exception:
+        return False
+
+
+def _read_xsc_native(path):
+    """读 HITRAN 原生 .xsc（半 HITRAN 格式）：1 行定宽头 + 每行 10 个 σ 值。
+
+    与两列 HOTW 文本的区别：文件只存 σ（cm²/molecule），波数网格由头部
+    numin/numax/npnts 重建（官方文件按等间隔生成）。hitran_xsc_download
+    下到的正是这种文件，故读入侧必须支持。
+    """
+    path = Path(str(path))
+    with open(path, encoding="utf-8", errors="replace") as f:
+        h = f.readline()
+        try:
+            formula = h[0:20].strip()
+            numin, numax = float(h[20:30]), float(h[30:40])
+            npnts = int(h[40:47])
+            temp, pres = float(h[47:54]), float(h[54:60])
+        except Exception as e:
+            raise ValueError(f"[hitran_cross_section] '{path.name}' 头部不是合法的 HITRAN 原生 "
+                             f".xsc 格式：{e}") from e
+        vals = []
+        for ln in f:
+            for s in ln.split():
+                try:
+                    vals.append(float(s))
+                except ValueError:
+                    pass
+            if len(vals) >= npnts:
+                break
+    if len(vals) < npnts:
+        raise ValueError(f"[hitran_cross_section] '{path.name}' 头部声明 {npnts} 点、"
+                         f"实读 {len(vals)} 点（文件可能被截断或格式不符）。")
+    npx = _np()
+    coef = npx.asarray(vals[:npnts], dtype=float)
+    nu = npx.linspace(numin, numax, npnts)
+    # [60:] 为附加区：新式文件含 sigma_max/分辨率/分子名([75:90])/展宽气([90:100])，
+    # 老式文件此处是参考文献 —— 故不硬标为"参考文献"，能认出的字段分开列出。
+    extra = h[60:].strip()
+    name = h[75:90].strip()
+    bits = [f"# HITRAN native .xsc | {formula}"]
+    if name and name != formula:
+        bits.append(f"name={name}")
+    bits += [f"nu {numin:g}-{numax:g} cm-1", f"T={temp:g} K",
+             f"p={pres:g} Torr", f"npts={npnts}"]
+    if extra:
+        bits.append(f"extra='{extra}'")
+    header = [" | ".join(bits)]
+    return nu, coef, header, 0
+
+
 def _read_hotw_file(path):
     """读 HITRAN-on-the-Web 截面文件（两列：nu, coef[cm2/molecule]）。
 
@@ -1110,9 +1177,12 @@ def _read_hotw_file(path):
             if not nu and skipped > 200:      # 头部垃圾行过多，疑似非截面文件
                 break
     if not nu:
+        if _looks_like_native_xsc(path):        # hitran_xsc_download 下到的原生 .xsc
+            return _read_xsc_native(path)
         raise ValueError(
             f"[hitran_cross_section] '{path.name}' 中未解析到两列数值数据（nu, coef）。"
-            f"请确认是 hitran.org/xsc 下载的 HOTW 截面文件（形如 '2950.0000 1.23e-21'）。")
+            f"请确认是 hitran.org/xsc 下载的 HOTW 截面文件（形如 '2950.0000 1.23e-21'），"
+            f"或本工具 hitran_xsc_download 下载的 HITRAN 原生 .xsc。")
     return _np().asarray(nu, dtype=float), _np().asarray(coef, dtype=float), header, skipped
 
 
@@ -1131,15 +1201,17 @@ def _list_xsc_files():
 
 def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
                     title=None, ylog=False, dpi=160, save_csv=True):
-    """读入本地 HOTW 截面文件（hitran.org/xsc 下载，两列 ν–σ）→ 截窗 → 绘图 PNG + 溯源 CSV。
+    """读入本地截面文件（HITRAN 原生 .xsc 或两列 ν–σ 文本）→ 截窗 → 绘图 PNG + 溯源 CSV。
 
     桥接 HITRAN 双库架构的截面通道：逐线库（61 分子）走 HAPI 在线 API；截面库
-    （600+ 重分子）只经 Web Portal 登录下载文件，无在线 API。
-    本工具把下载的截面文件接入同一套产物链路（CSV/PNG 带溯源水印）。
+    （600+ 重分子）没有在线计算接口，只能读文件。本工具把截面文件接入同一套
+    产物链路（CSV/PNG 带溯源水印）。
 
-    截面文件由用户按需下载并放入仓库 xsc_data/ 目录（gitignore 区）；file_path 缺省时
-    列出该目录可用文件，
-    供调用方选择后重传。数据单位固定为 σ (cm²/molecule)。
+    两类文件自动识别：
+      ① HITRAN 原生 .xsc（1 行定宽头 + 每行 10 个 σ 值）—— hitran_xsc_download 下到的就是它；
+      ② 两列 ν–σ 文本（HOTW 导出 / CSV）。
+    文件可放在 xsc_data/（gitignore 区，hitran_xsc_download 的默认落点）；file_path 缺省时
+    列出该目录可用文件供选择。数据单位固定为 σ (cm²/molecule)。
     """
     if not file_path:
         avail = _list_xsc_files()
@@ -1282,8 +1354,292 @@ def t_xsc_search(name=None):
             "common_name": nm.group(1).strip() if nm else str(name).strip(),
             "n_files": len(files),
             "files": files,
-            "hint": ("在 hitran.org/xsc 登录后勾选目标 T–P 文件下载 .txt 到 xsc_data/，"
-                     "再调 hitran_cross_section(file_path=...) 读入分析。")}
+            "hint": ("可先用 hitran_xsc_files 列出**可直接下载**的文件名（需 API key），"
+                     "再用 hitran_xsc_download 一键下载到 xsc_data/，"
+                     "最后 hitran_cross_section(file_path=...) 读入分析。")}
+
+
+# ─────────────── 截面文件：官方 API 清单与一键下载（免 Portal 登录） ───────────────
+# 截面子库（600+ 重分子）没有 HAPI 在线计算接口，但 hitran.org 官方 API
+# /api/v2/<key>/cross-sections 能列出**可直接下载的文件名**，数据文件位于公开路径
+# /data/xsec/ 下（实测 HTTP 200，无需登录）。故"搜索 → 勾选 → 下载"无需 HAPI2。
+
+XSC_DL_LIMIT_MB = 300                # 单次批量下载总体积上限（防手抖把整个分子全下）
+_XSC_BYTES_PER_POINT = 10.1          # HOTW 两列文本实测 ~10.1 B/点（43145 点 → 435915 B）
+
+
+def _xsc_should_retry(e):
+    """是否值得重试：网络抖动/超时/5xx 值得；4xx（404/403 等）不值得。"""
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code in (408, 429, 500, 502, 503, 504)
+    return True
+
+
+def _xsc_retry(fn, tries=3, delay=1.5):
+    """网络抖动重试。实测 hitran.org 偶发 URLError（约 1/8），重试即成功。"""
+    import time
+    last = None
+    for i in range(max(1, int(tries))):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            if i >= tries - 1:
+                break
+            if not _xsc_should_retry(e):
+                raise
+            time.sleep(delay * (i + 1))
+    raise last
+
+
+def _xsc_molecule_id(name):
+    """分子名 → 截面子库 molecule_id（免登录页面接口 get-molecule）。"""
+    import urllib.parse
+    q = urllib.parse.quote(str(name).strip())
+    mid = _xsc_retry(
+        lambda: _http_get_text(f"https://hitran.org/xsc/get-molecule?molecule_name={q}").strip(),
+        tries=3, delay=1.5)
+    return int(mid) if mid.isdigit() else None
+
+
+def _xsc_api_records(molecule_id, timeout=90):
+    """官方 API 拉取某分子的截面元数据列表（含可直接下载的 filename）。"""
+    key = _api_key()
+    if not key:
+        raise RuntimeError(
+            "[hitran_xsc_files] 未配置 HITRAN API key：清单接口 /api/v2/<key>/cross-sections "
+            "需要它。请先在界面「API Key」中填写，或设置环境变量 HITRAN_API_KEY。")
+    url = (f"https://hitran.org/api/v2/{key}/cross-sections"
+           f"?molecule_id__in={int(molecule_id)}")
+    try:
+        data = _xsc_retry(lambda: json.loads(_http_get_text(url, timeout=timeout)),
+                          tries=3, delay=1.5)
+    except Exception as e:
+        raise RuntimeError(f"[hitran_xsc_files] 查询失败（{type(e).__name__}: {e}）；"
+                           f"请确认可直连 hitran.org 且 API key 有效。") from e
+    if str(data.get("status", "")).upper() != "OK":
+        raise RuntimeError(f"[hitran_xsc_files] API 返回异常："
+                           f"{data.get('message') or data.get('status')}")
+    return (data.get("content") or {}).get("data") or []
+
+
+def _xsc_normalize(rec):
+    """API 记录 → 统一字段（含体积估算、下载地址、本地路径）。"""
+    npts = int(rec.get("npnts") or 0)
+    fname = str(rec.get("filename") or "")
+    return {
+        "id": rec.get("id"),
+        "filename": fname,
+        "molecule": rec.get("molecule_alias") or "",
+        "status": rec.get("status") or "",
+        "T_K": rec.get("temperature"),
+        "p_Torr": rec.get("pressure"),
+        "nu_min_cm-1": rec.get("numin"),
+        "nu_max_cm-1": rec.get("numax"),
+        "resolution_cm-1": rec.get("resolution"),
+        "broadener": rec.get("broadener"),
+        "n_points": npts,
+        "est_size_mb": round(npts * _XSC_BYTES_PER_POINT / 1e6, 2) if npts else None,
+        "download_url": f"https://hitran.org/data/xsec/{fname}" if fname else "",
+        "local_path": str(XSC_DIR / fname) if fname else "",
+        "downloaded": bool(fname) and (XSC_DIR / fname).exists(),
+    }
+
+
+def _xsc_http_open(url, timeout, method="GET"):
+    """带浏览器 UA 打开 hitran.org（截面数据路径公开，无需登录）。"""
+    import urllib.request
+    req = urllib.request.Request(url, method=method, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _xsc_head_size(filename, timeout=30):
+    """HEAD 取文件大小（仅"只给文件名"时用于估算总体积；失败返回 0）。"""
+    import urllib.parse
+    fname = Path(str(filename)).name
+
+    def _head():
+        with _xsc_http_open(f"https://hitran.org/data/xsec/{urllib.parse.quote(fname)}",
+                            timeout, method="HEAD") as r:
+            return int(r.headers.get("Content-Length") or 0)
+
+    try:
+        return _xsc_retry(_head, tries=2, delay=1.0)
+    except Exception:
+        return 0
+
+
+def _xsc_download_one(filename, dest_dir, timeout=900):
+    """下载单个截面文件（.part 临时文件 + 原子重命名，避免半截文件被当好的用）。"""
+    import shutil
+    import urllib.parse
+    safe = Path(str(filename)).name                 # 防路径穿越
+    if not safe:
+        raise ValueError("空文件名")
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    tmp = dest / (safe + ".part")
+
+    def _fetch():
+        with _xsc_http_open(f"https://hitran.org/data/xsec/{urllib.parse.quote(safe)}",
+                            timeout) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f, length=1 << 20)
+        n = tmp.stat().st_size
+        if n < 1024:                                # 与线表同一判据：过小视为残骸
+            raise RuntimeError(f"下载内容异常（{n} 字节）")
+        os.replace(tmp, dest / safe)                # 原子落盘
+        return n
+
+    try:
+        return _xsc_retry(_fetch, tries=2, delay=2.0)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+
+
+def t_xsc_files(name=None, include_all=False):
+    """列出某截面分子**可下载**的截面文件清单（需 HITRAN API key，免 Portal 登录）。
+
+    与 hitran_xsc_search 的分工：本工具走官方 API（/api/v2/<key>/cross-sections），
+    返回**可直接下载的文件名 filename** 与体积估算，是 hitran_xsc_download 的配套清单；
+    hitran_xsc_search 走免登录页面接口，无 key 时也能探到条目但没有文件名。
+
+    典型链条：hitran_xsc_files 列清单 → 挑 filenames → hitran_xsc_download 下载 →
+    hitran_cross_section(file_path=...) 读入绘图。
+    """
+    if not name:
+        raise ValueError("[hitran_xsc_files] 必须提供 name"
+                         "（hitran.org/xsc 上显示的英文分子名，如 Propane / Acetone）。")
+    mid = _xsc_molecule_id(name)
+    if mid is None:
+        return {"query": str(name).strip(), "found": False, "files": [], "hint": (
+            f"截面子库未找到 '{name}'。可能：① 名称不是 Portal 页面显示的英文名；"
+            f"② 该分子未收录于截面子库。")}
+    items = [_xsc_normalize(r) for r in _xsc_api_records(mid)]
+    n_all = len(items)
+    if not include_all:
+        mains = [it for it in items if it["status"] in ("main", "")]
+        if mains:
+            items = mains
+    return {"query": str(name).strip(), "found": True, "molecule_id": mid,
+            "n_files": len(items), "n_files_all": n_all,
+            "total_est_mb": round(sum((it["est_size_mb"] or 0) for it in items), 1),
+            "files": items,
+            "hint": ("选定 filenames 后调 "
+                     "hitran_xsc_download(name=..., filenames=[...]) 下载到 xsc_data/，"
+                     "再 hitran_cross_section(file_path=...) 读入绘图。")}
+
+
+def t_xsc_download(name=None, filenames=None, ids=None, max_total_mb=None,
+                   dry_run=False, overwrite=False, progress=None, cancel=None):
+    """把选定的截面文件下载到 xsc_data/（官方 API 列清单 + 公开路径取文件，无需 Portal 登录）。
+
+    选择方式二选一（可混用）：filenames=[...] 与 ids=[...]，均取自 hitran_xsc_files。
+    强烈建议带上 name：这样才能拿到 T/p/点数并校验总体积；只给 filenames 时逐个用
+    HEAD 估重，达不到限流保护的效果。
+
+    dry_run=True 只报告将下载什么（含总体积），不实际下载。
+    下载完成的文件会出现在 hitran_cross_section 的可用清单里，可直接读入绘图。
+    """
+    filenames = [str(x).strip() for x in (filenames or []) if str(x).strip()]
+    ids = [int(x) for x in (ids or [])]
+    if not filenames and not ids:
+        raise ValueError("[hitran_xsc_download] 必须给出 filenames=[...] 或 ids=[...]"
+                         "（可用 hitran_xsc_files 获取）。")
+    limit_mb = XSC_DL_LIMIT_MB if max_total_mb is None else float(max_total_mb)
+
+    # ── 解析目标 ──
+    targets, missing = [], []
+    pool = []
+    if name:
+        listing = t_xsc_files(name=name, include_all=True)
+        if not listing.get("found"):
+            return {"downloaded": [], "skipped": [], "failed": [], "missing": missing,
+                    "hint": listing.get("hint")}
+        pool = listing["files"]
+    by_fname = {it["filename"]: it for it in pool}
+    for f in filenames:
+        it = by_fname.get(f)
+        if it is None:
+            if name:
+                missing.append(f)                    # 有清单但对不上 → 报告，不猜
+                continue
+            it = {"id": None, "filename": f, "molecule": "", "T_K": None, "p_Torr": None,
+                  "nu_min_cm-1": None, "nu_max_cm-1": None, "resolution_cm-1": None,
+                  "broadener": None, "n_points": None, "est_size_mb": None}
+            size = _xsc_head_size(f)
+            if size:
+                it["est_size_mb"] = round(size / 1e6, 2)
+        targets.append(it)
+    if ids:
+        want = set(ids)
+        for it in pool:
+            if it.get("id") in want and it not in targets:
+                targets.append(it)
+        if name:
+            have = {it.get("id") for it in pool}
+            missing += [f"id={i}" for i in sorted(want - have)]
+
+    est_total = round(sum((it.get("est_size_mb") or 0) for it in targets), 1)
+    plan = {"n_files": len(targets), "est_total_mb": est_total, "limit_mb": limit_mb,
+            "files": [it["filename"] for it in targets], "missing": missing}
+    if missing:
+        plan["hint_missing"] = (f"以下条目在 '{name}' 的清单里不存在（名称需完全一致，"
+                                f"请直接用 hitran_xsc_files 返回的 filename）：{missing}")
+    if limit_mb and est_total > limit_mb:
+        return {"error": f"[hitran_xsc_download] 选中 {len(targets)} 个文件、预计 {est_total} MB，"
+                         f"超过上限 {limit_mb} MB；请减少选择或调大 max_total_mb。",
+                "plan": plan}
+    if dry_run:
+        return {"dry_run": True, "plan": plan,
+                "hint": "确认无误后以 dry_run=False 实下载。"}
+    if not targets:
+        return {"error": "[hitran_xsc_download] 没有匹配到任何文件。", "plan": plan}
+
+    # ── 逐个下载（串行，避免触发站点限流） ──
+    XSC_DIR.mkdir(parents=True, exist_ok=True)
+    downloaded, skipped, failed = [], [], []
+    done_bytes = 0
+    for i, it in enumerate(targets):
+        fname = it["filename"]
+        dest = XSC_DIR / Path(fname).name
+        if dest.exists() and not overwrite:
+            skipped.append({"filename": fname, "reason": "已存在（overwrite=False 时跳过）",
+                            "path": str(dest)})
+            continue
+        if cancel and cancel():
+            failed.append({"filename": fname, "error": "已取消"})
+            break
+        if progress:
+            try:
+                progress(i, len(targets), fname, done_bytes)
+            except Exception:
+                pass
+        try:
+            n = _xsc_download_one(fname, XSC_DIR)
+        except Exception as e:
+            failed.append({"filename": fname, "error": f"{type(e).__name__}: {e}"})
+            continue
+        done_bytes += n
+        downloaded.append({"filename": fname, "path": str(dest),
+                           "size_mb": round(n / 1e6, 2),
+                           "T_K": it.get("T_K"), "p_Torr": it.get("p_Torr")})
+        if limit_mb and done_bytes / 1e6 > limit_mb:
+            failed.append({"filename": "(后续已停止)",
+                           "error": f"累计 {done_bytes / 1e6:.0f} MB 已超上限 {limit_mb} MB"})
+            break
+    out = {"downloaded": downloaded, "skipped": skipped, "failed": failed,
+           "n_downloaded": len(downloaded), "total_mb": round(done_bytes / 1e6, 2),
+           "dest_dir": str(XSC_DIR), "plan": plan}
+    if downloaded:
+        out["next_step"] = (f"用 hitran_cross_section(file_path=\"{downloaded[0]['path']}\", "
+                            f"numin=..., numax=...) 读入绘图。")
+    return out
 
 
 def t_apikey_status(probe=False):
@@ -1337,8 +1693,9 @@ def t_apikey_status(probe=False):
             "numba_available": caps["numba_available"],
             "numba_version": caps["numba_version"],
             "numpy_version": caps["numpy_version"],
-            "note": ("HAPI 1.3.0.0 下载接口暂不校验 key（预置）；官方每日抓取配额超限会 403，"
-                     "缓存未删的前提下无需重复抓取。HAPI2/Numba 为可选加速引擎，检测到可用时自动提示。")}
+            "note": ("key 已生效：线表与截面下载均经官方 v2 API（URL 携带 key）；仅当回退到 "
+                     "HAPI 1.x 旧接口时才不校验 key。官方每日抓取配额超限会 403，缓存未删的前提下"
+                     "无需重复抓取。HAPI2/Numba 为可选加速引擎，检测到可用时自动提示。")}
 
 
 def t_partition_sum(name=None, M=None, I=None, T=296.0, tips_version=None):
@@ -1492,6 +1849,32 @@ TOOLS = [
      "description": "HITRAN API key / 线表缓存 / 产物 / 截面文件状态速查（只读，排障用）。"
                     "工具包不含任何数据：缓存与个人文件均在运行期 gitignore 目录。",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "hitran_xsc_files",
+     "description": "列出某截面分子在 hitran.org 上**可直接下载**的截面文件清单（温度/压力/波数范围/"
+                    "分辨率/点数/体积估算/filename；需本机 HITRAN API key，免 Portal 登录）。"
+                    "是 hitran_xsc_download 的配套清单；相比免登录的 hitran_xsc_search 能拿到文件名。",
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "name": {"type": "string",
+                                  "description": "hitran.org/xsc 上显示的分子名，如 Propane / n-Butane / Acetone"},
+                         "include_all": {"type": "boolean",
+                                         "description": "是否含非 main 的旧版本记录（默认 False 只列在用版本）"}},
+                     "required": ["name"]}},
+    {"name": "hitran_xsc_download",
+     "description": "把选定的截面文件下载到 xsc_data/（官方 API + 公开数据路径，无需 Portal 登录）。"
+                    "filenames/ids 取自 hitran_xsc_files；建议带上 name 以校验总体积（默认上限 300 MB）。"
+                    "dry_run=True 只返回将下载的清单与体积。下载后可用 hitran_cross_section(file_path=...) 读入绘图。",
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "name": {"type": "string", "description": "分子名（同 hitran_xsc_files）"},
+                         "filenames": {"type": "array", "items": {"type": "string"},
+                                       "description": "要下载的文件名列表（hitran_xsc_files 返回的 filename）"},
+                         "ids": {"type": "array", "items": {"type": "integer"},
+                                 "description": "要下载的记录 id 列表（与 filenames 二选一或混用）"},
+                         "max_total_mb": {"type": "number", "description": "总体积上限（MB），默认 300"},
+                         "dry_run": {"type": "boolean", "description": "只报告不下载（默认 False）"},
+                         "overwrite": {"type": "boolean", "description": "已存在文件是否覆盖（默认 False 跳过）"}},
+                     "required": []}},
 ]
 DISPATCH = {
     "hitran_species": t_species,
@@ -1502,6 +1885,8 @@ DISPATCH = {
     "hitran_partition_sum": t_partition_sum,
     "hitran_cross_section": t_cross_section,
     "hitran_xsc_search": t_xsc_search,
+    "hitran_xsc_files": t_xsc_files,
+    "hitran_xsc_download": t_xsc_download,
     "hitran_apikey_status": t_apikey_status,
 }
 
