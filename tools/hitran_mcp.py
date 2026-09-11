@@ -1368,6 +1368,148 @@ XSC_DL_LIMIT_MB = 300                # 单次批量下载总体积上限（防�
 _XSC_BYTES_PER_POINT = 10.1          # HOTW 两列文本实测 ~10.1 B/点（43145 点 → 435915 B）
 
 
+# 中文名 → HITRAN 英文关键词。截面库只认英文名，中文用户无从下手，故内置常用气体对照；
+# 命中后按"关键词"做模糊匹配（不要求与 HITRAN 命名逐字相同），容错交给匹配打分。
+_MOL_ZH = {
+    "水": "Water", "水蒸气": "Water", "水汽": "Water",
+    "二氧化碳": "Carbon Dioxide", "一氧化碳": "Carbon Monoxide",
+    "一氧化氮": "Nitric Oxide", "二氧化氮": "Nitrogen Dioxide",
+    "一氧化二氮": "Nitrous Oxide", "笑气": "Nitrous Oxide",
+    "氨": "Ammonia", "氨气": "Ammonia", "硫化氢": "Hydrogen Sulfide",
+    "二氧化硫": "Sulfur Dioxide", "三氧化硫": "Sulfur Trioxide", "臭氧": "Ozone",
+    "氧气": "Oxygen", "氮气": "Nitrogen", "氢气": "Hydrogen",
+    "氯化氢": "Hydrogen Chloride", "氟化氢": "Hydrogen Fluoride",
+    "溴化氢": "Hydrogen Bromide", "碘化氢": "Hydrogen Iodide",
+    "氯气": "Chlorine", "氟气": "Fluorine", "磷化氢": "Phosphine",
+    "六氟化硫": "Sulfur Hexafluoride", "羰基硫": "Carbonyl Sulfide",
+    "氧硫化碳": "Carbonyl Sulfide", "二硫化碳": "Carbon Disulfide",
+    "氰化氢": "Hydrogen Cyanide", "氢氰酸": "Hydrogen Cyanide",
+    "甲烷": "Methane", "乙烷": "Ethane", "丙烷": "Propane",
+    "正丁烷": "n-Butane", "丁烷": "Butane", "异丁烷": "Isobutane",
+    "正戊烷": "n-Pentane", "戊烷": "Pentane", "异戊烷": "Isopentane",
+    "己烷": "n-Hexane", "庚烷": "n-Heptane", "辛烷": "n-Octane",
+    "环丙烷": "Cyclopropane", "环己烷": "Cyclohexane",
+    "乙烯": "Ethylene", "丙烯": "Propylene", "丁烯": "Butene",
+    "异丁烯": "Isobutene", "乙炔": "Acetylene", "丙炔": "Propyne",
+    "丁二烯": "Butadiene", "异戊二烯": "Isoprene",
+    "苯": "Benzene", "甲苯": "Toluene", "二甲苯": "Xylene",
+    "苯乙烯": "Styrene", "苯酚": "Phenol", "乙苯": "Ethylbenzene",
+    "甲醛": "Formaldehyde", "乙醛": "Acetaldehyde", "丙烯醛": "Acrolein",
+    "甲醇": "Methanol", "乙醇": "Ethanol", "丙醇": "Propanol",
+    "异丙醇": "Isopropanol", "丁醇": "Butanol",
+    "丙酮": "Acetone", "丁酮": "Methyl Ethyl Ketone",
+    "甲酸": "Formic Acid", "乙酸": "Acetic Acid", "醋酸": "Acetic Acid",
+    "丙烯酸": "Acrylic Acid", "乙酸乙酯": "Ethyl Acetate",
+    "环氧乙烷": "Ethylene Oxide", "环氧丙烷": "Propylene Oxide",
+    "甲醚": "Dimethyl Ether", "乙醚": "Diethyl Ether",
+    "四氢呋喃": "Tetrahydrofuran", "碳酸二甲酯": "Dimethyl Carbonate",
+    "甲胺": "Methylamine", "二甲胺": "Dimethylamine", "三甲胺": "Trimethylamine",
+    "乙腈": "Acetonitrile", "丙烯腈": "Acrylonitrile",
+    "硝基甲烷": "Nitromethane", "苯胺": "Aniline", "吡啶": "Pyridine",
+    "氯甲烷": "Methyl Chloride", "一氯甲烷": "Methyl Chloride",
+    "二氯甲烷": "Dichloromethane", "三氯甲烷": "Chloroform", "氯仿": "Chloroform",
+    "四氯化碳": "Carbon Tetrachloride", "氯乙烷": "Ethyl Chloride",
+    "氯乙烯": "Vinyl Chloride", "三氯乙烯": "Trichloroethylene",
+    "四氯乙烯": "Tetrachloroethylene", "溴甲烷": "Methyl Bromide",
+    "氟利昂11": "CFC-11", "氟利昂12": "CFC-12",
+    "氟利昂113": "CFC-113", "氟利昂114": "CFC-114",
+    "四氟化碳": "Carbon Tetrafluoride", "六氟乙烷": "Hexafluoroethane",
+    "甲硫醇": "Methyl Mercaptan", "甲硫醚": "Dimethyl Sulfide",
+    "乙硫醇": "Ethyl Mercaptan", "四甲基硅烷": "Tetramethylsilane",
+}
+# Unicode 下标 → 普通数字（用户可能输入 CH₄ 这种写法）
+_SUB_DIGITS = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+_MOL_CACHE = ROOT / "Hitran_Data" / "hitran_molecules.json"
+
+
+def _molecules_index(force=False):
+    """HITRAN 全部分子索引（约 670 条：id / 常用名 / 化学式 / 全部别名），本地缓存 30 天。
+
+    数据源是官方 API /molecules —— 它的 id 与截面库 molecule_id 同一体系（已实测
+    Propane 两边都是 137），因此可以直接用它把"用户输入的名字"翻译成 molecule_id。
+    """
+    import time as _t
+    if not force and _MOL_CACHE.exists():
+        try:
+            if _t.time() - _MOL_CACHE.stat().st_mtime < 30 * 86400:
+                return json.loads(_MOL_CACHE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    key = _api_key()
+    if not key:
+        return []
+    try:
+        raw = _xsc_retry(lambda: _http_get_text(
+            f"https://hitran.org/api/v2/{key}/molecules", timeout=90), tries=3, delay=2.0)
+        mols = (json.loads(raw).get("content") or {}).get("data") or []
+    except Exception:
+        try:                                    # 拉取失败就用旧缓存兜底
+            return json.loads(_MOL_CACHE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    if mols:
+        try:
+            _MOL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _MOL_CACHE.write_text(json.dumps(mols, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+    return mols
+
+
+def _molid_brief(m):
+    """分子记录 → 面向用户的精简结构。"""
+    return {"id": m.get("id"),
+            "name": m.get("common_name"),
+            "formula": m.get("ordinary_formula") or m.get("stoichiometric_formula"),
+            "aliases": [a.get("alias") for a in (m.get("aliases") or []) if a.get("alias")][:10]}
+
+
+def _xsc_molecule_search(query, limit=40):
+    """按 中文名 / 化学式 / 英文名 / 俗名 模糊搜索 HITRAN 分子，返回候选（含 id）。
+
+    打分：精确命中名字或别名 100 > 精确化学式 95 > 前缀命中 70 > 包含 40。
+    中文输入先查内置对照表（_MOL_ZH）换成英文关键词再匹配。
+    """
+    q = str(query or "").strip().translate(_SUB_DIGITS)
+    if not q:
+        return []
+    kw = _MOL_ZH.get(q) or _MOL_ZH.get(q.rstrip("气")) or q
+    k = kw.strip().lower()
+    if not k:
+        return []
+    out = []
+    for m in _molecules_index():
+        nm = (m.get("common_name") or "").lower()
+        fm = (m.get("ordinary_formula") or "").lower()
+        al = [(a.get("alias") or "").lower() for a in (m.get("aliases") or [])]
+        # 分档：常用名优先于别名/化学式，精确 > 前缀 > 包含。
+        # （否则如 "prop" 会因某别名含 prop 而把 HFC 类分子排到 Propane 前面）
+        if k == nm:
+            score = 100
+        elif fm and k == fm:
+            score = 95
+        elif k in al:
+            score = 90
+        elif nm.startswith(k):
+            score = 80
+        elif fm and fm.startswith(k):
+            score = 75
+        elif any(x.startswith(k) for x in al):
+            score = 60
+        elif k in nm:
+            score = 50
+        elif fm and k in fm:
+            score = 40
+        elif any(k in x for x in al):
+            score = 30
+        else:
+            score = 0
+        if score:
+            out.append((score, m))
+    out.sort(key=lambda t: (-t[0], (t[1].get("common_name") or "").lower()))
+    return [dict(_molid_brief(m), score=s) for s, m in out[:limit]]
+
+
 def _xsc_should_retry(e):
     """是否值得重试：网络抖动/超时/5xx 值得；4xx（404/403 等）不值得。"""
     import urllib.error
@@ -1394,12 +1536,36 @@ def _xsc_retry(fn, tries=3, delay=1.5):
 
 
 def _xsc_molecule_id(name):
-    """分子名 → 截面子库 molecule_id（免登录页面接口 get-molecule）。"""
+    """分子名 → molecule_id：先查本地索引（名/化学式/别名精确匹配），未命中再走在线接口。
+
+    本地索引带来两点好处：① 支持化学式与别名（C3H8 / CH3CH2CH3 / 74-98-6 都能认）；
+    ② 命中即时返回，省一次网络往返。索引未命中时仍回退原免登录精确接口。
+    """
+    s0 = str(name or "").strip().translate(_SUB_DIGITS)
+    if s0 in _MOL_ZH or s0.rstrip("气") in _MOL_ZH:      # 中文名先换成英文关键词
+        s0 = _MOL_ZH.get(s0) or _MOL_ZH.get(s0.rstrip("气"))
+    s = s0.lower()
+    if s:
+        for m in _molecules_index():
+            nm = (m.get("common_name") or "").lower()
+            fm = (m.get("ordinary_formula") or "").lower()
+            if s == nm or (fm and s == fm) or \
+                    any(s == (a.get("alias") or "").lower() for a in (m.get("aliases") or [])):
+                return int(m["id"])
+    import urllib.error
     import urllib.parse
     q = urllib.parse.quote(str(name).strip())
-    mid = _xsc_retry(
-        lambda: _http_get_text(f"https://hitran.org/xsc/get-molecule?molecule_name={q}").strip(),
-        tries=3, delay=1.5)
+    try:
+        mid = _xsc_retry(
+            lambda: _http_get_text(
+                f"https://hitran.org/xsc/get-molecule?molecule_name={q}").strip(),
+            tries=3, delay=1.5)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None                     # 该名在截面库查无此分子（正常情况，交由上层提示）
+        return None
+    except Exception:
+        return None                         # 网络异常同样不抛，避免调用方崩溃
     return int(mid) if mid.isdigit() else None
 
 
@@ -1502,24 +1668,62 @@ def _xsc_download_one(filename, dest_dir, timeout=900):
             pass
 
 
-def t_xsc_files(name=None, include_all=False):
+def t_xsc_molecules(query=None, limit=40):
+    """检索 HITRAN 分子（中文名 / 化学式 / 英文名 / 俗名都能搜），用于挑截面分子。
+
+    为什么要它：截面库只认 HITRAN 页面上的英文名（如 Propane），中文用户常常不知道
+    该输入什么。本工具先用内置中文对照表翻译（丙烷 → Propane），再对约 670 个分子的
+    常用名 / 化学式 / 全部别名做模糊匹配（精确 > 化学式 > 前缀 > 包含），返回候选及 id。
+    把 id 交给 hitran_xsc_files(molecule_id=...) 即可列出可下载文件。
+
+    query 为空则列出全部分子（按名排序，最多 limit 条）。
+    """
+    mols = _molecules_index()
+    if not mols:
+        return {"n": 0, "molecules": [], "error": (
+            "无法获取分子索引：需要有效的 HITRAN API key 与网络（索引一次拉取后缓存 30 天）。")}
+    limit = max(1, int(limit))
+    if not query:
+        items = sorted(mols, key=lambda m: (m.get("common_name") or "").lower())
+        return {"n": len(items), "molecules": [_molid_brief(m) for m in items[:limit]],
+                "hint": "传入 query 可检索，如 query='丙烷' / 'C3H8' / 'propane' / 'prop'。"}
+    hits = _xsc_molecule_search(query, limit=limit)
+    out = {"query": str(query).strip(), "n": len(hits), "molecules": hits,
+           "hint": ("把选中项的 id 传给 hitran_xsc_files(molecule_id=...) 列文件，"
+                    "或直接用 hitran_xsc_download(name=...) 下载。")}
+    if not hits:
+        out["hint"] = (f"未匹配到 '{query}'。可换化学式（如 C3H8）或英文名试试；"
+                       f"不传 query 可列出全部分子。")
+    return out
+
+
+def t_xsc_files(name=None, include_all=False, molecule_id=None):
     """列出某截面分子**可下载**的截面文件清单（需 HITRAN API key，免 Portal 登录）。
 
-    与 hitran_xsc_search 的分工：本工具走官方 API（/api/v2/<key>/cross-sections），
-    返回**可直接下载的文件名 filename** 与体积估算，是 hitran_xsc_download 的配套清单；
-    hitran_xsc_search 走免登录页面接口，无 key 时也能探到条目但没有文件名。
+    分子可以三种方式给出：name（英文名/化学式/中文名，如 Propane / C3H8 / 丙烷）、
+    molecule_id（由 hitran_xsc_molecules 检索得到，最稳）。名字认不出时，返回里会附
+    candidates 候选列表供选择 —— 截面库只收录重分子，逐线库的分子查不到属正常。
 
-    典型链条：hitran_xsc_files 列清单 → 挑 filenames → hitran_xsc_download 下载 →
-    hitran_cross_section(file_path=...) 读入绘图。
+    与 hitran_xsc_search 的分工：本工具走官方 API（/api/v2/<key>/cross-sections），
+    返回**可直接下载的文件名 filename** 与体积估算；hitran_xsc_search 走免登录页面接口，
+    无 key 时也能探到条目但没有文件名。
+
+    典型链条：hitran_xsc_molecules 找分子 → hitran_xsc_files 列清单 →
+    挑 filenames → hitran_xsc_download 下载 → hitran_cross_section 读入绘图。
     """
-    if not name:
-        raise ValueError("[hitran_xsc_files] 必须提供 name"
-                         "（hitran.org/xsc 上显示的英文分子名，如 Propane / Acetone）。")
-    mid = _xsc_molecule_id(name)
+    if molecule_id is None and not name:
+        raise ValueError("[hitran_xsc_files] 必须提供 name（分子名/化学式/中文名，"
+                         "如 Propane / C3H8 / 丙烷）或 molecule_id（用 hitran_xsc_molecules 检索）。")
+    try:
+        mid = int(molecule_id) if molecule_id is not None else _xsc_molecule_id(name)
+    except Exception as e:
+        return {"query": str(name).strip(), "found": False, "files": [],
+                "error": f"名称解析失败（{type(e).__name__}: {e}）。请检查网络，或改用 molecule_id。"}
     if mid is None:
-        return {"query": str(name).strip(), "found": False, "files": [], "hint": (
-            f"截面子库未找到 '{name}'。可能：① 名称不是 Portal 页面显示的英文名；"
-            f"② 该分子未收录于截面子库。")}
+        return {"query": str(name).strip(), "found": False, "files": [],
+                "candidates": _xsc_molecule_search(name, limit=8),
+                "hint": (f"未找到 '{name}'。可先用 hitran_xsc_molecules(query=...) 检索；"
+                         f"若该分子不在截面子库（截面库只含重分子），请改用逐线库工具计算。")}
     items = [_xsc_normalize(r) for r in _xsc_api_records(mid)]
     n_all = len(items)
     if not include_all:
@@ -1535,7 +1739,7 @@ def t_xsc_files(name=None, include_all=False):
                      "再 hitran_cross_section(file_path=...) 读入绘图。")}
 
 
-def t_xsc_download(name=None, filenames=None, ids=None, max_total_mb=None,
+def t_xsc_download(name=None, filenames=None, ids=None, molecule_id=None, max_total_mb=None,
                    dry_run=False, overwrite=False, progress=None, cancel=None):
     """把选定的截面文件下载到 xsc_data/（官方 API 列清单 + 公开路径取文件，无需 Portal 登录）。
 
@@ -1556,8 +1760,9 @@ def t_xsc_download(name=None, filenames=None, ids=None, max_total_mb=None,
     # ── 解析目标 ──
     targets, missing = [], []
     pool = []
-    if name:
-        listing = t_xsc_files(name=name, include_all=True)
+    if molecule_id is not None or name:
+        listing = (t_xsc_files(molecule_id=int(molecule_id), include_all=True)
+                   if molecule_id is not None else t_xsc_files(name=name, include_all=True))
         if not listing.get("found"):
             return {"downloaded": [], "skipped": [], "failed": [], "missing": missing,
                     "hint": listing.get("hint")}
@@ -1849,17 +2054,30 @@ TOOLS = [
      "description": "HITRAN API key / 线表缓存 / 产物 / 截面文件状态速查（只读，排障用）。"
                     "工具包不含任何数据：缓存与个人文件均在运行期 gitignore 目录。",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "hitran_xsc_molecules",
+     "description": "检索 HITRAN 分子（中文名/化学式/英文名/俗名都能搜），用于挑截面分子。"
+                    "截面库只认英文名（如 Propane），本工具先查内置中文对照（丙烷→Propane），"
+                    "再对约 670 个分子的名/化学式/别名做模糊匹配，返回候选与 id；query 留空列出全部。"
+                    "把 id 传给 hitran_xsc_files(molecule_id=...) 即可列出可下载的截面文件。",
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "query": {"type": "string",
+                                   "description": "检索词：中文名（丙烷）/化学式（C3H8）/英文名（propane）/俗名；留空列全部"},
+                         "limit": {"type": "integer", "description": "最多返回条数，默认 40"}},
+                     "required": []}},
     {"name": "hitran_xsc_files",
      "description": "列出某截面分子在 hitran.org 上**可直接下载**的截面文件清单（温度/压力/波数范围/"
                     "分辨率/点数/体积估算/filename；需本机 HITRAN API key，免 Portal 登录）。"
-                    "是 hitran_xsc_download 的配套清单；相比免登录的 hitran_xsc_search 能拿到文件名。",
+                    "分子可用 name（英文名/化学式/中文名）或 molecule_id（推荐，先经 hitran_xsc_molecules 检索）。",
      "inputSchema": {"type": "object",
                      "properties": {
                          "name": {"type": "string",
-                                  "description": "hitran.org/xsc 上显示的分子名，如 Propane / n-Butane / Acetone"},
+                                  "description": "分子名/化学式/中文名，如 Propane / C3H8 / 丙烷"},
+                         "molecule_id": {"type": "integer",
+                                         "description": "分子号（由 hitran_xsc_molecules 得到；与 name 二选一即可）"},
                          "include_all": {"type": "boolean",
                                          "description": "是否含非 main 的旧版本记录（默认 False 只列在用版本）"}},
-                     "required": ["name"]}},
+                     "required": []}},
     {"name": "hitran_xsc_download",
      "description": "把选定的截面文件下载到 xsc_data/（官方 API + 公开数据路径，无需 Portal 登录）。"
                     "filenames/ids 取自 hitran_xsc_files；建议带上 name 以校验总体积（默认上限 300 MB）。"
@@ -1886,6 +2104,7 @@ DISPATCH = {
     "hitran_cross_section": t_cross_section,
     "hitran_xsc_search": t_xsc_search,
     "hitran_xsc_files": t_xsc_files,
+    "hitran_xsc_molecules": t_xsc_molecules,
     "hitran_xsc_download": t_xsc_download,
     "hitran_apikey_status": t_apikey_status,
 }

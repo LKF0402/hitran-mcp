@@ -1714,7 +1714,8 @@ class HitranLab(tk.Tk):
         win.title("下载 HITRAN 截面文件")
         win.geometry("940x600")
         win.minsize(780, 480)
-        state = {"files": [], "search": None, "progress": None, "dl_result": None}
+        state = {"files": [], "search": None, "progress": None, "dl_result": None,
+                 "cur_mid": None}
 
         def fmt(v):
             if v is None:
@@ -1726,14 +1727,28 @@ class HitranLab(tk.Tk):
 
         top = ttk.Frame(win, padding=(10, 10, 10, 4))
         top.pack(fill="x")
-        ttk.Label(top, text="分子名").pack(side="left")
-        name_var = tk.StringVar(value="Propane")
-        ent = ttk.Entry(top, textvariable=name_var, width=22)
+        ttk.Label(top, text="气体名称").pack(side="left")
+        name_var = tk.StringVar(value="丙烷")
+        ent = ttk.Entry(top, textvariable=name_var, width=20)
         ent.pack(side="left", padx=6)
         btn_search = ttk.Button(top, text="搜索")
         btn_search.pack(side="left")
-        ttk.Label(top, text="（HITRAN 页面上的英文名，如 Propane / n-Butane / Acetone）",
+        ttk.Label(top, text="中文名 / 化学式 / 英文名都能搜：丙烷、C3H8、propane、prop",
                   foreground="#8A8A92").pack(side="left", padx=8)
+
+        # 候选分子区：命中多个时在这里挑（选中即加载该分子的截面文件）
+        molf = ttk.LabelFrame(win, text="匹配到的分子（单击选中）", padding=6)
+        molf.pack(fill="x", padx=10, pady=(6, 0))
+        mcols = ("name", "formula", "aliases")
+        mol_tv = ttk.Treeview(molf, columns=mcols, show="headings", height=4)
+        for c, txt, w in (("name", "分子", 180), ("formula", "化学式", 150),
+                          ("aliases", "别名 / 俗名", 500)):
+            mol_tv.heading(c, text=txt)
+            mol_tv.column(c, width=w, anchor="w")
+        mol_sb = ttk.Scrollbar(molf, orient="vertical", command=mol_tv.yview)
+        mol_tv.configure(yscrollcommand=mol_sb.set)
+        mol_tv.pack(side="left", fill="both", expand=True)
+        mol_sb.pack(side="right", fill="y")
 
         mid = ttk.Frame(win, padding=(10, 0))
         mid.pack(fill="both", expand=True)
@@ -1797,7 +1812,7 @@ class HitranLab(tk.Tk):
             tv.selection_remove(*tv.get_children())
             update_stat()
 
-        def fill(files):
+        def fill_files(files):
             state["files"] = files
             tv.delete(*tv.get_children())
             for i, it in enumerate(files):
@@ -1811,7 +1826,86 @@ class HitranLab(tk.Tk):
             if files:
                 pick_all()
             else:
-                stat_var.set("未找到可下载的截面文件")
+                stat_var.set("该分子在截面库中没有可下载的文件（换一个分子试试）")
+
+        def fill_molecules(hits, query):
+            """填候选分子；唯一候选直接加载，多候选等用户单击选择。"""
+            mol_tv.delete(*mol_tv.get_children())
+            state["cur_mid"] = None
+            for h in hits:
+                if h.get("id") is None:
+                    continue
+                mol_tv.insert("", "end", iid=str(h["id"]), values=(
+                    h.get("name") or "", h.get("formula") or "",
+                    " / ".join((h.get("aliases") or [])[:4])))
+            if not hits:
+                stat_var.set(f"没找到「{query}」——可换化学式或英文名（如 C3H8 / propane），"
+                             f"也可能该分子不在截面库（截面库只收录较重分子）")
+                btn_dl.configure(state="normal")
+                return
+            if len(hits) == 1:
+                load_files(int(hits[0]["id"]))
+            elif (hits[0].get("score") or 0) >= 100:
+                # 第一个是精确命中（如「丙烷」→Propane、「C3H8」→Propane）→ 直接打开，
+                # 省掉一次点击；候选仍列出来，用户可改选其它分子。
+                btn_dl.configure(state="normal")
+                load_files(int(hits[0]["id"]))
+                stat_var.set(f"已按精确匹配打开：{hits[0].get('name')}"
+                             f"（共 {len(hits)} 个候选，可在上方改选）")
+            else:
+                btn_dl.configure(state="normal")
+                stat_var.set(f"匹配到 {len(hits)} 个分子 —— 请在上方单击选中要用的那个")
+
+        def poll_files():
+            r = state["files"]
+            if r == "pending":
+                win.after(200, poll_files)
+                return
+            state["files"] = None
+            btn_dl.configure(state="normal")
+            if not isinstance(r, dict):
+                return
+            if r.get("error"):
+                stat_var.set("查询失败")
+                self.show_error_dialog("查询截面清单失败", r["error"])
+                return
+            if not r.get("found"):
+                stat_var.set(r.get("hint") or "未找到该分子的截面文件")
+                fill_files([])
+                return
+            files = r.get("files") or []
+            fill_files(files)
+            if files:
+                stat_var.set(f"{r.get('query') or '该分子'}：共 {len(files)} 个文件，合计约 "
+                             f"{r.get('total_est_mb')} MB（已全部选中，单击行可取消）")
+
+        def load_files(mid):
+            """按分子 id 拉取截面文件清单（后台线程 + after 轮询）。"""
+            state["cur_mid"] = int(mid)
+            try:
+                mol_tv.selection_set(str(mid))
+            except Exception:
+                pass
+            state["files"] = "pending"
+            btn_dl.configure(state="disabled")
+            stat_var.set("正在查询该分子的截面文件…")
+
+            def bg():
+                try:
+                    state["files"] = hm.t_xsc_files(molecule_id=int(mid))
+                except Exception:
+                    state["files"] = {"error": traceback.format_exc()}
+            threading.Thread(target=bg, daemon=True).start()
+            win.after(200, poll_files)
+
+        def on_mol_select(event=None):
+            sel = mol_tv.selection()
+            if not sel or not str(sel[0]).isdigit():
+                return
+            mid = int(sel[0])
+            if state.get("cur_mid") == mid:
+                return
+            load_files(mid)
 
         def poll_search():
             r = state["search"]
@@ -1820,37 +1914,32 @@ class HitranLab(tk.Tk):
                 return
             state["search"] = None
             btn_search.configure(state="normal")
-            btn_dl.configure(state="normal")           # 搜索结束后恢复下载按钮
             if not isinstance(r, dict):
                 return
             if r.get("error"):
-                stat_var.set("查询失败")
-                self.show_error_dialog("查询截面清单失败", r["error"])
+                stat_var.set("检索失败")
+                self.show_error_dialog("检索分子失败", r["error"])
                 return
-            if not r.get("found"):
-                stat_var.set(r.get("hint") or "未找到")
-                return
-            files = r.get("files") or []
-            fill(files)
-            if files:
-                stat_var.set(f"共 {len(files)} 个文件，合计约 {r.get('total_est_mb')} MB"
-                             f"（已全部选中，单击行可取消）")
+            fill_molecules(r.get("molecules") or [], r.get("query") or "")
 
         def do_search():
             nm = name_var.get().strip()
             if not nm:
-                messagebox.showwarning("HitranLab", "请输入分子名", parent=win)
+                messagebox.showwarning("HitranLab", "请输入气体名称（中文名 / 化学式 / 英文名）",
+                                       parent=win)
                 return
             state["search"] = "pending"
+            state["cur_mid"] = None
             btn_search.configure(state="disabled")
             btn_dl.configure(state="disabled")
-            stat_var.set(f"正在查询 '{nm}' …")
+            stat_var.set(f"正在检索「{nm}」…")
+            mol_tv.delete(*mol_tv.get_children())
             tv.delete(*tv.get_children())
             state["files"] = []
 
             def bg():
                 try:
-                    state["search"] = hm.t_xsc_files(name=nm)
+                    state["search"] = hm.t_xsc_molecules(query=nm, limit=30)
                 except Exception:
                     state["search"] = {"error": traceback.format_exc()}
             threading.Thread(target=bg, daemon=True).start()
@@ -1891,7 +1980,7 @@ class HitranLab(tk.Tk):
                 do_search()
 
         def do_download():
-            files = state.get("files") or []
+            files = state.get("files") if isinstance(state.get("files"), list) else []
             nm = name_var.get().strip()      # Tk 变量只能在主线程读，后台线程读会抛 RuntimeError
             idx = [i for i in sel_rows() if i < len(files)]
             if not idx:
@@ -1916,7 +2005,7 @@ class HitranLab(tk.Tk):
             def bg():
                 try:
                     state["dl_result"] = hm.t_xsc_download(
-                        name=nm,
+                        name=nm, molecule_id=state.get("cur_mid"),
                         filenames=[it["filename"] for it in sel], progress=prog)
                 except Exception:
                     state["dl_result"] = {"error": traceback.format_exc()}
@@ -1929,6 +2018,7 @@ class HitranLab(tk.Tk):
         btn_none.configure(command=pick_none)
         tv.bind("<Button-1>", toggle_row)
         tv.bind("<<TreeviewSelect>>", update_stat)
+        mol_tv.bind("<<TreeviewSelect>>", on_mol_select)
         ent.bind("<Return>", lambda e: do_search())
         self._modal(win)
 
@@ -2912,7 +3002,8 @@ class HitranLab(tk.Tk):
 【截面文件】
 - 支持 HITRAN 原生 .xsc（1 行定宽头 + 每行 10 个 σ）与两列 HOTW/CSV 文本，自动识别
 - 用于 HITRAN 逐线库未收录的重分子（截面子库 600+ 种）
-- 「搜索并下载」：按分子名在线列出全部 T/p 版本，勾选后下载到 xsc_data/（需 API Key）
+- 「搜索并下载」：气体名支持中文名 / 化学式 / 英文名（丙烷、C3H8、propane 都行），
+  列出全部 T/p 版本后可勾选下载到 xsc_data/（需 API Key）
 
 【导出】
 - CSV：导出所有叠加曲线数据
