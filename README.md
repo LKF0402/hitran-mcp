@@ -160,9 +160,11 @@ pip install -r hitran-mcp/requirements.txt
 
 ### API Key（可选）
 
-到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
+**桌面 GUI**：HitranLab → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
 
-> 说明：HAPI 1.3.0.0 的下载接口暂不校验 key，此文件属预置。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。
+**命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
+
+> 说明：HAPI 1.3.0.0 的下载接口暂不校验 key，此文件属预置。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。HAPI2 截面下载等功能需要有效 API key。
 
 ## 接入 AI 客户端
 
