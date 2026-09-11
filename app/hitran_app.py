@@ -3151,8 +3151,10 @@ class HitranLab(tk.Tk):
         zip_path = Path(d["zip"])
         if not messagebox.askyesno("自动升级",
                 f"新版已下载：\n{zip_path}\n\n"
-                f"是否立即解压、替换文件并自动重启？\n"
-                f"（替换用 robocopy 覆盖，不会删除你的 Hitran_Data 线表缓存）"):
+                f"是否立即解压、替换文件并自动重启？\n\n"
+                f"· 替换时会弹出一个命令窗口显示进度，请勿关闭；\n"
+                f"· 完成后窗口自动关闭，程序自动重启；\n"
+                f"· 用 robocopy 覆盖，不会删除你的 Hitran_Data 线表缓存。"):
             self.status_var.set("更新包已下载，可手动解压 _update 目录替换")
             return
         # 解压挪到 worker，避免大文件解压阻塞主线程
@@ -3195,34 +3197,123 @@ class HitranLab(tk.Tk):
             self._show_error(f"无法启动升级脚本: {e}")
             return
         self.status_var.set("升级脚本已启动，程序即将退出…")
-        self.after(600, self.destroy)
+        # 兜底硬退出：升级脚本要等本进程消失后才能覆盖 exe；万一有后台线程拖住
+        # 进程迟迟不释放文件锁，脚本就会一直卡在"等待旧版本退出"。这里起一个看门
+        # 线程，3 秒后无论主循环是否收尾都强制结束自己，保证文件锁一定释放。
+        threading.Thread(target=self._hard_exit_after, args=(3.0,), daemon=True).start()
+        self.after(400, self.destroy)
+
+    @staticmethod
+    def _hard_exit_after(delay):
+        """兜底：delay 秒后强制结束本进程（仅当正常退出被拖住时才起作用）。"""
+        time.sleep(delay)
+        os._exit(0)
 
     def _write_update_bat(self, src, zip_path):
-        """生成"等本程序退出 → robocopy 覆盖 → 重启 → 清理"的批处理。"""
+        """生成"等本进程退出 → robocopy 覆盖 → 重启 → 清理"的批处理。
+
+        针对"命令窗口卡死、全程无提示"的修复要点：
+        - 只等**本进程 PID** 退出（不再按进程名全量等待，避免其它实例把等待拖住），
+          并设 60 秒上限，超时直接 taskkill 本 PID；
+        - 每一步都在窗口里打印进度，用户始终知道走到哪一步；
+        - robocopy 因文件占用失败时整段重试至多 3 次，仍失败则给出明确提示（含日志路径）。
+        - 脚本按 UTF-8 写并在开头 chcp 65001，中文在任何代码页下都不会显示成乱码。
+        """
+        def esc(s):
+            """转义 echo 文本里的 cmd 特殊字符（安装路径可能含 & ( ) 等）。"""
+            return (str(s).replace("^", "^^").replace("&", "^&").replace("|", "^|")
+                    .replace("<", "^<").replace(">", "^>").replace("(", "^(")
+                    .replace(")", "^)").replace("%", "%%"))
+
         try:
             appdir = Path(sys.executable).resolve().parent
             exe_name = Path(sys.executable).name
             exe_full = appdir / exe_name
-            root = str(ROOT)
+            newdir = UPDATE_DIR / "new"
+            log = UPDATE_DIR / "update.log"
+            pid = os.getpid()
             lines = [
                 "@echo off",
-                "rem 使用系统默认编码（mbcs/GBK），避免中文路径在 chcp 65001 下解析异常",
+                # 本脚本按 UTF-8 保存，这里先切到 UTF-8 代码页，保证中文不乱码
+                "chcp 65001 >nul",
+                "title HitranLab 自动更新",
+                "echo ============================================================",
+                "echo   HitranLab 正在更新，请勿关闭本窗口",
+                "echo ------------------------------------------------------------",
+                "echo   窗口会显示进度，完成后自动关闭并启动新版本。",
+                "echo ============================================================",
+                "echo.",
+                "",
+                "echo [1/4] 等待旧版本退出（最多 60 秒）...",
+                "set /a _n=0",
                 ":wait",
-                f'tasklist /FI "IMAGENAME eq {exe_name}" | find /I "{exe_name}" >nul && (timeout /t 1 /nobreak >nul & goto wait)',
-                f'robocopy "{src}" "{appdir}" /E /NFL /NDL /NJH /NJS /R:2 /W:1',
-                "if errorlevel 8 (",
-                "    echo 更新失败：robocopy 返回错误码 %errorlevel%",
-                "    echo 请手动解压更新包替换文件",
-                "    pause",
-                "    exit /b 1",
-                ")",
+                f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul',
+                "if errorlevel 1 goto ready",
+                "set /a _n+=1",
+                "if %_n% GEQ 60 goto kill",
+                '<nul set /p "=."',
+                "timeout /t 1 /nobreak >nul",
+                "goto wait",
+                "",
+                ":kill",
+                "echo.",
+                f"echo    旧版本 60 秒内未退出，强制结束进程（PID {pid}）...",
+                f"taskkill /F /PID {pid} >nul 2>&1",
+                "",
+                ":ready",
+                "timeout /t 1 /nobreak >nul",
+                "",
+                ":copy",
+                "echo.",
+                "set /a _try=0",
+                ":try",
+                "set /a _try+=1",
+                "echo [2/4] 替换程序文件（第 %_try% 次尝试，保留 Hitran_Data 线表缓存）...",
+                f'robocopy "{src}" "{appdir}" /E /NFL /NDL /NJH /NJS /R:2 /W:1 >>"{log}" 2>&1',
+                "set _rc=%errorlevel%",
+                "if %_rc% LSS 8 goto copied",
+                "echo    第 %_try% 次替换未完成（robocopy 返回 %_rc%）。",
+                "if %_try% GEQ 3 goto fail",
+                "echo    文件可能被占用，2 秒后重试...",
+                "timeout /t 2 /nobreak >nul",
+                "goto try",
+                "",
+                ":copied",
+                "echo      文件替换完成。",
+                "",
+                "echo [3/4] 启动新版本...",
                 f'start "" "{exe_full}"',
-                f'rmdir /S /Q "{root}\\_update\\new"',
-                f'del /Q "{zip_path}"',
-                'del /Q "%~f0"',
+                "",
+                "echo [4/4] 清理临时文件...",
+                f'rmdir /S /Q "{newdir}" >nul 2>&1',
+                f'del /Q "{zip_path}" >nul 2>&1',
+                "",
+                "echo.",
+                "echo ============================================================",
+                "echo   更新完成！新版本已启动，本窗口 3 秒后自动关闭。",
+                "echo ============================================================",
+                "timeout /t 3 /nobreak >nul",
+                # 自删除：先让 cmd 停止读取本批处理，再删文件，避免"找不到批处理文件"报错
+                '(goto) 2>nul & del /q "%~f0"',
+                "",
+                ":fail",
+                "echo.",
+                "echo ============================================================",
+                "echo   更新失败：文件替换未完成（最后错误码 %_rc%）。",
+                "echo ------------------------------------------------------------",
+                "echo   常见原因：旧版本进程未完全退出，或程序目录被其它程序占用。",
+                "echo   处理办法：",
+                "echo     1) 关闭所有 HitranLab 窗口后，重新执行「检查更新」；",
+                f"echo     2) 或手动解压更新包，覆盖到程序目录：{esc(appdir)}",
+                f"echo     3) 更新包位置：{esc(zip_path)}",
+                f"echo     4) 详细日志：{esc(log)}",
+                "echo ============================================================",
+                "echo.",
+                "pause",
+                "exit /b 1",
             ]
             bat = UPDATE_DIR / "apply_update.bat"
-            bat.write_text("\r\n".join(lines) + "\r\n", encoding="mbcs")
+            bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
             return bat
         except Exception as e:
             self._show_error(f"生成升级脚本失败: {e}")
