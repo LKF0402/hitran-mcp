@@ -2017,8 +2017,28 @@ class HitranLab(tk.Tk):
         messagebox.showinfo("HitranLab", f"PNG 已导出:\n{p}")
 
     def _stop_compute(self):
-        """请求停止当前计算。HAPI 单次调用无法中断，但立即恢复 UI，后台结果自动丢弃。"""
-        if self.worker.busy:
+        """请求停止当前任务。按钮文字已根据任务类型动态变化（停止计算/取消下载/取消解压）。"""
+        if not self.worker.busy:
+            return
+        status = self.status_var.get()
+        # 下载/解压更新包时，弹出确认对话框（避免误触中断下载）
+        if "下载更新包" in status or "解压更新包" in status:
+            task = status.replace("…", "").strip()
+            if not messagebox.askyesno("取消操作",
+                    "当前正在" + task + "。\n\n是否取消？\n"
+                    "（取消后已下载的文件会被清理，可稍后重新检查更新）"):
+                return
+            self.worker.force_reset()
+            self._set_busy(False, "已取消")
+            # 清理已下载的更新包
+            try:
+                import shutil
+                if UPDATE_DIR.exists():
+                    shutil.rmtree(UPDATE_DIR, ignore_errors=True)
+            except Exception:
+                pass
+        else:
+            # 光谱计算：直接停止（HAPI 单次调用无法中断，但立即恢复 UI，后台结果自动丢弃）
             self.worker.force_reset()
             self._set_busy(False, "已停止（后台计算结果将被丢弃）")
 
@@ -2517,7 +2537,7 @@ class HitranLab(tk.Tk):
                 f"（下载完成后需重启程序，替换时保留 Hitran_Data 线表缓存）"):
             self.status_var.set(f"已有新版本 v{d['latest']}，可到 {d['url']} 下载")
             return
-        self._set_busy(True, "下载更新包…", allow_stop=False)
+        self._set_busy(True, "下载更新包…")
         self.worker.run(self._job_download_update, d["asset_url"], UPDATE_ASSET)
 
     def _job_download_update(self, url, name):
@@ -2553,7 +2573,7 @@ class HitranLab(tk.Tk):
             self.status_var.set("更新包已下载，可手动解压 _update 目录替换")
             return
         # 解压挪到 worker，避免大文件解压阻塞主线程
-        self._set_busy(True, "正在解压更新包…", allow_stop=False)
+        self._set_busy(True, "正在解压更新包…")
         if not self.worker.run(self._job_prepare_update, d["zip"], d["dir"]):
             self._set_busy(False, "启动解压失败")
 
@@ -2889,8 +2909,8 @@ class HitranLab(tk.Tk):
         ttk.Button(win, text="关闭", command=win.destroy).pack(pady=16)
 
     # ───────────────────────── 工具 ─────────────────────────
-    def _set_busy(self, busy, msg, allow_stop=True):
-        """设置忙碌状态。allow_stop=False 时禁用停止按钮（如下载/解压，避免语义混淆）。"""
+    def _set_busy(self, busy, msg):
+        """设置忙碌状态。按钮文字根据任务类型动态变化（停止计算/取消下载/取消解压）。"""
         self.status_label.configure(foreground="")
         self.status_var.set(msg or "就绪")
         if busy:
@@ -2904,7 +2924,17 @@ class HitranLab(tk.Tk):
         if hasattr(self, "btn_compute"):
             self.btn_compute.configure(state="disabled" if busy else "normal")
         if hasattr(self, "btn_stop"):
-            self.btn_stop.configure(state="normal" if (busy and allow_stop) else "disabled")
+            self.btn_stop.configure(state="normal" if busy else "disabled")
+            # 根据任务类型动态改变按钮文字（语义清晰）
+            if busy and msg:
+                if "下载更新包" in msg:
+                    self.btn_stop.configure(text="■  取消下载")
+                elif "解压更新包" in msg:
+                    self.btn_stop.configure(text="■  取消解压")
+                else:
+                    self.btn_stop.configure(text="■  停止计算")
+            else:
+                self.btn_stop.configure(text="■  停止计算")
         self.update_idletasks()
 
 
