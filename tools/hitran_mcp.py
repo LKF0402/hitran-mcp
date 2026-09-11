@@ -56,27 +56,6 @@ def _check_network(timeout=3):
         return True
     except Exception:
         return False
-
-
-def _check_network(timeout=3):
-    """检测是否能访问 HITRAN 服务器（hitran.org:443）。返回 True/False。
-
-    断网时 3 秒内返回，避免用户在 hapi.fetch 超时前干等几十秒。
-    """
-    import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        s.connect(("hitran.org", 443))
-        s.close()
-        return True
-    except Exception:
-        return False
-
-
-# ───────────────────────── 基础设施 ─────────────────────────
-
-@contextlib.contextmanager
 def _quiet():
     """把 print 收进缓冲区：HAPI/matplotlib 的刷屏不能进 stdout 协议流。"""
     buf = io.StringIO()

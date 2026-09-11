@@ -1987,7 +1987,6 @@ class HitranLab(tk.Tk):
         ref_len = len(nu)
         ref_start = float(nu[0]) if ref_len > 0 else 0.0
         ref_end = float(nu[-1]) if ref_len > 0 else 0.0
-        ref_step = (ref_end - ref_start) / (ref_len - 1) if ref_len > 1 else 0.0
         for i, ds in enumerate(datasets[1:], 1):
             res_i = ds["data"]["res"]
             if "nu" not in res_i:
@@ -2185,8 +2184,14 @@ class HitranLab(tk.Tk):
                 self.ax.clear()
             self.ax.plot(nu, coef, color=color, lw=1.4, label=tag)
             self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
-            self.ax.legend(fontsize=7, framealpha=0.9)
-            self.ax.grid(alpha=0.4, lw=0.6)
+            if self._show_legend:
+                self.ax.legend(fontsize=7, framealpha=0.9)
+            elif self.ax.get_legend():
+                self.ax.get_legend().remove()
+            if self._show_grid:
+                self.ax.grid(alpha=0.4, lw=0.6)
+            else:
+                self.ax.grid(False)
             self.fig.tight_layout()
             self.canvas.draw()
             self._overlay_count += 1
@@ -2219,20 +2224,22 @@ class HitranLab(tk.Tk):
             self._show_error("无数据可复制")
             return
         try:
+            import numpy as np
             lines = []
             for ds in self._overlay_data:
                 res = ds["data"]["res"]
-                nu = res["nu"]
+                nu = np.asarray(res["nu"])
                 per = res["per"]
                 if res.get("trans") is not None:
-                    y = res["trans"]                 # 与画布一致：透过率给 T，不给 α
+                    y = np.asarray(res["trans"])   # 与画布一致：透过率给 T，不给 α
                 elif len(per) > 1 and res.get("total") is not None:
-                    y = res["total"]
+                    y = np.asarray(res["total"])
                 else:
-                    y = list(per.values())[0]
+                    y = np.asarray(list(per.values())[0])
                 lines.append(f"# {ds['tag']}")
-                for i in range(len(nu)):
-                    lines.append(f"{nu[i]:.6f},{y[i]:.6e}")
+                # 用 numpy 一次性生成，避免逐行 Python 循环卡死 UI
+                arr = np.column_stack([nu, y])
+                lines.extend([f"{r[0]:.6f},{r[1]:.6e}" for r in arr])
                 lines.append("")
             self.clipboard_clear()
             self.clipboard_append("\n".join(lines))
