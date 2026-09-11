@@ -60,7 +60,7 @@ hitran-mcp/
 ├─ README.md                 # Chinese documentation
 ├─ README.en.md              # English documentation (this file)
 ├─ CHANGELOG.md              # Changelog
-├─ LICENSE                   # MIT License
+├─ LICENSE                   # GPLv3 License
 ├─ requirements.txt          # Python dependencies
 ├─ mcp.config.example.json   # MCP client registration snippet (adjust paths)
 ├─ app/
@@ -301,4 +301,4 @@ This software is provided "AS IS" without warranty of any kind. The author shall
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE](LICENSE) for details.

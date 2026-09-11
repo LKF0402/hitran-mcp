@@ -1727,10 +1727,17 @@ class HitranLab(tk.Tk):
         """
         win = tk.Toplevel(self)
         win.title("下载 HITRAN 截面文件")
-        win.geometry("940x600")
-        win.minsize(780, 480)
-        state = {"files": [], "search": None, "progress": None, "dl_result": None,
-                 "cur_mid": None}
+        # 几何按屏幕可用区域夹紧：写死 940x600 时，小屏/高 DPI 下窗口底部会落到屏幕外，
+        # 用户看不见底栏的「全选 / 清空 / 下载选中」，还得手动拉伸窗口才找得到。
+        _sw, _sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        _w, _h = min(940, _sw - 60), min(620, _sh - 120)
+        win.geometry(f"{_w}x{_h}+{max(0, (_sw - _w) // 2)}+{max(0, (_sh - _h) // 3)}")
+        win.minsize(min(760, _w), min(440, _h))
+        # 状态机：files 恒为 list（当前清单）；files_result/files_seq 负责隔离"在途查询"，
+        # 旧轮询与旧线程一律作废；checked 是勾选状态的唯一事实来源（不依赖 Treeview 选中态）。
+        state = {"files": [], "files_result": None, "files_seq": 0, "checked": set(),
+                 "search_result": None, "search_seq": 0, "progress": None,
+                 "dl_result": None, "cur_mid": None}
 
         def fmt(v):
             if v is None:
@@ -1765,10 +1772,25 @@ class HitranLab(tk.Tk):
         mol_tv.pack(side="left", fill="both", expand=True)
         mol_sb.pack(side="right", fill="y")
 
+        # 底栏先 pack（side="bottom"）：pack 按调用顺序分配空间，底栏先占位才能保证窗口再矮
+        # 也是牺牲文件列表，而不是把「全选 / 清空 / 下载选中」这些按钮挤出可视区。
+        stat_var = tk.StringVar(value="输入气体名称后点「搜索」；文件列表单击行可勾选/取消")
+        foot = ttk.Frame(win, padding=(10, 6, 10, 10))
+        foot.pack(side="bottom", fill="x")
+        btn_all = ttk.Button(foot, text="全选")
+        btn_all.pack(side="left")
+        btn_none = ttk.Button(foot, text="清空")
+        btn_none.pack(side="left", padx=4)
+        btn_close = ttk.Button(foot, text="关闭", command=lambda: self._close_modal(win))
+        btn_close.pack(side="right")
+        btn_dl = ttk.Button(foot, text="下载选中")
+        btn_dl.pack(side="right", padx=6)
+        ttk.Label(foot, textvariable=stat_var, foreground=self._text_dim).pack(side="left", padx=10)
+
         mid = ttk.Frame(win, padding=(10, 0))
         mid.pack(fill="both", expand=True)
         cols = ("sel", "T", "p", "rng", "res", "npts", "size", "brd", "file")
-        tv = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
+        tv = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended", height=8)
         for c, txt, w, anchor in (("sel", "勾选", 46, "center"), ("T", "T (K)", 64, "center"),
                                   ("p", "p (Torr)", 74, "center"),
                                   ("rng", "波数范围 (cm-1)", 176, "w"), ("res", "分辨率", 64, "center"),
@@ -1785,31 +1807,27 @@ class HitranLab(tk.Tk):
         mid.rowconfigure(0, weight=1)
         mid.columnconfigure(0, weight=1)
 
-        stat_var = tk.StringVar(value="输入气体名称后点「搜索」；文件列表单击行可勾选/取消")
-        foot = ttk.Frame(win, padding=(10, 6, 10, 10))
-        foot.pack(fill="x")
-        btn_all = ttk.Button(foot, text="全选")
-        btn_all.pack(side="left")
-        btn_none = ttk.Button(foot, text="清空")
-        btn_none.pack(side="left", padx=4)
-        btn_close = ttk.Button(foot, text="关闭", command=lambda: self._close_modal(win))
-        btn_close.pack(side="right")
-        btn_dl = ttk.Button(foot, text="下载选中")
-        btn_dl.pack(side="right", padx=6)
-        ttk.Label(foot, textvariable=stat_var, foreground=self._text_dim).pack(side="left", padx=10)
-
         def sel_rows():
-            return [int(i) for i in tv.selection() if str(i).isdigit()]
+            """当前勾选的行号。以 state['checked'] 为准，与 Treeview 选中态解耦。"""
+            files = state.get("files") or []
+            return sorted(i for i in state.get("checked") or () if 0 <= i < len(files))
 
         def update_stat(*_):
             idx = sel_rows()
             files = state.get("files") or []
-            est = sum((files[i].get("est_size_mb") or 0) for i in idx if i < len(files))
             if files:
-                stat_var.set(f"已选 {len(idx)}/{len(files)} 个，预计 {est:.1f} MB"
+                est = sum((files[i].get("est_size_mb") or 0) for i in idx)
+                stat_var.set(f"已勾选 {len(idx)}/{len(files)} 个，预计 {est:.1f} MB"
                              f"（单次上限 {hm.XSC_DL_LIMIT_MB} MB）")
 
         def set_check(row, on):
+            """勾选/取消单行：state['checked'] 是唯一事实来源，Treeview 选中态仅作视觉反馈。"""
+            if not str(row).isdigit():
+                return
+            if on:
+                state["checked"].add(int(row))
+            else:
+                state["checked"].discard(int(row))
             tv.set(row, "sel", "☑" if on else "☐")
             if on:
                 tv.selection_add(row)
@@ -1818,26 +1836,25 @@ class HitranLab(tk.Tk):
 
         def toggle_row(event):
             row = tv.identify_row(event.y)
-            if not row:
+            if not row or not str(row).isdigit():
                 return
-            set_check(row, row not in tv.selection())
+            set_check(row, int(row) not in state["checked"])
             update_stat()
             return "break"          # 拦住默认选择行为，实现"单击=勾选/取消"
 
         def pick_all():
-            tv.selection_set(tv.get_children())
             for r in tv.get_children():
-                tv.set(r, "sel", "☑")
+                set_check(r, True)
             update_stat()
 
         def pick_none():
-            tv.selection_remove(*tv.get_children())
             for r in tv.get_children():
-                tv.set(r, "sel", "☐")
+                set_check(r, False)
             update_stat()
 
         def fill_files(files):
-            state["files"] = files
+            state["files"] = list(files)
+            state["checked"] = set()             # 换分子即清空勾选，避免行号错位张冠李戴
             tv.delete(*tv.get_children())
             for i, it in enumerate(files):
                 mark = "✓ " if it.get("downloaded") else ""
@@ -1866,7 +1883,7 @@ class HitranLab(tk.Tk):
             if not hits:
                 stat_var.set(f"没找到「{query}」——可换化学式或英文名（如 C3H8 / propane），"
                              f"也可能该分子不在截面库（截面库只收录较重分子）")
-                btn_dl.configure(state="normal")
+                btn_dl.configure(state="disabled")      # 没候选就没东西可下
                 return
             if len(hits) == 1:
                 load_files(int(hits[0]["id"]))
@@ -1881,15 +1898,15 @@ class HitranLab(tk.Tk):
                 btn_dl.configure(state="normal")
                 stat_var.set(f"匹配到 {len(hits)} 个分子 —— 请在上方单击选中要用的那个")
 
-        def poll_files():
-            r = state["files"]
-            if r == "pending":
-                win.after(200, poll_files)
+        def poll_files(seq):
+            """轮询最新一次清单查询；seq 不匹配的旧循环直接退出，不再回写状态。"""
+            if seq != state["files_seq"]:
                 return
-            state["files"] = None
+            r = state.get("files_result")
+            if r is None:
+                win.after(200, lambda: poll_files(seq))
+                return
             btn_dl.configure(state="normal")
-            if not isinstance(r, dict):
-                return
             if r.get("error"):
                 stat_var.set("查询失败")
                 self.show_error_dialog("查询截面清单失败", r["error"])
@@ -1905,23 +1922,32 @@ class HitranLab(tk.Tk):
                              f"{r.get('total_est_mb')} MB（单击行勾选要下载的，或点「全选」）")
 
         def load_files(mid):
-            """按分子 id 拉取截面文件清单（后台线程 + after 轮询）。"""
+            """按分子 id 拉取截面文件清单（后台线程 + after 轮询）。
+
+            files_seq 单调递增：换分子/重新搜索都作废旧查询，旧线程与旧轮询一律不再写状态。
+            否则两个轮询循环并发时，后到的会把刚填好的清单覆盖成空 —— 表现为
+            「明明勾选了，点下载却提示未选中」。
+            """
             state["cur_mid"] = int(mid)
+            seq = state["files_seq"] = state["files_seq"] + 1
+            state["files_result"] = None
+            fill_files([])                       # 旧清单与旧勾选立即作废，避免行号错位
             try:
                 mol_tv.selection_set(str(mid))
             except Exception:
                 pass
-            state["files"] = "pending"
             btn_dl.configure(state="disabled")
             stat_var.set("正在查询该分子的截面文件…")
 
             def bg():
                 try:
-                    state["files"] = hm.t_xsc_files(molecule_id=int(mid))
+                    r = hm.t_xsc_files(molecule_id=int(mid))
                 except Exception:
-                    state["files"] = {"error": traceback.format_exc()}
+                    r = {"error": traceback.format_exc()}
+                if state["files_seq"] == seq:    # 过期查询的结果直接丢弃
+                    state["files_result"] = r
             threading.Thread(target=bg, daemon=True).start()
-            win.after(200, poll_files)
+            win.after(200, lambda: poll_files(seq))
 
         def on_mol_select(event=None):
             sel = mol_tv.selection()
@@ -1932,15 +1958,15 @@ class HitranLab(tk.Tk):
                 return
             load_files(mid)
 
-        def poll_search():
-            r = state["search"]
-            if r == "pending":
-                win.after(200, poll_search)
+        def poll_search(seq):
+            """轮询最新一次检索（同 poll_files，旧循环靠 seq 自我作废）。"""
+            if seq != state["search_seq"]:
                 return
-            state["search"] = None
+            r = state.get("search_result")
+            if r is None:
+                win.after(200, lambda: poll_search(seq))
+                return
             btn_search.configure(state="normal")
-            if not isinstance(r, dict):
-                return
             if r.get("error"):
                 stat_var.set("检索失败")
                 self.show_error_dialog("检索分子失败", r["error"])
@@ -1953,22 +1979,26 @@ class HitranLab(tk.Tk):
                 messagebox.showwarning("HitranLab", "请输入气体名称（中文名 / 化学式 / 英文名）",
                                        parent=win)
                 return
-            state["search"] = "pending"
+            seq = state["search_seq"] = state["search_seq"] + 1
             state["cur_mid"] = None
+            state["files_seq"] = state["files_seq"] + 1    # 作废在途的文件清单查询
+            state["files_result"] = None
+            fill_files([])                                 # 清空表格与勾选
+            state["search_result"] = None
             btn_search.configure(state="disabled")
             btn_dl.configure(state="disabled")
             stat_var.set(f"正在检索「{nm}」…")
             mol_tv.delete(*mol_tv.get_children())
-            tv.delete(*tv.get_children())
-            state["files"] = []
 
             def bg():
                 try:
-                    state["search"] = hm.t_xsc_molecules(query=nm, limit=30)
+                    r = hm.t_xsc_molecules(query=nm, limit=30)
                 except Exception:
-                    state["search"] = {"error": traceback.format_exc()}
+                    r = {"error": traceback.format_exc()}
+                if state["search_seq"] == seq:
+                    state["search_result"] = r
             threading.Thread(target=bg, daemon=True).start()
-            win.after(200, poll_search)
+            win.after(200, lambda: poll_search(seq))
 
         def poll_download():
             if state.get("dl_result") is None:
@@ -1981,6 +2011,8 @@ class HitranLab(tk.Tk):
             btn_dl.configure(state="normal")
             btn_search.configure(state="normal")
             btn_close.configure(state="normal")
+            btn_all.configure(state="normal")
+            btn_none.configure(state="normal")
             win.protocol("WM_DELETE_WINDOW", lambda w=win: self._close_modal(w))
             if res.get("error"):
                 stat_var.set("下载失败")
@@ -2007,9 +2039,19 @@ class HitranLab(tk.Tk):
         def do_download():
             files = state.get("files") if isinstance(state.get("files"), list) else []
             nm = name_var.get().strip()      # Tk 变量只能在主线程读，后台线程读会抛 RuntimeError
-            idx = [i for i in sel_rows() if i < len(files)]
+            if not files:
+                messagebox.showinfo(
+                    "HitranLab",
+                    ("该分子在截面库里没有可下载的文件，换个分子试试"
+                     if state.get("files_result") else "文件清单还没加载好，请稍候再试"),
+                    parent=win)
+                return
+            idx = sel_rows()                 # 只认勾选列，与 Treeview 选中态解耦
             if not idx:
-                messagebox.showinfo("HitranLab", "请先选中要下载的文件", parent=win)
+                messagebox.showinfo(
+                    "HitranLab",
+                    "请先勾选要下载的文件：单击列表行左侧的 ☐ 即可勾选，或直接点「全选」。",
+                    parent=win)
                 return
             sel = [files[i] for i in idx]
             est = sum((it.get("est_size_mb") or 0) for it in sel)
@@ -2022,6 +2064,8 @@ class HitranLab(tk.Tk):
             btn_dl.configure(state="disabled")
             btn_search.configure(state="disabled")
             btn_close.configure(state="disabled")
+            btn_all.configure(state="disabled")
+            btn_none.configure(state="disabled")
             win.protocol("WM_DELETE_WINDOW", lambda: None)      # 下载中不允许关闭
 
             def prog(done, total, fname, nbytes):
@@ -3519,7 +3563,7 @@ class HitranLab(tk.Tk):
         ttk.Label(win, text="", background=self._bg).pack()
         ttk.Label(win, text=f"仓库: {APP_REPO}", background=self._bg, foreground=self._accent,
                   font=("Microsoft YaHei", 8)).pack()
-        ttk.Label(win, text="License: MIT", background=self._bg, foreground=self._text_dim,
+        ttk.Label(win, text="License: GPLv3", background=self._bg, foreground=self._text_dim,
                   font=("Microsoft YaHei", 8)).pack(pady=(2, 0))
         ttk.Button(win, text="关闭", command=win.destroy).pack(pady=16)
 

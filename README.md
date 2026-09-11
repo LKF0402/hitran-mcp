@@ -60,7 +60,7 @@ hitran-mcp/
 ├─ README.md                 # 中文文档（本文件）
 ├─ README.en.md              # English documentation
 ├─ CHANGELOG.md              # 更新日志
-├─ LICENSE                   # MIT 协议
+├─ LICENSE                   # GPLv3 协议
 ├─ requirements.txt          # Python 依赖
 ├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
 ├─ app/
@@ -295,7 +295,7 @@ python app/hitran_app.py --selftest selftest.json
 
 ## 许可证
 
-本项目采用 MIT 许可证，详见 [LICENSE](LICENSE)。
+本项目采用 **GPLv3** 许可证，详见 [LICENSE](LICENSE)。
 
 ## References
 
