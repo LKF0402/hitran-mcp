@@ -12,7 +12,7 @@
 - [HitranLab 桌面工作站](#hitranlab-桌面工作站)
   - [下载与运行](#下载与运行)
   - [功能说明](#功能说明)
-  - [从源码打包](#从源码打包)
+  - [从源码打包 / 发版](#从源码打包--发版)
 - [快速开始（MCP 服务器）](#快速开始mcp-服务器)
   - [环境要求](#环境要求)
   - [安装](#安装)
@@ -31,14 +31,14 @@
 
 `hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，包含两套前端：
 
-1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用 9 个工具完成取数、谱计算与绘图。
+1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用 12 个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
 2. **HitranLab 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
 
 两套前端共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
 
 - **传输层**：MCP 服务器用 stdio JSON-RPC（协议 2024-11-05），纯 Python 标准库实现，无框架依赖。
-- **数据源**：实时取自 HITRANonline，经官方 HAPI 1.3.0.0；物种表与同位素丰度直接读取 HAPI 官方 ISO 表，无硬编码白名单。
-- **覆盖范围**：MCP 服务器 9 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路；桌面工作站覆盖日常光谱分析全流程。
+- **数据源**：实时取自 HITRANonline。计算层用官方 HAPI 1.3.0.0；下载优先走官方 v2 API（HAPI2，URL 携带 API key），不可用时自动回退 HAPI 1.x 旧接口。物种表与同位素丰度直接读取 HAPI 官方 ISO 表，无硬编码白名单。
+- **覆盖范围**：MCP 服务器 12 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路；桌面工作站覆盖日常光谱分析全流程。
 - **仓库边界**：仅含代码与文档；线表缓存（`Hitran_Data/`）、产物（`tmp/`）、按需下载的截面数据（`xsc_data/`）、打包产物（`dist/`/`build/`）与 API key 均属运行期数据，位于 `.gitignore` 区，不入库。
 
 ## 功能特性
@@ -46,11 +46,11 @@
 | 特性 | 说明 |
 |---|---|
 | 全链路覆盖 | 物种查询 → 线表抓取 → 强线列表 → 吸收/透过率谱 → 谱图 → 配分函数 → 截面文件分析 |
-| 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）经本地文件读入，统一产物链路 |
+| 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）走官方 API 在线检索 + 一键下载（免 Portal 登录），或读入本地文件，统一产物链路 |
 | 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
 | 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 + HAPI + TIPS 版本水印，可追溯到原始文献 |
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
-| 桌面 GUI | HitranLab 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、CSV/PNG 导出 |
+| 桌面 GUI | HitranLab 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 仓库结构
@@ -112,7 +112,7 @@ python app/hitran_app.py
 | 强线列表 | 显示窗口内最强 N 条谱线（ν、S、γ_air、E″），多分子合并时标注每条线来源分子 |
 | Q(T) 曲线 | 配分函数随温度变化曲线，用于评估温度对线强的影响 |
 | 配分函数 | 查询指定温度下的 Q(T) 值（TIPS-2025） |
-| 截面文件 | 读入 HITRAN 截面库（XSC）的 .txt 文件，绘图并导出溯源 CSV |
+| 截面文件 | 在线按中文名/化学式检索截面分子并一键下载（免 Portal 登录），读入原生 .xsc / 两列 .txt，绘图并导出溯源 CSV |
 | 换算工具 | 波长 ↔ 波数实时换算器 |
 | 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
 | 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
@@ -150,7 +150,7 @@ python tools/build_release.py --zip-only      # 只重建 zip（沿用现有 dis
 python tools/build_release.py --no-selftest   # 跳过打包后的自检
 ```
 
-打包产物约 100 MB（one-dir 模式）。发布时上传第 4 步生成的 zip 作为 release 资产即可。
+打包目录约 245 MB（one-dir 模式，含 HAPI2 / sqlalchemy / numba / llvmlite），压缩后 zip 约 100 MB。发布时上传第 4 步生成的 zip 作为 release 资产即可。
 
 > 打包前请关闭所有正在运行的 HitranLab 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
 >
@@ -179,7 +179,7 @@ pip install -r hitran-mcp/requirements.txt
 
 **命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
 
-> 说明：HAPI 1.3.0.0 的下载接口暂不校验 key，此文件属预置。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。HAPI2 截面下载等功能需要有效 API key。
+> 说明：配置 key 后，线表下载走 HITRAN 官方 v2 API（URL 携带 key），截面文件清单（`/api/v2/<key>/cross-sections`）与下载也需要它；未配置时自动回退 HAPI 1.x 旧接口（该接口不校验 key）。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。
 
 ## 接入 AI 客户端
 
@@ -197,7 +197,7 @@ pip install -r hitran-mcp/requirements.txt
 
 > Windows 下若 `python` 不在 PATH，`command` 请使用解释器的完整路径（正斜杠或双反斜杠均可）。
 
-保存后重启客户端，看到 `hitran` 服务器与 9 个工具即接入成功。
+保存后重启客户端，看到 `hitran` 服务器与 12 个工具即接入成功。
 
 ## 工具参考
 
@@ -209,8 +209,11 @@ pip install -r hitran-mcp/requirements.txt
 | `hitran_spectrum` | 吸收系数 α / 透过率谱，CSV 带溯源水印；多物种可用 `specs_csv` 一次叠加 | `specs_csv` 或 `name`；`numin`, `numax` 必填 |
 | `hitran_plot` | 谱图 PNG（多物种叠加 + 总谱，`ylog` 可选） | 同 `hitran_spectrum`，另加 `title/ylog/dpi` |
 | `hitran_partition_sum` | 配分函数 Q(T)，TIPS 2025/2021/2017/2011 可选 | `name` 或 `M`；`T` |
-| `hitran_cross_section` | 读入本地 HOTW 截面文件（ν–σ 两列）→ 截窗/绘图/溯源 CSV | `file_path`（缺省时列出 `xsc_data/` 可用文件） |
-| `hitran_xsc_search` | 在线探测截面子库分子的截面文件清单（免登录只读） | `name`（Portal 显示名） |
+| `hitran_cross_section` | 读入本地截面文件（原生 `.xsc` 或 ν–σ 两列）→ 截窗/绘图/溯源 CSV | `file_path`（缺省时列出 `xsc_data/` 可用文件） |
+| `hitran_xsc_search` | 在线探测截面子库分子的截面文件清单（免登录只读，无文件名） | `name`（Portal 显示名） |
+| `hitran_xsc_molecules` | 截面分子检索：中文名/化学式/英文名/俗名模糊匹配，返回候选与 `id`（约 670 个分子） | `query`（留空列全部）；`limit` |
+| `hitran_xsc_files` | 列出某截面分子**可直接下载**的文件清单（T/P/波数范围/分辨率/点数/体积估算/filename，需 API key） | `name` 或 `molecule_id`；`include_all` |
+| `hitran_xsc_download` | 选定文件下载到 `xsc_data/`（官方 API + 公开数据路径，免 Portal 登录，默认上限 300 MB） | `name`, `filenames`/`ids`；`dry_run`, `overwrite`, `max_total_mb` |
 | `hitran_apikey_status` | API key / 缓存 / 产物 / 截面文件状态速查 | — |
 
 多物种叠加示例（`specs_csv`，与 `name` 互斥）：
@@ -230,16 +233,18 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 
 ### 截面库（XSC）
 
-- 覆盖 **600+ 重分子**（烷烃、VOC、制冷剂等）：多为稠密振动带结构、缺乏逐线验证参数，以**测量光谱文件**（两列 ν–σ，单位 cm⁻¹ / cm²·molecule⁻¹）形式收录。
-- 访问机制：仅经 HITRANonline **Web Portal**（hitran.org/xsc）分发——注册账号登录后按分子–温度–压力勾选下载；**无在线 API**。HAPI 侧仅提供 `read_hotw()` 本地读文件接口。
+- 覆盖 **600+ 重分子**（烷烃、VOC、制冷剂等）：多为稠密振动带结构、缺乏逐线验证参数，以**测量光谱文件**收录——原生 `.xsc`（1 行定宽头 + σ 序列，单位 cm²/molecule）或两列 ν–σ 文本（单位 cm⁻¹ / cm²·molecule⁻¹）。
+- 访问机制：官方 v2 API（`/api/v2/<key>/cross-sections`）提供**文件清单**，公开数据路径 `/data/xsec/` 提供**文件本体**，二者均可直接访问、**无需登录 Web Portal**（需本机配置 HITRAN API key）。HAPI 1.x 侧仅提供 `read_hotw()` 本地读文件接口。
 
 ### 双库桥接
 
-- 逐线通道（API）无法访问截面通道（登录 Portal），此为 HITRAN 官方数据分发设计。
-- 桥接流程：
-  1. `hitran_xsc_search(name="<截面库分子名>")` 在线查询该分子的截面文件清单（免登录），确定目标 T–P 文件；
-  2. 至 hitran.org/xsc 登录下载 .txt，放入仓库 `xsc_data/` 目录（gitignore，不入库）；
-  3. `hitran_cross_section(file_path=...)` 读入，完成截窗、绘图、溯源 CSV 导出，与逐线谱共用 `tmp/mcp_out/` 产物链路。
+- 逐线通道（逐跃迁参数）与截面通道（测量光谱）是两套数据结构，HITRAN 官方分开分发；本工具把它们统一到同一条产物链路。
+- **一键下载（推荐，免 Portal 登录）**：
+  1. `hitran_xsc_molecules(query="丙烷")` 检索分子并拿到 `id`（支持中文名/化学式/英文名/俗名）；
+  2. `hitran_xsc_files(molecule_id=<id>)` 列出可直接下载的文件（T/P/波数范围/点数/体积）；
+  3. `hitran_xsc_download(name=..., filenames=[...])` 下载到 `xsc_data/`（gitignore，不入库；默认上限 300 MB）；
+  4. `hitran_cross_section(file_path=...)` 读入，完成截窗、绘图、溯源 CSV 导出，与逐线谱共用 `tmp/mcp_out/` 产物链路。
+- **手动下载（无 API key 时）**：`hitran_xsc_search(name=...)` 免登录探测清单 → 至 hitran.org/xsc 下载文件放入 `xsc_data/` → `hitran_cross_section` 读入。
 - 逐线工具遇到截面库收录的分子时，报错信息会显式提示该架构差异与正确路径。
 
 ## 使用规范
@@ -274,7 +279,7 @@ python app/hitran_app.py --selftest selftest.json
 - **抓取失败 "daily limit"**：官方每日配额超限，次日重试；缓存未删时大部分窗口无需重新抓取。
 - **修改代码不生效**：重启 AI 客户端（MCP 进程随客户端启动）；桌面工作站需重启程序。
 - **清理缓存**：删除 `Hitran_Data/*.data|*.header` 即可，需要时自动重抓。
-- **截面库分子（如丙烷 C₃H₈）查不到**：HITRAN 截面库无在线 API，需按[双库桥接](#双库桥接)流程手动下载 .txt 文件后用 `hitran_cross_section` 读入。
+- **截面库分子（如丙烷 C₃H₈）查不到**：该分子属截面库，与逐线库分开分发。用 `hitran_xsc_molecules` 检索 → `hitran_xsc_files` 列清单 → `hitran_xsc_download` 一键下载，再用 `hitran_cross_section` 读入；无 API key 时可按[双库桥接](#双库桥接)流程手动下载。
 - **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
 
 

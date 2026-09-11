@@ -12,7 +12,7 @@
 - [HitranLab Desktop Workstation](#hitranlab-desktop-workstation)
   - [Download & Run](#download--run)
   - [Features](#features-1)
-  - [Build from Source](#build-from-source)
+  - [Build from Source / Release](#build-from-source--release)
 - [Quick Start (MCP Server)](#quick-start-mcp-server)
   - [Requirements](#requirements)
   - [Installation](#installation)
@@ -31,14 +31,14 @@
 
 `hitran-mcp` is a complete toolchain for the HITRAN spectroscopic database, featuring two frontends:
 
-1. **MCP Server** (`tools/hitran_mcp.py`): stdio JSON-RPC implementation, exposing 9 tools for AI clients to perform retrieval, spectral computation and plotting.
+1. **MCP Server** (`tools/hitran_mcp.py`): stdio JSON-RPC implementation, exposing 12 tools for AI clients to perform retrieval, spectral computation, plotting, and cross-section file discovery/download.
 2. **HitranLab Desktop Workstation** (`app/hitran_app.py`): Tkinter + matplotlib GUI for multi-component absorption spectrum computation, overlay plotting, strong-line analysis, partition sum queries, CSV/PNG export, and more — no programming required.
 
 Both frontends share the same physical computation engine (`tools/hitran.py`), ensuring fully consistent results.
 
 - **Transport**: MCP server uses stdio JSON-RPC (protocol 2024-11-05), pure Python standard library, no framework dependency.
-- **Data source**: fetched live from HITRANonline through the official HAPI 1.3.0.0; the species table and isotope abundances are read from the HAPI official ISO table — no hard-coded whitelist.
-- **Coverage**: MCP server has 9 tools spanning both HITRAN2024 databases (line-by-line + cross-section); desktop workstation covers the full daily spectral analysis workflow.
+- **Data source**: fetched live from HITRANonline. The computation layer uses the official HAPI 1.3.0.0; downloads go through the official v2 API first (HAPI2, API key in URL) and fall back to the HAPI 1.x legacy endpoint automatically. The species table and isotope abundances are read from the HAPI official ISO table — no hard-coded whitelist.
+- **Coverage**: MCP server has 12 tools spanning both HITRAN2024 databases (line-by-line + cross-section); desktop workstation covers the full daily spectral analysis workflow.
 - **Repository boundary**: code and documentation only. Line-table caches (`Hitran_Data/`), outputs (`tmp/`), user-downloaded cross-section data (`xsc_data/`), build artifacts (`dist/`/`build/`) and API keys are all runtime artifacts under `.gitignore` — never committed.
 
 ## Features
@@ -46,11 +46,11 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 | Feature | Description |
 |---|---|
 | Full pipeline | Species lookup → line-table fetch → strong-line list → absorption/transmittance spectrum → plot → partition sum → cross-section analysis |
-| Dual-database bridge | LBL via HAPI online API; XSC (600+ heavy molecules) via local file ingestion — unified output pipeline |
+| Dual-database bridge | LBL via HAPI online API; XSC (600+ heavy molecules) via official-API discovery + one-click download (no Portal login), or local file ingestion — unified output pipeline |
 | Physical safeguards | Mixtures computed as `α_i = x_i · α_pure_i(T, P, bath)`; windows not covered are auto-refetched; zero-line/failure raise explicit errors instead of silently returning a flat spectrum |
 | Full provenance | Every CSV/PNG carries HITRAN2024 + HAPI + TIPS version watermarks, traceable to the original references |
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
-| Desktop GUI | HitranLab workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, CSV/PNG export |
+| Desktop GUI | HitranLab workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## Repository Layout
@@ -112,7 +112,7 @@ python app/hitran_app.py
 | Strong-line list | Shows the top N strongest lines in the window (ν, S, γ_air, E″); with multiple molecules, each line is labeled with its source molecule |
 | Q(T) curve | Partition sum vs. temperature curve, for evaluating temperature effects on line strength |
 | Partition sum | Query Q(T) at a specified temperature (TIPS-2025) |
-| Cross-section file | Read HITRAN XSC database .txt files, plot and export provenance CSV |
+| Cross-section file | Search XSC molecules by Chinese name/formula and download in one click (no Portal login); read native `.xsc` / two-column `.txt`, plot and export provenance CSV |
 | Unit converter | Real-time wavelength ↔ wavenumber converter |
 | Species table | Query the official HITRAN table of 61 line-by-line molecules |
 | Data export | Spectrum PNG (300 DPI), spectrum data CSV (with provenance watermark), complete line-list CSV |
@@ -125,22 +125,38 @@ python app/hitran_app.py
 4. Adjust parameters and compute again — spectra are automatically overlaid on the same canvas
 5. Click「Clear Plot」to reset the canvas; click「Export CSV/PNG」to save results
 
-### Build from Source
+### Build from Source / Release
 
-To package as exe yourself:
+**Use the one-click release script** — it binds "build the exe" and "produce the zip asset" into a single step with a consistency check:
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --clean --name HitranLab --windowed --onedir \
-  --icon app/hitranlab.ico --paths . \
-  --collect-all matplotlib --hidden-import hapi \
-  --exclude-module pandas --exclude-module lxml --exclude-module scipy \
-  app/hitran_app.py
+python tools/build_release.py
 ```
 
-Build output is in `dist/HitranLab/`, approximately 100 MB (one-dir mode). Compress the entire `HitranLab/` directory for distribution.
+The script performs, in order:
 
-> Before building, make sure to close all running HitranLab processes, otherwise file locking may cause build failures.
+1. Build the exe from `HitranLab.spec` (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing included);
+2. Replace `dist/HitranLab/` (**keeping** the exe-side line-table cache and `hitran_api_key.txt`);
+3. Run a headless self-test on the packaged build (molecule count / spectrum points / peak / download engine);
+4. Generate the GitHub release asset `dist/HitranLab-windows-x64.zip`;
+5. **Verify that the exe inside the zip matches `dist/HitranLab/HitranLab.exe` in size and CRC32**
+   — mismatches abort with an error, so "stale zip with a new exe" can no longer happen.
+
+Optional flags:
+
+```bash
+python tools/build_release.py --zip-only      # rebuild the zip only (reuse existing dist)
+python tools/build_release.py --no-selftest   # skip the post-build self-test
+```
+
+The build directory is ~245 MB (one-dir mode, HAPI2 / numba / llvmlite included); the compressed zip is ~100 MB. Upload the zip from step 4 as the release asset.
+
+> Close all running HitranLab windows before building, otherwise file locking will fail the build (the script reports this clearly).
+>
+> **Do not hand-write `pyinstaller` commands**: `HitranLab.spec` includes required dependencies
+> (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing) that hand-written flags easily miss,
+> breaking HAPI2 in the packaged build.
 
 ## Quick Start (MCP Server)
 
@@ -162,7 +178,7 @@ Or place the repository at any fixed path (the rest of this document uses `D:\hi
 
 Register at [hitran.org](https://hitran.org) to get an API key. Write it to `tools/hitran_api_key.txt` (same directory as `hitran_mcp.py`), or set the environment variable `HITRAN_API_KEY`.
 
-> Note: HAPI 1.3.0.0's download endpoint does not currently validate the key — this file is preparatory. HITRANonline enforces a daily quota on fetch; exceeding it returns 403. This tool automatically reuses cache and does not re-download.
+> Note: with a key configured, line-table downloads go through the HITRAN official v2 API (key in URL), and the cross-section file listing (`/api/v2/<key>/cross-sections`) and downloads need it too; without a key, the tool falls back to the HAPI 1.x legacy endpoint (which does not validate the key). HITRANonline enforces a daily quota on fetch; exceeding it returns 403. This tool automatically reuses cache and does not re-download.
 
 ## MCP Client Setup
 
@@ -180,7 +196,7 @@ Any MCP-compatible client works. Merge the contents of `mcp.config.example.json`
 
 > On Windows, if `python` is not in PATH, use the full path to the interpreter (forward slashes or double backslashes both work).
 
-Save and restart the client. You should see the `hitran` server with 9 tools — that means it's connected.
+Save and restart the client. You should see the `hitran` server with 12 tools — that means it's connected.
 
 ## Tool Reference
 
@@ -192,8 +208,11 @@ Save and restart the client. You should see the `hitran` server with 9 tools —
 | `hitran_spectrum` | Absorption coefficient α / transmittance spectrum, CSV with provenance watermark; multi-species overlay via `specs_csv` | `specs_csv` or `name`; `numin`, `numax` required |
 | `hitran_plot` | Spectrum PNG (multi-species overlay + total, `ylog` optional) | Same as `hitran_spectrum`, plus `title/ylog/dpi` |
 | `hitran_partition_sum` | Partition sum Q(T), TIPS 2025/2021/2017/2011 selectable | `name` or `M`; `T` |
-| `hitran_cross_section` | Read local HOTW cross-section file (ν–σ two columns) → window/plot/provenance CSV | `file_path` (omitting lists available files in `xsc_data/`) |
-| `hitran_xsc_search` | Online probe of cross-section sub-database molecule file list (login-free, read-only) | `name` (Portal display name) |
+| `hitran_cross_section` | Read a local XSC file (native `.xsc` or ν–σ two columns) → window/plot/provenance CSV | `file_path` (omitting lists available files in `xsc_data/`) |
+| `hitran_xsc_search` | Online probe of cross-section sub-database molecule file list (login-free, read-only, no filenames) | `name` (Portal display name) |
+| `hitran_xsc_molecules` | XSC molecule search: fuzzy match on Chinese name/formula/English name/synonym, returns candidates and `id` (~670 molecules) | `query` (empty = all); `limit` |
+| `hitran_xsc_files` | List **directly downloadable** files for an XSC molecule (T/P/wavenumber range/resolution/points/size/filename; needs API key) | `name` or `molecule_id`; `include_all` |
+| `hitran_xsc_download` | Download selected files into `xsc_data/` (official API + public data path, no Portal login, default cap 300 MB) | `name`, `filenames`/`ids`; `dry_run`, `overwrite`, `max_total_mb` |
 | `hitran_apikey_status` | Quick status check: API key / cache / outputs / cross-section files | — |
 
 Multi-species overlay example (`specs_csv`, mutually exclusive with `name`):
@@ -213,16 +232,18 @@ HITRAN2024 uses a **dual-database distribution architecture** — the two data c
 
 ### Cross-Section (XSC) Database
 
-- Covers **600+ heavy molecules** (alkanes, VOCs, refrigerants, etc.): mostly dense vibrational band structures lacking validated line-by-line parameters, distributed as **measured spectrum files** (two-column ν–σ, units cm⁻¹ / cm²·molecule⁻¹).
-- Access mechanism: distributed only via the HITRANonline **Web Portal** (hitran.org/xsc) — register, log in, select by molecule–temperature–pressure, download; **no online API**. HAPI only provides the `read_hotw()` local file reader.
+- Covers **600+ heavy molecules** (alkanes, VOCs, refrigerants, etc.): mostly dense vibrational band structures lacking validated line-by-line parameters, distributed as **measured spectrum files** — native `.xsc` (one fixed-width header + a σ series, units cm²/molecule) or two-column ν–σ text (units cm⁻¹ / cm²·molecule⁻¹).
+- Access mechanism: the official v2 API (`/api/v2/<key>/cross-sections`) provides the **file listing**, and the public data path `/data/xsec/` serves the **file bodies** — both directly reachable, **no Web Portal login required** (a local HITRAN API key is needed). HAPI 1.x only offers the `read_hotw()` local file reader.
 
 ### Bridging the Two Channels
 
-- The line-by-line channel (API) cannot access the cross-section channel (login-required Portal) — this is by design in HITRAN's official data distribution.
-- Bridging workflow:
-  1. `hitran_xsc_search(name="<XSC molecule name>")` queries the molecule's cross-section file list online (login-free), identifying the target T–P file;
-  2. Go to hitran.org/xsc, log in, download the .txt, place it in the repository's `xsc_data/` directory (gitignored, not committed);
-  3. `hitran_cross_section(file_path=...)` reads it in, performs windowing, plotting, and provenance CSV export, sharing the `tmp/mcp_out/` output pipeline with line-by-line spectra.
+- The line-by-line channel (per-transition parameters) and the cross-section channel (measured spectra) are two different data structures that HITRAN distributes separately; this tool merges them into one output pipeline.
+- **One-click download (recommended, no Portal login)**:
+  1. `hitran_xsc_molecules(query="propane")` finds the molecule and returns its `id` (Chinese name/formula/English name/synonym all supported);
+  2. `hitran_xsc_files(molecule_id=<id>)` lists the directly downloadable files (T/P/wavenumber range/points/size);
+  3. `hitran_xsc_download(name=..., filenames=[...])` downloads them into `xsc_data/` (gitignored, not committed; default cap 300 MB);
+  4. `hitran_cross_section(file_path=...)` reads it in, performs windowing, plotting, and provenance CSV export, sharing the `tmp/mcp_out/` output pipeline with line-by-line spectra.
+- **Manual download (when no API key)**: `hitran_xsc_search(name=...)` probes the list login-free → download from hitran.org/xsc into `xsc_data/` → read with `hitran_cross_section`.
 - When line-by-line tools encounter a molecule covered by the cross-section database, the error message explicitly explains this architectural difference and the correct path.
 
 ## Usage Conventions
@@ -257,7 +278,7 @@ Verifies that the engine + data + network are fully usable in the packaged envir
 - **Fetch fails with "daily limit"**: Official daily quota exceeded — try again tomorrow. If cache is not deleted, most windows don't need re-fetching.
 - **Code changes don't take effect**: Restart the AI client (MCP process starts with the client); desktop workstation requires restarting the program.
 - **Clear cache**: Delete `Hitran_Data/*.data|*.header` — they will be auto-refetched when needed.
-- **Can't find XSC molecules (e.g., propane C₃H₈)**: HITRAN cross-section database has no online API. Follow the [Bridging the Two Channels](#bridging-the-two-channels) workflow to manually download the .txt file and read it with `hitran_cross_section`.
+- **Can't find XSC molecules (e.g., propane C₃H₈)**: it belongs to the cross-section database, distributed separately from the line-by-line database. Use `hitran_xsc_molecules` to search → `hitran_xsc_files` to list → `hitran_xsc_download` to fetch in one click, then read with `hitran_cross_section`; without an API key, follow the [Bridging the Two Channels](#bridging-the-two-channels) workflow to download manually.
 - **exe flagged by antivirus**: PyInstaller-packaged Python programs occasionally trigger false positives — add to trust list or run from source.
 
 
