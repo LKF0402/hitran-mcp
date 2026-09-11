@@ -1,314 +1,307 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
+
+---
+
+## [v1.5.2] - 2026-09-11
+
+### Bug Fixes
+- Fixed auto-updater hang on Windows
+- Added real-time progress display during updates
+- Added automatic retry (up to 3 attempts)
+- Fixed Chinese character garbling in UTF-8 terminals
+
+---
+
+## [v1.5.1] - 2026-09-11
+
+### License Change
+- Changed license from MIT to GNU GPLv3
+
+### Bug Fixes
+- Fixed cross-section download selection not registering
+- Fixed bottom control bar being squeezed off-screen on small displays
+- Eliminated duplicate cross-section queries
+- Centralized checkbox state management
+
+---
+
+## [v1.5.0] - 2026-09-11
+
+### New Features
+- Cross-section database online search and one-click download (600+ heavy molecules)
+- Chinese/chemical formula molecule search (no need to memorize English names)
+- HAPI2 official API integration for line list downloads
+- Support for native HITRAN `.xsc` file format
+
+### Improvements
+- Reduced startup memory usage (225 MB → 137 MB)
+- Added network retry with exponential backoff
+- Enhanced error logging and diagnostics
+
+### Bug Fixes
+- Fixed silent data corruption during chunked computation
+- Fixed line list truncation detection
+- Fixed dialog focus issues (API key / preferences / about)
+- Fixed molecular search input lag
+
+---
+
+## [v1.4.2] - 2026-09-11
+
+### Critical Fixes
+- Fixed engine crash on startup (all computation failed)
+- Fixed chunked computation point count inconsistency
+- Added truncated line list file detection and auto-re-download
+
+### Improvements
+- Error dialog now supports text selection and copy
+- All errors automatically logged to `Hitran_Data/error.log`
+
+---
+
+## [v1.4.1] - 2026-09-11
+
+> **Note:** This release had a source code bug and is deprecated. Users are recommended to upgrade to v1.4.2 or later.
+
+### New Features
+- API key configuration dialog (Tools → Configure API Key)
+- Network connectivity check before computation
+
+### Bug Fixes
+- Fixed undefined variable errors (numpy, json)
+- Fixed stop button incorrectly interrupting downloads
+- Fixed mixture mode dropping isotope selection
+- Fixed import spectrum bypassing grid/legend toggles
+- Fixed unit switch precision loss
+- Fixed CSV export wave number axis validation
+
+### Performance
+- Reduced package size from 362 MB to 106 MB (70.7% reduction)
+
+---
+
+## [v1.4.0] - 2026-09-10
+
+### New Features
+- Molecular alias search (166 aliases, supports English names, chemical formulas, and M-numbers)
+- Enhanced legend with English molecule names (55 species)
+- Extended configuration persistence (molecule, isotope, path length, cutoff, etc.)
+- HAPI2 compatibility layer framework
+- Numba capability detection
+
+---
+
+## [v1.3.0] - 2026-09-10
+
+### New Features
+- Light/Dark mode toggle (View → Light Mode / Dark Mode)
+- iOS-inspired light color scheme (soft, low-saturation)
+- Optional HAPI2 support (auto-detect, auto-fallback to HAPI1)
+
+### Architecture
+- Refactored color configuration to dynamic retrieval system
+- Extended RoundedButton for runtime color updates
+
+---
+
+## [v1.2.3] - 2026-09-10
+
+### New Features
+- Menu: Tools → Clear Line Cache (one-click cache cleanup)
+
+### UI Fixes
+- Fixed dark mode button color confusion
+- Improved listbox selected text readability
+
+---
+
+## [v1.2.2] - 2026-09-10
+
+### Performance
+- Line list local caching (no repeated network downloads)
+- Chunked computation with real-time progress reporting
+
+### UI
+- Real progress bar with elapsed/remaining time
+- Fixed intensity cutoff unit label (cm/molecule)
+
+### Auto-Update
+- One-click auto-upgrade (download → extract → replace → restart)
+- Preserves line list cache during updates
+
+---
+
+## [v1.2.1] - 2026-09-10
+
+### Engine
+- Cross-section file separator compatibility (space / tab / comma)
+- Line list window safety check (auto re-download if cached table doesn't cover requested window)
+
+### Desktop UI
+- Transmittance mode CSV export now outputs actual displayed transmittance
+- Clear plot button also clears strong line data
+- Added project open/save (Ctrl+O / Ctrl+S)
+- Preferences persistence (step size, wing half-width, line profile)
+- Fixed rounded button background color degradation
+
+### Build
+- HitranLab.spec included in version control for reproducible builds
+
+---
+
 # 更新日志
 
-## v1.5.2 · 2026-09-11 · 修复自动升级「命令窗口无提示、无限等待」
+本文件记录了项目的所有重要变更。
 
-**关键修复**
-
-- **自动升级卡死、全程无提示**：升级脚本按"进程名"等旧版本退出且**没有超时**——只要还有一个 `HitranLab.exe` 在跑（另开的窗口、旧进程没彻底退干净），就会永远等下去；等待期间窗口**一行输出都没有**，用户既看不到进度、也判断不了成败；robocopy 失败时更是只悄悄 `pause`。
-  现改为：① 只等**本进程 PID**，并设 60 秒上限，超时直接 `taskkill` 结束自己；② 全程打印进度（等待中、替换第几次尝试、完成/失败）；③ robocopy 因文件占用失败时整段重试至多 3 次，仍失败则给出**明确原因 + 程序目录 + 更新包位置 + 日志路径**；④ 新增看门线程：退出流程若被后台线程拖住，3 秒后强制结束本进程，确保 exe 文件锁一定释放。
-- **升级窗口中文乱码**：升级脚本原先按 GBK 写出，在 UTF-8 代码页的终端（如 Win11 开启"使用 UTF-8 提供全球语言支持"）会整屏乱码。现改为 **UTF-8 保存 + 开头 `chcp 65001`**，任何代码页下中文都正常显示；自删除也改用 `(goto) 2>nul & del` 惯用法，不再报「找不到批处理文件」。
-
-## v1.5.1 · 2026-09-11 · 许可证改用 GPLv3 · 修复截面库下载「勾选无效」与底栏按钮被挤出
-
-**关键修复**
-
-- **截面库下载窗口：勾选后点「下载选中」仍提示未选中**：`poll_files()` 拿 `state["files"] == "pending"` 当哨兵，
-  一旦两个轮询循环并发（连点两次搜索，或切分子时上一轮还没回来），后到的循环会把刚填好的清单覆盖成 `None`——
-  于是列表明明有行、☑ 也看得见，`do_download()` 却判定 `files == []` 而弹「请先勾选」。
-  现改为 `files_seq` 单调递增的查询代次 ＋ 独立结果槽：旧线程、旧轮询一律作废；同名问题在检索侧一并处理。
-  勾选状态收拢到 `state["checked"]` 集合，不再依赖 Treeview 选中态（单击行=勾选/取消，唯一事实来源）；
-  顺带消除同源的重复查询（实测连点两次搜索只发出 1 次请求）。
-- **截面库下载窗口：底栏「全选 / 清空 / 下载选中」被挤出可视区**：底栏原先在文件列表之后 `pack`，
-  而列表带 `expand=True`，窗口一矮（小屏 / 高 DPI / 手动缩小）底栏就被压成 1px，用户根本看不见按钮，
-  必须拉伸窗口才找得到。现改为底栏用 `side="bottom"` **先占位**（情愿牺牲文件列表，也不牺牲按钮），
-  窗口几何按屏幕可用区域夹紧（原先写死 `940x600`，小屏下窗口底部会落到屏幕外），列表默认行数 10 → 8。
-
-**其它**
-
-- 许可证由 MIT 改为 **GNU GPLv3**：`LICENSE` 全文替换，README 中/英与「关于」对话框同步（原先仍显示 `License: MIT`）。
-
-## v1.5.0 · 2026-09-11 · 截面库在线检索/一键下载 · HAPI2 官方 API 接入 · 发布流程加固
-
-**关键修复**
-
-- **P0 启动失败无任何提示**：`main()` 兜底分支误用 `self.show_error(...)` —— 模块级函数并没有 `self`，一旦启动异常就抛 `NameError`，用户看到的是窗口一闪而过。改为模块级 `_show_fatal()`，并把 traceback 一并落盘。
-- **P1 分块与整窗点数不一致（老问题真因）**：`_n_grid()` 用 `round()` 估算网格点数，而 HAPI 用 `floor()+1`；当 `(numax-numin)/step` 的小数部分 ≥ 0.5 时会多算 1 点，导致 GUI(分块) 与 MCP(整窗) 结果点数不同，且分块结果**末点会超出用户设定的波数上限**。现直接复用 `hapi.arange_()`，实测两路径完全一致。
-- **P1 静默篡改数据**：分块拼接的"截断/补齐"改为**如实告警**（写入 `tinfo["warnings"]`），不再无声丢点或插入重复波数点。
-- **P2 线表完整性检测失效**：`<1KB` 判据只能挡住极小残骸；实测"行边界截断"（66KB→33KB）会被 HAPI 当作合法表读入（`flag_EOF` 仍为 `True`），导致少一半谱线且无任何提示。因读取侧无法识别该类截断，新增**覆盖率合理性告警**：覆盖上界明显低于请求窗口时，提示"该表可能未下载完整，建议清理线表缓存后重算"。
-
-**交互修复**
-
-- **弹窗抢焦点导致回不到主窗口**：API key / 首选项 / 关于 三个弹窗原先只调用 `grab_set()`；弹窗若未获得焦点又被切到后台，grab 仍指向它，主窗口便无法点击。新增统一 `_modal()`：`wait_visibility` + `lift` + `focus_force`，并绑定关闭时释放 grab。
-- **分子搜索框卡顿、退格删不掉**：原先每个按键都重建候选列表并 `event_generate("<Down>")` 展开下拉，逐键重绘导致输入发涩；而下拉一旦展开会吞掉 BackSpace，必须先退出下拉才能继续删。改为 **180ms 防抖 + 不自动展开**，编辑类按键只做轻量过滤。
-
-**其他**
-
-- 错误日志覆盖面：状态栏提示 `_show_error()`（22 处调用）同步写入 `Hitran_Data/error.log`，使"所有错误可回溯"名副其实。
-- 命名澄清：可复制弹窗 `show_error` → `show_error_dialog`，与状态栏 `_show_error` 区分开。
-- 代码风格：补上 `_quiet()` 装饰器上方缺失的空行（PEP8 E305）。
-- **错误弹窗自身崩溃**：`show_error_dialog()` 误用不存在的 `self._colors`（真实是方法 `_get_colors()`），
-  导致任何错误弹窗都抛 `AttributeError` —— 用户反而看不到真正的错误内容。改用 `_get_colors()` 并兜底。
-
-**截面文件：在线清单 + 一键下载（免 Portal 登录）**
-
-- **新增「搜索并下载」（GUI）+ `hitran_xsc_files` / `hitran_xsc_download`（MCP）**：截面子库
-  （600+ 重分子）过去只能登录 hitran.org/xsc 手动勾选下载。现改走官方 API
-  `/api/v2/<key>/cross-sections`（返回可直接下载的文件名）+ 公开数据路径 `/data/xsec/`，
-  **全程无需 Portal 登录**，也不必引入 hapi2/numba（包体积不变）。实测丙烷 136 个可用文件、
-  合计约 699 MB，可按 T/p/波数范围/点数/体积勾选后下载，默认上限 300 MB。
-- **读入侧支持 HITRAN 原生 `.xsc`**：该格式是"1 行定宽头 + 每行 10 个 σ 值"，原先只认两列
-  ν–σ 文本；GUI 侧更宽松的判据会把 10 列行的前两列静默当成 (ν, σ)，**读入错误数据且无提示**。
-  现按定宽头（numin/numax/npnts）重建波数网格，与 HAPI2 官方解析器逐点比对**零误差**；
-  两列 HOTW/CSV 文本仍照旧支持，格式自动识别。
-- **网络抖动重试**：实测 hitran.org 约 1/8 请求偶发 `URLError`（非限流），已加指数退避重试
-  （4xx 不重试，超时/5xx 重试）；连续 8 次调用实测 8/8 成功。
-- **下载安全**：`.part` 临时文件 + 原子重命名（避免半截文件被当好的用）、文件名防路径穿越、
-  已存在默认跳过、串行下载避免触发站点限流。
-
-**截面文件：按中文名 / 化学式找分子（不必再背英文名）**
-
-- **新增分子检索 `hitran_xsc_molecules`**：截面库只认 HITRAN 页面上的英文名（Propane），
-  中文用户无从下手。现内置中文对照表（丙烷→Propane 等 90+ 常用气体），并拉取官方
-  `/molecules` 的约 670 个分子（含化学式与全部别名，本地缓存 30 天）做模糊匹配：
-  「丙烷」「C3H8」「propane」「prop」都能搜到；打分区分常用名/别名/化学式，
-  精确命中自动打开，多个候选则在界面中点选。
-- **GUI**：对话框新增「匹配到的分子」列表（分子 / 化学式 / 别名 / 俗名），单击即加载该分子的
-  截面文件；搜索框默认「丙烷」，提示语写明支持中文名与化学式。
-- **名称解析升级**：`hitran_xsc_files` / `hitran_xsc_download` 支持用 `molecule_id` 直接指定；
-  名字解析优先查本地索引（支持化学式与 CAS 号等别名），未命中再回退在线精确接口；
-  查无此分子或网络异常不再抛错，改为返回候选与提示，避免界面崩溃。
-
-**HAPI2 接入（官方 API 下载）**
-
-- **下载引擎升级**：新增 HAPI2 接入 —— 下载线表时优先走 HITRAN 官方 v2 API（URL 携带 `api_key`），
-  失败或不可用时自动回退 HAPI 1.x 旧接口。实测官方 API 的下载产物就是标准 HAPI 1.x
-  `.data/.header`，因此**计算层完全不变** —— 同时规避了 hapi2 numba 计算后端的两处硬伤
-  （不支持多表 `SourceTables>1` 直接 `NotImplementedError`；内部把 `Components` 置为 -1，
-  忽略同位素权重，与"全同位素按自然丰度加权"的物理口径冲突）。
-- **api_key 真正生效**：此前配置的 key 只落到文件、不产生任何效果（HAPI 1.x 旧接口不校验 key）。
-  现在 key 会注入 HAPI2 的 `SETTINGS`（并同步 `config.json`），下载即走官方 API；
-  保存后**立即生效，无需重启**。
-- **配置界面**：新增 HAPI2 状态行（已启用 / 未启用及原因）；保存失败不再静默吞掉
-  （写入 `error.log` 并提示状态栏）。
-- **性能**：HAPI2 / Numba 能力检测改为**轻量探测**（`importlib.util.find_spec` +
-  `importlib.metadata`），不再在 GUI 启动时真正 import hapi2/numba ——
-  启动内存由 225 MB 降至 **137 MB**。
-- **可诊断性**：打包缺依赖时不再静默回退，`hapi2_import_error` 会直接指出缺失模块
-  （本轮据此定位并修复了 `pyparsing`、`unittest` 两个漏打包依赖）。
-- **打包**：`HitranLab.spec` 纳入 hapi2 / sqlalchemy / numba / llvmlite / pyparsing 及 dist-info；
-  体积由 106 MB 增至 **243 MB**（numba/llvmlite 因 `hapi2.opacity.lbl` 无条件 import 而不可排除）。
-
-**发布流程加固（防止"产物落后源码"）**
-
-- 新增 `tools/build_release.py` 一键发布脚本，把"打包 exe"与"生成 zip 资产"绑为一个
-  原子流程：打包 → 原子替换 `dist/HitranLab/`（**保留**线表缓存与 `hitran_api_key.txt`）
-  → 对产物跑无界面自检 → 生成 `dist/HitranLab-windows-x64.zip`
-  → **校验 zip 内的 exe 与 `dist` 下的 exe 大小与 CRC32 完全一致**，不一致直接报错退出。
-  此前这两步是手工分开做的，zip 极易漏做 —— 本项目真实发生过 zip 停留在旧 exe、
-  用户下载到过期版本的问题；现在从结构上不可能再发生。
-  另提供 `--zip-only`（只重建 zip）与 `--no-selftest` 两个开关。
-- README 打包章节改用该脚本，并明确提示**不要手写 `pyinstaller` 参数**：
-  `HitranLab.spec` 内含 HAPI2 / sqlalchemy / numba / llvmlite / pyparsing 等必需依赖，
-  手写命令会漏掉，导致打包版 HAPI2 不可用。
-- 保存项目时移除只写不读的 `n_layers` 字段。
-
-**文档同步**
-
-- README 中/英更正过时表述：MCP 工具数（9 → 12）、打包体积（目录 ~245 MB / zip ~100 MB）、
-  截面库"无在线 API、仅 Web Portal 登录下载"（改为官方 v2 API 免登录检索 + 一键下载），
-  并补全 `hitran_xsc_molecules` / `hitran_xsc_files` / `hitran_xsc_download` 三个工具说明；
-  英文版打包章节改用 `tools/build_release.py`，并修正中文目录锚点。
-- `mcp.config.example.json` 示例路径改为通用占位（原为作者本机中文路径）。
-
-## v1.4.2 · 2026-09-11 · 关键 Bug 修复（引擎崩溃 / 分块点数 / 损坏文件检测 / 错误可复制）
-
-**关键修复**
-- **P0 引擎崩溃**：`_quiet()` 缺少 `@contextlib.contextmanager` 装饰器，导致所有计算报错 `AttributeError: __enter__`，分子下拉框为空，整个引擎启动即崩溃。
-- **分块计算点数不一致**：进度条分块计算时，某些窗口（如 2900–2999.99, step=0.017）会比整窗多算 1 个点，GUI 和 MCP 结果不完全一致。现在分块拼接后统一截断到整窗预期点数。
-- **损坏线表文件检测**：下载中断被截断的线表文件（<1KB）会被自动识别并重新下载，不再静默使用损坏数据（少一半谱线且不报警）。
-
-**UX 改进**
-- **错误对话框可复制**：错误信息现在在可选中的文本框里，可以直接选中复制，不再是不能选取的 messagebox。
-- **错误日志落盘**：所有错误自动记录到 `Hitran_Data/error.log`，方便排查问题。
-
-## v1.4.1 · 2026-09-11 · 稳定性与性能优化（API Key 配置 / 联网检测 / 打包体积优化 / 多项 Bug 修复）
-
-**新功能**
-- **API Key 配置界面**：菜单栏「工具 → 配置 API key…」，支持密码模式输入、显示/隐藏切换、保存到本地、清除功能。保存时同时写入 HAPI2 的 `config.json`，确保第二代 HAPI 能读取用户配置的 key。
-- **联网检测**：计算前自动检测 `hitran.org:443` 可达性（3 秒超时），断网且数据未缓存时立即抛出明确错误，不再干等几十秒超时。
-
-**Bug 修复（10 项）**
-- **P0 未定义变量 `np`**：`_on_mouse_hover` 使用 `np.argmin` 但未导入 numpy，运行时 NameError。
-- **P0 未定义变量 `json`**：API key 配置的 `save()` 函数使用 `json.load/dump` 但未导入 json，运行时 NameError。
-- **P1 停止按钮误中断下载**：自动升级下载/解压时，"停止计算"按钮被启用，点击后中断的是下载而非计算，语义混淆。
-- **P1 停止按钮动态文字**：根据任务类型动态改变按钮文字：光谱计算→"停止计算"，下载→"取消下载"，解压→"取消解压"。
-- **P2 混合气丢同位素**：混合气模式下 `_get_mix()` 返回的行没有 `iso` 字段，同位素下拉框是摆设，选 ¹³CH₄ 算出来还是 ¹²CH₄。
-- **P2 导入谱线绕过开关**：`_import_spectrum` 无条件调用 `ax.legend` + `ax.grid`，不看 `_show_legend`/`_show_grid` 开关，取消勾选后导入 CSV 网格和图例立刻复活。
-- **P3 单位切换精度损失**：ppm/ppb 显示用 `:.4g`（4 位有效数字），反复切换单位会丢失 0.035% 精度，改为 `:.6g`。
-- **P3 CSV 导出波数轴校验**：只校验点数不校验波数轴本身，不同窗口但相同点数会静默错位合并，增加起止波数比对。
-- **P3 API key 文案误导**："API key 已保存，立即生效"是假话，改为"重启后生效（HAPI 1.x 暂不使用）"。
-- **P3 `_copy_data` 性能**：逐行 Python 拼字符串，100 万点会卡 UI，改用 `np.column_stack` 一次性生成。
-
-**性能优化**
-- **打包体积优化**：排除未使用的大体积依赖（numba/llvmlite 115 MB、jedi/IPython ~15 MB、cryptography 9.6 MB、zmq 1 MB、pywin32 ~2.4 MB、测试模块），**打包体积从 362 MB 降至 106 MB，减少 70.7%**。
-
-**代码重构**
-- **版本号单一来源**：`tools/hitran_mcp.py` 定义 `VERSION`，`SERVER_INFO` 和 `APP_VERSION` 都引用它，下次发布只需改一处。
-- **代码去重**：删除 `_check_network` 重复定义（19 行）；删除 `ref_step` 死代码。
-
-**其他**
-- 修复 `.gitignore` 中 `local` 文件未被正确忽略的问题（原写 `local/` 只匹配目录，实际是 SQLite 文件）。
-
-**验证**：`py_compile` 通过；`pyflakes` 静态分析通过；exe `--selftest` 通过（61 物种、hapi 1.3.0.0、numpy 2.0.1、1501 点峰值正常）。
+格式基于 [Keep a Changelog](https://keepachangelog.com/)，本项目遵循 [语义化版本](https://semver.org/)。
 
 ---
 
-## v1.4.0 · 2026-09-11 · 功能升级（分子别名搜索 / 图例增强 / 配置完善 / HAPI2 & Numba 支持）
+## [v1.5.2] - 2026-09-11
 
-**新功能**
-- **分子别名搜索**：分子选择框改为可编辑，支持输入英文名（methane）、分子式（CH4）、HITRAN M 编号（6）实时搜索筛选，回车自动匹配为标准分子式。内置 166 条别名。
-- **图例增强**：吸收谱/混合气/线强模式图例显示分子英文名（如 CH4 (Methane)），内置 55 条分子名称映射。线强模式为前 5 条最强线添加波数标注。
-- **配置文件完善**：首选项持久化扩展到分子、同位素、光程、强度截断、强线数、Q(T) 范围、ylog 等全部设置。退出程序时自动保存所有当前设置（`_save_all_prefs` + `_on_exit`），下次启动完整恢复。
-- **HAPI2 兼容层框架**：自动检测 HAPI2（第二代 HAPI，SQLAlchemy ORM + JIT 加速 + 截面下载）是否已安装，能力状态通过 `t_apikey_status` 返回。HAPI2 0.2.1 已验证可安装，框架预留接口，未来可逐步切换。
-- **Numba 能力检测**：自动检测 Numba（JIT 编译加速）是否已安装，能力状态通过 `t_apikey_status` 返回。Numba 0.67.0 已验证可安装，预留 Voigt 计算加速接口。
-
-**文档**
-- README 添加 References（HAPI/HAPI2/HAPIEST/HITRANonline 官方链接）
-- 清理 89 个临时开发脚本
-
-**验证**：`py_compile` 通过；核心逻辑函数（别名解析、名称映射、能力检测）单元测试通过。
+### 问题修复
+- 修复自动更新器卡死问题
+- 更新过程显示实时进度
+- 自动重试机制（最多 3 次）
+- 修复 UTF-8 终端下中文乱码
 
 ---
 
-## v1.3.0 · 2026-09-10 · 主题系统与架构升级（深浅模式 / HAPI2 可选支持）
+## [v1.5.1] - 2026-09-11
 
-**新功能**
-- **浅色/深色模式切换**：菜单栏「视图 → 浅色模式/深色模式」单选切换，实时更新全部 UI 控件（含 ttk 样式、RoundedButton、Listbox、Text、matplotlib 画布）。主题偏好自动保存到 `hitran_prefs.json`，下次启动自动载入。
-- **浅色模式配色**：参考 iOS 系统语义色设计（背景 #F2F2F7 / 卡片 #FFFFFF / 输入框 #E5E5EA / 强调色 #007AFF / 文本 #000000），柔和不刺眼。
-- **HAPI2 可选支持**：自动检测 `hapi2` 库是否已安装，检测到则使用更高效的实现，否则自动回退到 HAPI1（`hitran-api`）。无需修改代码，安装 hapi2 后自动生效。
+### 许可证变更
+- 许可证由 MIT 改为 GNU GPLv3
 
-**架构改进**
-- 颜色配置从硬编码重构为 `_get_colors(theme)` 动态获取，便于未来扩展更多主题。
-- RoundedButton 扩展 `configure()` 支持运行时颜色更新，为主题切换提供基础。
-
-**验证**：`py_compile` 通过；exe `--selftest` 通过。
+### 问题修复
+- 修复截面下载勾选失效问题
+- 修复小屏幕下底栏按钮被挤出可视区
+- 消除重复截面查询
+- 统一勾选状态管理
 
 ---
 
-## v1.2.3 · 2026-09-10 · 功能与 UI 优化（清理缓存 / 深色模式颜色修正）
+## [v1.5.0] - 2026-09-11
 
-**新功能**
-- **菜单栏「工具 → 清理线表缓存…」**：一键删除 `Hitran_Data/` 下所有 `.data`/`.header` 线表缓存文件，同时清空内存中的计算结果缓存。清理前显示文件数量和占用空间，二次确认后执行；清理后下次计算相同分子/窗口需重新联网抓取。
+### 新功能
+- 截面数据库在线检索与一键下载（600+ 重分子）
+- 中文/化学式分子搜索（无需记忆英文名）
+- HAPI2 官方 API 线表下载接入
+- 支持 HITRAN 原生 `.xsc` 文件格式
 
-**UI 修复（深色模式颜色混淆）**
-- **普通按钮背景**：从 `SURFACE(#1A1A1F)` 改为 `SURFACE2(#25252B)`，与面板/卡片背景区分开，避免"按钮和面板融为一体分不清"。
-- **普通按钮文字**：从 `ACCENT(#6B8FD4 蓝色)` 改为 `TEXT(#D8D8DE 浅灰)`，避免蓝色文字被误认为是可点击链接而非按钮。
-- **Listbox 选中文字**：从 `#000000(黑色)` 改为 `#FFFFFF(白色)`，在蓝色选中背景上更清晰可读。
+### 优化改进
+- 降低启动内存占用（225 MB → 137 MB）
+- 网络请求指数退避重试
+- 增强错误日志与诊断能力
 
-**验证**：`py_compile` 通过；exe `--selftest` 通过。
-
----
-
-## v1.2.2 · 2026-09-10 · 交互与性能（真实进度条 / 预计用时 / 自动升级）
-
-**性能**
-- **线表本地复用**：`_ensure_table_for()` 增加"先读磁盘"步骤（HAPI `storage2cache`）。HAPI 的 `fetch` 只查内存 `tableList()`、**不查磁盘**，导致已下载过的表在新开的进程里仍会重新联网抓取（实测同一 1000 cm⁻¹ 窗口白等约 10 s）。修复后整窗本地载入 + 计算约 5 s。
-- **计算分块上报进度**：`_absorption()` 在提供进度回调时按约 4000 点/块分块计算并逐块上报。已实测与整窗一次调用**数值等价**（ν 最大差 ~9e-13、α 最大相对差 ~7e-12、网格保持单调）；不提供回调时走原路径，行为完全不变（MCP 侧不受影响）。
-
-**界面**
-- **进度条从"左右滑动"升级为真实进度**：右下角改为确定性进度条，并显示「已用 Xs · 预计剩余 ~Ys」倒计时（按实际吞吐线性外推），状态栏同步显示 `进度 i/n`。
-- **「强度截断」单位标注修正**：原标注 `cm⁻¹/(mol·cm⁻²)` 与实际口径差约 6×10²³；HAPI 按 **cm/molecule** 比较，改为 `单位 cm/molecule，如 1e-26；空=不截断`。
-
-**自动升级**
-- 「帮助 → 检查更新」发现新版本后可直接**下载新版免安装包 → 解压 → 生成替换脚本 → 自动重启完成升级**；替换用 `robocopy` 覆盖，**不删除用户的 `Hitran_Data` 线表缓存**。源码模式下只提示发布页，不做自替换。
-
-**验证**：`py_compile` 通过；分块/整窗数值等价实测；exe `--selftest` 与 GUI 冒烟通过。
+### 问题修复
+- 修复分块计算时静默数据篡改
+- 增强线表截断检测
+- 修复弹窗焦点问题（API key / 首选项 / 关于）
+- 修复分子搜索框输入卡顿
 
 ---
 
-## v1.2.1 · 2026-09-10 · Bug 修复（深度排查第二轮 · 10 项）
+## [v1.4.2] - 2026-09-11
 
-**引擎层**
-- **截面文件分隔符口径统一**：`_read_hotw_file()` 兼容空格 / 制表符 / 英文逗号（此前只认空格，导致 `_list_xsc_files()` 已列出的 `.csv` 文件必然解析失败）。与 GUI 侧 `_read_hotw()` 口径一致。
-- **`tools/hitran.py::fetch()` 窗口安全化**：已缓存表若不覆盖请求窗口，改用带窗口后缀的表名重抓，消除"同名表静默复用旧窗口 → 谱线缺失被误读为无干扰"的历史坑（此前只在 `hitran_mcp._ensure_table_for` 修过，库层这套仍带坑）。
+### 关键修复
+- 修复启动时引擎崩溃（所有计算功能失效）
+- 修复分块计算点数不一致
+- 新增线表截断检测与自动重下
 
-**GUI**
-- **透过率模式导出/复制**：`导出 CSV` / `复制数据` 改为输出画布上真正画出的透过率 T（此前导的是 α），CSV 表头同步标 `transmittance (dimensionless), L=… cm`，避免同一份结果的 CSV 与 PNG 内容不一致。
-- **「清空图」状态残留**：同步清空 `_last_lines_data`，不再出现"图已清空但仍能导出上一轮线表"。
-- **「运行状态」页**：新增「刷新状态」按钮，并在每次计算完成后自动刷新（此前只在启动时取一次快照，之后永远停在开机数字）。
-- **圆角按钮底色**：重写取色逻辑（逐级上溯到有 `bg` 的祖先），修复 `ttk.Frame` 无 `bg` 选项导致底板退化为纯黑、与面板色不一致的问题。
-- **新增「打开项目…」（Ctrl+O）**：补全"能存不能读"，恢复参数与混合气表格（谱线需重新计算）。
-- **「首选项」落盘**：新增 `step / 翼宽 / 线型` 项，保存到 `hitran_prefs.json` 并在启动时自动载入（此前改完即失效）。
-
-**工程**
-- `.gitignore`：补 `build_*/`、`hitran_prefs.json`；对 `HitranLab.spec` 放行，使打包参数纳入版本控制、保证 exe 可复现。
-
-**验证**：`python -m py_compile` 通过；截面文件的逗号 / 空格两种写法均可读；新 exe `--selftest` 通过（61 物种 / 1501 点 / 峰值 14.28 / 零告警）。
-
-> 注：`HitranLab.exe` 是 **GUI 子系统**程序，PowerShell 下 `exit code` 不可靠；自检请用 `Start-Process -Wait` 后再读取自检 JSON。
+### 优化改进
+- 错误对话框支持文本选中与复制
+- 所有错误自动记录到 `Hitran_Data/error.log`
 
 ---
 
-## 2026-09-10 · Bug 修复（v3 审查报告 · 12 项）
+## [v1.4.1] - 2026-09-11
 
-**根因修复**（hitran.py 物种表统一为官方单一真源，一次消掉 4 个 bug）：
-- 删除硬编码 `SPECIES`/`ISO_ID`，改由 `hapi.ISO` 派生（`_build_species`），覆盖全部 61 种分子
-- 表名一律用官方分子式大写（HCL 而非 HCl），与 `hitran_mcp._formula(M)` 完全一致，CSV 溯源水印与磁盘缓存文件名 0 处不一致
-- 新增 `_ALIASES` 别名表（NO+/NOP+/NOPLUS → NOP），`_canonical()` 成为名称归一化唯一入口
-- `_validate_params` 统一调用 `_canonical()`，大小写口径与 `_resolve` 一致
-- 建目录 + `db_begin` 从 import 期改为惰性 `_init_cache()`，目录只读时给明确报错而非 ImportError
+> **注意：** 本版本存在源码 bug，已废弃。建议升级到 v1.4.2 或更高版本。
 
-**GUI 修复**：
-- **_selftest 参数错位**：改用关键字参数，wingHW=50.0（原 0.1 截断线翼）、hitran_units=False（原 True 返回 σ 而非 α）、path_length_cm=None
-- **CSV 导出崩溃**：添加数组长度校验（不同窗口/步长/模式无法合并），`np.column_stack` 包裹 try/except，不一致时报明确错误而非静默崩溃
-- **线强 S(296K) 标注不完整**：标签/y轴/标题统一从 S(T) 改为 S(296K)，读取并显示 `res["warnings"]`（线强为 HITRAN 参考温度 296K，非用户设定温度）
-- **线强硬编码 log 轴**：尊重用户 ylog 复选框；vlines 底端从 0 改为 S.min()/1000（对数轴无法表示 0）
-- **版本比较字符串**：使用 `_vkey()` 元组比较，`1.10.0 > 1.9.0` 不再漏报
-- **检查更新阻塞 UI**：网络请求移到后台线程，结果通过队列回传
+### 新功能
+- API key 配置对话框（工具 → 配置 API key）
+- 计算前联网状态检测
 
-**验证**：selftest 通过（exit code 0）；NO+ 别名验证通过（NO+ → NOP，NOP/HCL 均在 SPECIES 中）；打包 103.6 MB。
+### 问题修复
+- 修复未定义变量错误（numpy, json）
+- 修复停止按钮误中断下载
+- 修复混合气模式丢失同位素选择
+- 修复导入谱线绕过网格/图例开关
+- 修复单位切换精度损失
+- 修复 CSV 导出波数轴校验
 
----
-
-## 2026-09-10 · Bug 修复（v2 审查报告）
-
-**修复清单**（按严重度排序）：
-
-### P1 — 功能不可用
-- **P1-0 `_resolve_M` 别名失效**：`hitran_mcp.py` 的 `_resolve_M()` 自己实现解析，从未调用 `ht._canonical()`，导致 `NO+`/`NOPLUS` 等别名报错。修复：在查询官方表前先调用 `_canonical()` 规范化。
-- **P1-1 换算器输入异常**：波长↔波数换算器双向 `trace_add` 无重入锁，且用 `:.2f` 硬格式化，导致多位数字输入被四舍五入吞掉。修复：添加 `_guard` 重入锁，精度改为 `:.6g`。
-- **P1-2 分子表查询空列**：`_load_species` 只保留 `M` 字段，丢弃其他所有字段，导致分子表查询 3 列全空、中文名搜索失效。修复：保留 `M`/`main_iso` 字段，删除不存在的 `n_lines` 列和「中文名」提示。
-
-### P2 — 行为不符预期
-- **P2-1 全屏绘图区名不副实**：菜单项声称「隐藏左侧参数面板和底部 tab」，实际只改窗口尺寸，且不保存原 geometry。修复：移除该假功能（菜单项 + 方法），避免误导用户。
-- **P2-2 检查更新版本号比较错误**：`"1.10.0" > "1.9.0"` 字符串比较返回 False，导致新版本漏报。修复：使用 `_vkey()` 元组比较。
-- **P2-3 检查更新阻塞 UI**：网络请求直接在主线程执行，无网络时界面冻结最长 10s。修复：移到后台线程 `self.worker.run()`，结果通过队列回传。
-
-### P3 — 小瑕疵
-- **P3-7 `_set_busy` 丢弃 msg**：`busy=False` 时 `msg` 被丢弃，总是显示"就绪"。修复：`msg or "就绪"`。
-- **P3-8 同位素下拉框异常值**：except 分支清空 `values` 后又设 `iso_var` 为不在候选列表的值。修复：except 分支设为空字符串。
-- **P3-9 冻结模式 sys.path 风险**：冻结模式下把 exe 同目录塞进模块搜索路径首位，同目录同名 `.py` 会影子覆盖打包内模块。修复：冻结模式跳过 `sys.path.insert`。
-- **P3-10 叠加标题写死**：叠加时标题固定为"叠加对比"，看不出图层数量。修复：动态显示图层数量。
+### 性能优化
+- 打包体积从 362 MB 降至 106 MB（减少 70.7%）
 
 ---
 
-## 2026-09-10 · 物种表统一为官方单一真源
+## [v1.4.0] - 2026-09-10
 
-**问题**：`hitran.py` 硬编码物种表与 HAPI 官方 ISO 表并存且写法不同，导致
-NO⁺ 编号错配（写 `NO+`，官方为 `NOP`）、12 处 CSV 溯源水印表名指向不存在的
-缓存文件、`_resolve` 与 `_validate_params` 大小写口径矛盾、`ISO_ID` 只覆盖 18 种。
+### 新功能
+- 分子别名搜索（166 条别名，支持英文名/化学式/M 编号）
+- 图例增强（55 种分子英文名显示）
+- 配置持久化扩展（分子/同位素/光程/截断等）
+- HAPI2 兼容层框架
+- Numba 能力检测
 
-**改动**：
-- `tools/hitran.py`：删除硬编码 `SPECIES`/`ISO_ID`，改由 `hapi.ISO` 派生（`_build_species`）；
-  主同位素取官方自然丰度最大者；新增 `_NAME_MAP` 别名表（`NO+`/`NOP+`/`NOPLUS` → `NOP`）；
-  `_canonical()` 成为名称归一化唯一入口，`_resolve` 与 `_validate_params` 共用。
-- `tools/hitran.py`：建目录 + `db_begin` 从 import 期改为惰性 `_init_cache()`，
-  目录不可写时给明确报错而非 `ImportError`。
-- `tools/hitran_mcp.py`：`_hitran()` 加载后调用 `_init_cache()`，保证直调 `hapi.fetch`
-  的路径也写入项目缓存目录。
-- `tools/hitran_mcp.py`：删除 `_validate_params(name if name in ht.SPECIES else "CO", ...)`
-  的占位替换 —— 该逻辑会把未识别分子静默换成 CO 校验，绕过护栏。
+---
 
-**验证**（2026-09-10 二次修复后重新验证）：61 种分子全部可解析；水印表名与真实缓存表名 0 处不一致；
-`NOP`/`NO+`/`nop`/`NOplus`/`NOP+`/`NOPLUS` 均解析到 M=36（经 P1-0 修复后成立）；
-大小写口径 7 项测试无分叉；主同位素 0 处错配。
+## [v1.3.0] - 2026-09-10
+
+### 新功能
+- 浅色/深色模式切换（视图 → 浅色模式 / 深色模式）
+- iOS 风格浅色配色（柔和低饱和）
+- HAPI2 可选支持（自动检测，自动回退 HAPI1）
+
+### 架构改进
+- 重构颜色配置为动态检索系统
+- 扩展圆角按钮支持运行时颜色更新
+
+---
+
+## [v1.2.3] - 2026-09-10
+
+### 新功能
+- 工具菜单新增：清理线表缓存（一键删除）
+
+### UI 修复
+- 修复深色模式按钮颜色混淆
+- 提升列表选中文字可读性
+
+---
+
+## [v1.2.2] - 2026-09-10
+
+### 性能优化
+- 线表本地缓存复用（不再重复联网下载）
+- 分块计算与实时进度上报
+
+### 界面改进
+- 真实进度条与预计剩余时间
+- 修正强度截断单位标注
+
+### 自动更新
+- 一键自动升级（下载 → 解压 → 替换 → 重启）
+- 更新时保留线表缓存
+
+---
+
+## [v1.2.1] - 2026-09-10
+
+### 引擎
+- 截面文件分隔符兼容（空格 / 制表符 / 逗号）
+- 线表窗口安全检查（缓存表不覆盖请求窗口时自动重抓）
+
+### 桌面界面
+- 透过率模式导出 CSV 输出实际显示的透过率值
+- 清空图按钮同步清空强线数据
+- 新增项目打开/保存（Ctrl+O / Ctrl+S）
+- 首选项持久化（步长/翼宽/线型）
+- 修复圆角按钮背景色退化
+
+### 工程
+- 打包配置纳入版本控制，可复现构建
