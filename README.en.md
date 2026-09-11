@@ -1,11 +1,35 @@
-# hitran-mcp
+<div align="center">
 
-> An AI toolchain for the HITRAN spectroscopic database: MCP server + HitranLab desktop workstation. Retrieval, spectral calculation and plotting in one package. Data is fetched live from HITRANonline via the official HAPI. The repository itself ships no data files.
+<h1>hitran-mcp</h1>
+
+<p><b>An AI toolchain for the HITRAN spectroscopic database: MCP server + HitranLab desktop workstation</b><br>
+Retrieval · spectral calculation · plotting · provenance in one pipeline. Data is fetched live from HITRANonline via the official HAPI; the repository ships no data files.</p>
+
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
+<img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
+<img src="https://img.shields.io/badge/Python-3.9%2B-3776AB" alt="Python">
+<img src="https://img.shields.io/badge/MCP-stdio%20JSON--RPC-6B8FD4" alt="MCP">
+<img src="https://img.shields.io/badge/Data-HITRAN2024-red" alt="HITRAN2024">
+
+</div>
 
 [English](./README.en.md) | [中文](./README.md)
 
+## Preview
+
+**HitranLab desktop workstation** — CH4 + H2O mixture absorption spectrum (CH4 2000 ppm, H2O 1%, 296 K, 1 atm):
+
+![HitranLab main window](docs/images/hitranlab.png)
+
+**Cross-section online search & one-click download** — fuzzy match by name, tick the T/P cases, download in batch:
+
+![Cross-section download window](docs/images/xsc-download.png)
+
 ## Table of Contents
 
+- [Preview](#preview)
 - [Overview](#overview)
 - [Features](#features)
 - [Repository Layout](#repository-layout)
@@ -59,6 +83,7 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 hitran-mcp/
 ├─ README.md                 # Chinese documentation
 ├─ README.en.md              # English documentation (this file)
+├─ docs/images/              # README screenshots
 ├─ CHANGELOG.md              # Changelog
 ├─ LICENSE                   # GPLv3 License
 ├─ requirements.txt          # Python dependencies

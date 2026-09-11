@@ -1,11 +1,35 @@
-# hitran-mcp
+<div align="center">
 
-> HITRAN 光谱数据库的 AI 工具链：MCP 服务器 + HitranLab 桌面工作站。取数、谱计算、绘图一体化，数据实时取自 HITRANonline（官方 HAPI），仓库本身不含任何数据文件。
+<h1>hitran-mcp</h1>
+
+<p><b>HITRAN 光谱数据库的 AI 工具链 —— MCP 服务器 + HitranLab 桌面工作站</b><br>
+取数 · 谱计算 · 绘图 · 溯源一条链路走完；数据实时取自 HITRANonline（官方 HAPI），仓库不含任何数据文件</p>
+
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
+<img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
+<img src="https://img.shields.io/badge/Python-3.9%2B-3776AB" alt="Python">
+<img src="https://img.shields.io/badge/MCP-stdio%20JSON--RPC-6B8FD4" alt="MCP">
+<img src="https://img.shields.io/badge/Data-HITRAN2024-red" alt="HITRAN2024">
+
+</div>
 
 [English](./README.en.md) | 中文
 
+## 效果预览
+
+**HitranLab 桌面工作站** —— CH4 + H2O 混合气吸收谱（CH4 2000 ppm、H2O 1%，296 K、1 atm）：
+
+![HitranLab 主界面](docs/images/hitranlab.png)
+
+**截面库在线检索与一键下载** —— 按中文名模糊匹配分子、勾选 T/P 工况后批量下载：
+
+![截面库下载窗口](docs/images/xsc-download.png)
+
 ## 目录
 
+- [效果预览](#效果预览)
 - [项目概览](#项目概览)
 - [功能特性](#功能特性)
 - [仓库结构](#仓库结构)
@@ -59,6 +83,7 @@
 hitran-mcp/
 ├─ README.md                 # 中文文档（本文件）
 ├─ README.en.md              # English documentation
+├─ docs/images/              # README 配图（界面截图）
 ├─ CHANGELOG.md              # 更新日志
 ├─ LICENSE                   # GPLv3 协议
 ├─ requirements.txt          # Python 依赖
