@@ -88,7 +88,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 `hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，包含两套前端：
 
-1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用 12 个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
+1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用多个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
 2. **HitranLab 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
 
 两套前端共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
