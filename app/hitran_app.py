@@ -3016,6 +3016,11 @@ class HitranLab(tk.Tk):
             try:
                 from tools import hitran as ht
                 ht.cache_clear()
+                # HAPI2 的线表数据是双份存储（SQLite + .data/.header），
+                # 一并清理，否则数据库会随下载次数持续增长。
+                _h2_ok, _h2_msg = ht.hapi2_clear_db()
+                if not _h2_ok and ht.is_hapi2_available():
+                    _cache_warn.append(f"HAPI2 数据库：{_h2_msg}")
             except Exception as _e:
                 _cache_warn.append(f"线表缓存清理失败: {_e}")
             _warn_msg = ""

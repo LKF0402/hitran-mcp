@@ -205,6 +205,61 @@ def hapi2_status():
     }
 
 
+def hapi2_clear_db():
+    """清理 HAPI2 SQLite 里的线表数据（保留分子/同位素元数据）。返回 (ok, msg)。
+
+    线表数据在 HAPI2 里是**双份存储**（SQLite 的 transition/linelist + 磁盘
+    .data/.header）。用户主动"清理线表缓存"时应一并清掉 SQLite 侧，否则数据库会
+    随下载次数持续增长；分子/同位素等元数据保留，避免重新联网抓取。
+
+    注：这里用原生 sqlite3 直接删除 —— HAPI2 暴露的 Transition 是领域包装类
+    （只有 `__keys__`，没有 ORM `__table__`），不能通过 session.query() 操作。
+    """
+    if not hapi2_bootstrap():
+        return False, _HAPI2_LAST_ERROR or "HAPI2 未启用"
+    try:
+        import sqlite3
+        from hapi2.config import SETTINGS
+        db_path = os.path.join(str(SETTINGS.get("database_dir") or "."),
+                               str(SETTINGS.get("database") or "local"))
+        con = sqlite3.connect(db_path, timeout=10)
+        try:
+            n_tr = con.execute("DELETE FROM transition").rowcount
+            n_ll = con.execute("DELETE FROM linelist").rowcount
+            try:
+                con.execute("DELETE FROM linelist_vs_transition")
+            except sqlite3.Error:
+                pass
+            con.commit()
+            try:
+                con.execute("VACUUM")       # DELETE 不回收文件空间，需 VACUUM
+            except sqlite3.Error:
+                pass
+        finally:
+            con.close()
+        return True, f"HAPI2 线表数据已清理（transition {n_tr} / linelist {n_ll}）"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
+def _hapi2_purge_tmp(src_dir):
+    """清空 HAPI2 的临时目录。
+
+    官方 API 每次下载都会往 tmpdir 写中间 JSON 与 .data/.header 副本；不清理的话
+    该目录会随下载次数持续增长（大窗口一次就是 MB 级双份）。文件已搬运到
+    CACHE_ROOT，这里可安全清空（调用方持 _FETCH_LOCK，串行执行）。
+    """
+    try:
+        for p in Path(src_dir).glob("*"):
+            try:
+                if p.is_file():
+                    p.unlink()
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def hapi2_fetch_table(M, I, numin, numax, table_name):
     """用 HAPI2 官方 API（带 api_key）下载线表，产出 HAPI 1.x 格式文件。
 
@@ -245,18 +300,26 @@ def hapi2_fetch_table(M, I, numin, numax, table_name):
         except Exception as e:
             if "already exists" not in str(e):
                 raise
-            llst_name = f"{table_name}_h2{int(_time.time())}"
+            llst_name = f"{table_name}_h2{_time.time_ns()}"   # 纳秒级，避免同名冲突
             hapi2.fetch_transitions([target], float(numin), float(numax), llst_name)
 
         src_dir = Path(str(_S.get("tmpdir") or ""))
-        copied = []
-        for ext in (".data", ".header"):
-            src = src_dir / f"{llst_name}{ext}"
-            if not src.exists():
-                return False, f"下载完成但缺少 {llst_name}{ext}"
-            shutil.copy2(src, CACHE_ROOT / f"{table_name}{ext}")
-            copied.append(f"{table_name}{ext}")
-        return True, f"HAPI2 官方 API 已下载 {table_name}（{', '.join(copied)}）"
+        if not src_dir.is_dir():
+            return False, f"HAPI2 临时目录不可用：{src_dir}"
+
+        # 先确认 .data/.header 都在，再搬运 —— 避免只复制到一半、留下孤立文件。
+        pairs = [(ext, src_dir / f"{llst_name}{ext}") for ext in (".data", ".header")]
+        missing = [p.name for _, p in pairs if not p.exists()]
+        if missing:
+            return False, f"下载完成但缺少 {', '.join(missing)}"
+        for ext, src in pairs:
+            dst = CACHE_ROOT / f"{table_name}{ext}"
+            part = dst.with_name(dst.name + ".part")
+            shutil.copy2(src, part)
+            os.replace(part, dst)          # 原子替换：读取方不会看到半截文件
+
+        _hapi2_purge_tmp(src_dir)
+        return True, f"HAPI2 官方 API 已下载 {table_name}"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
 

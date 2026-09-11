@@ -358,10 +358,15 @@ def _ensure_table_for(M, I, numin, numax, force=False):
         except Exception as e:                    # 接入层异常绝不阻断主流程
             h2_ok, h2_msg = False, f"接入异常 {type(e).__name__}: {e}"
         if h2_ok:
-            with _quiet():
-                if table not in hapi.tableList():
-                    hapi.storage2cache(table)     # HAPI2 产物已在 CACHE_ROOT
-        else:
+            try:
+                with _quiet():
+                    if table not in hapi.tableList():
+                        hapi.storage2cache(table)   # HAPI2 产物已在 CACHE_ROOT
+            except Exception as e:
+                # 产物载入失败（格式异常等）→ 退回 HAPI 1.x 重下，不留半截状态
+                h2_ok = False
+                h2_msg = f"HAPI2 产物载入失败：{type(e).__name__}: {e}"
+        if not h2_ok:
             with _quiet():                        # HAPI 下载日志不能进协议流
                 try:
                     hapi.fetch(table, M, I, numin, numax)
@@ -501,11 +506,20 @@ except Exception:
     pass
 
 
+# 缓存版本号：算法或结果格式发生变更时必须递增，否则旧缓存会被错误复用
+# （例如网格点数规则修好后，命中旧缓存仍会返回修复前的点数）。
+_CACHE_SCHEMA = 2
+
+
 def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                     profile, diluent, intensity_cutoff, min_abundance):
-    """生成可哈希的缓存键。force 不影响结果，不纳入键。"""
+    """生成可哈希的缓存键。
+
+    `force` 不影响结果、不纳入键；`_CACHE_SCHEMA` 也不影响物理结果，它用于在
+    算法变更后让旧缓存自动失效。
+    """
     dil_items = tuple(sorted((k, float(v)) for k, v in (diluent or {}).items())) if isinstance(diluent, dict) else str(diluent)
-    return (str(name).strip().upper(), str(iso), float(numin), float(numax), float(T), float(P),
+    return (_CACHE_SCHEMA, str(name).strip().upper(), str(iso), float(numin), float(numax), float(T), float(P),
             float(step), float(wingHW), bool(hitran_units), str(profile).lower(), dil_items,
             float(intensity_cutoff) if intensity_cutoff is not None else None,
             float(min_abundance))
