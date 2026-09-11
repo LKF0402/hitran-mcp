@@ -17,31 +17,27 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ---
 
-## 🚀 Quick Start / 快速开始
+## 🚀 快速开始
 
-本项目提供两种使用方式，按需选择：
+> 💡 快速上手入口，详细文档见下文。
 
----
+### 🖥️ 方式一：桌面 GUI（新手推荐）
 
-### Desktop GUI / 桌面图形界面
+> 无需编程，直接使用
 
-> 无需编程，适用于日常光谱分析
-
-1. 前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 `HitranLab-windows-x64.zip`
-2. 解压并运行 `HitranLab.exe`
-3. 选择分子与参数，点击「计算并绘图」即可
+前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLab.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
 
 ---
 
-### MCP Server / MCP 服务器
+### 🤖 方式二：接入 AI 助手（科研推荐）
 
-> 自然语言驱动，适用于 AI 助手与自动化工作流
+> 自然语言驱动，AI 直接调用
 
 将以下内容发送给您的 AI 助手（支持 MCP 协议的客户端均可）：
 
 > "请帮我配置 HITRAN MCP 服务器，仓库地址：https://github.com/LKF0402/hitran-mcp"
 
-配置完成后，可直接用自然语言描述计算需求：
+配置完成后，您可以直接用自然语言描述计算需求：
 > "帮我计算 CH₄ 在 2950-3100 cm⁻¹、296 K、1 atm 条件下的吸收谱"
 
 ---
