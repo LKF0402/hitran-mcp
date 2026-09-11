@@ -42,6 +42,38 @@ _NP = None
 _FETCH_LOCK = threading.RLock()   # hapi.fetch 串行化，防 .data 并发写（TOCTOU）
 
 
+def _check_network(timeout=3):
+    """检测是否能访问 HITRAN 服务器（hitran.org:443）。返回 True/False。
+
+    断网时 3 秒内返回，避免用户在 hapi.fetch 超时前干等几十秒。
+    """
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(("hitran.org", 443))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+def _check_network(timeout=3):
+    """检测是否能访问 HITRAN 服务器（hitran.org:443）。返回 True/False。
+
+    断网时 3 秒内返回，避免用户在 hapi.fetch 超时前干等几十秒。
+    """
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(("hitran.org", 443))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
 # ───────────────────────── 基础设施 ─────────────────────────
 
 @contextlib.contextmanager
@@ -320,6 +352,12 @@ def _ensure_table_for(M, I, numin, numax, force=False):
                 return base, cov, False
 
         table = wtable
+        # 联网检测：断网且数据未缓存时立即报错，不让用户干等超时
+        if not _check_network():
+            raise RuntimeError(
+                f"[hitran][离线] 当前无法访问 hitran.org（网络检测超时），"
+                f"且 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 的线表未在本地缓存。"
+                f"请检查网络连接后重试，或选择已缓存的分子/窗口。")
         with _quiet():                       # HAPI 下载日志不能进协议流
             try:
                 hapi.fetch(table, M, I, numin, numax)
