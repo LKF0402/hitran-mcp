@@ -17,7 +17,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['pandas', 'lxml', 'scipy'],
+    excludes=['pandas', 'lxml', 'scipy',
+              # 以下依赖未被实际使用，仅为间接依赖，排除以减小体积
+              'numba', 'llvmlite',          # Numba 仅做能力检测，未实际使用
+              'jedi', 'IPython',            # 自动补全/交互环境，不需要
+              'cryptography',               # 加密库，urllib 不需要
+              'zmq',                        # ZeroMQ 消息队列，不需要
+              'win32com', 'win32', 'pythonwin', 'pywin32_system32',  # pywin32 组件，用 ctypes 替代
+              'tkinter.test', 'test',       # 测试模块
+              'unittest',                   # 单元测试框架
+              ],
     noarchive=False,
     optimize=0,
 )

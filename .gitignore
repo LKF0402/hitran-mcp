@@ -111,5 +111,6 @@ $RECYCLE.BIN/
 
 # HAPI2 local config and database
 config.json
+local
 local/
 hapi2.db
