@@ -1927,10 +1927,11 @@ def t_partition_sum(name=None, M=None, I=None, T=296.0, tips_version=None):
 
 # ───────────────────────── MCP 协议层 ─────────────────────────
 
-_CONFIRM_NOTE = ("注意：数据全部实时取自 HITRANonline（经 HAPI）。若用户未说明温度/气压/"
-                 "波数范围/摩尔分数/线型/展宽气体，应先向用户确认再调用；"
-                 "返回中的 assumed_defaults 列出了本次被迫使用的默认值，needs_confirm=true 时"
-                 "必须向用户复核关键工况，不得把默认值当成用户的意图。")
+_CONFIRM_NOTE = ("数据实时取自 HITRANonline。"
+                 "【必填】波数范围 numin/numax（未提供必须主动询问用户，不得猜测）。"
+                 "【可选默认】T=296K, P=1atm, mole_frac=1.0, step=0.01cm-1；"
+                 "使用默认值时需在结果中告知用户。"
+                 "【混合气】specs_csv 格式：'CH4:0.01,C2H6:1e-5'。")
 
 # 2026-09-08 客户端兼容 workaround：豆包 MCP 客户端对 inputSchema 中的
 # "数组 / 嵌套对象 / 联合类型" 参数定义解析失败（tools/list 里只暴露空对象，
@@ -1976,8 +1977,8 @@ TOOLS = [
                          "mole_frac": {"type": "number",
                                        "description": "摩尔分数 0~1；不填按纯气体 1 处理并在 assumed_defaults 里标记"},
                          "iso": {"type": "string", "description": "同位素号（如 1）或 'all'；默认主同位素"},
-                         "numin": {"type": "number"}, "numax": {"type": "number",
-                                                                 "description": "波数窗口 cm-1（必填，向用户确认）"},
+                         "numin": {"type": "number", "description": "波数下限 cm-1（必填）"},
+                         "numax": {"type": "number", "description": "波数上限 cm-1（必填）"},
                          "T": {"type": "number", "description": "温度 K（未给则用 296 并标记待确认）"},
                          "P": {"type": "number", "description": "气压 atm（未给则用 1.01325 并标记待确认）"},
                          "step": {"type": "number", "description": "波数步长 cm-1，默认 0.01"},
