@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <h1>hitran-mcp</h1>
 
@@ -12,6 +12,10 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB" alt="Python">
 <img src="https://img.shields.io/badge/MCP-stdio%20JSON--RPC-6B8FD4" alt="MCP">
 <img src="https://img.shields.io/badge/Data-HITRAN2024-red" alt="HITRAN2024">
+<a href="https://github.com/LKF0402/hitran-mcp/stargazers"><img src="https://img.shields.io/github/stars/LKF0402/hitran-mcp?color=yellow" alt="Stars"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/issues"><img src="https://img.shields.io/github/issues/LKF0402/hitran-mcp" alt="Issues"></a>
+<img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
+[![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
 
 </div>
 
