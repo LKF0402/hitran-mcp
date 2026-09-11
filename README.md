@@ -17,39 +17,32 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start / 快速开始
 
-> 💡 不知道选哪个？先回答下面这个问题：
-
----
-
-### ❓ 你想怎么用？
+本项目提供两种使用方式，按需选择：
 
 ---
 
-#### 🎯 **选项 A：我就是想画图 / 算光谱，不想写代码**
+### Desktop GUI / 桌面图形界面
 
-> **适合：学生 / 研究员 / 日常用**
+> 无需编程，适用于日常光谱分析
 
-👉 **用桌面 GUI（HitranLab）**
-
-去 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载 → 解压 → 双击 `HitranLab.exe` → 选分子 → 点「计算并绘图」。
-
-完事。
+1. 前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 `HitranLab-windows-x64.zip`
+2. 解压并运行 `HitranLab.exe`
+3. 选择分子与参数，点击「计算并绘图」即可
 
 ---
 
-#### 🤖 **选项 B：我想让 AI 帮我算，直接说人话就行**
+### MCP Server / MCP 服务器
 
-> **适合：会用 AI 的研究员 / 自动化工作流**
+> 自然语言驱动，适用于 AI 助手与自动化工作流
 
-👉 **接入 MCP 服务器**
+将以下内容发送给您的 AI 助手（支持 MCP 协议的客户端均可）：
 
-把这句话发给你的 AI 助手：
 > "请帮我配置 HITRAN MCP 服务器，仓库地址：https://github.com/LKF0402/hitran-mcp"
 
-配好之后直接说人话就行：
-> "帮我算 CH₄ 在 2950-3100 cm⁻¹、296 K 的吸收谱"
+配置完成后，可直接用自然语言描述计算需求：
+> "帮我计算 CH₄ 在 2950-3100 cm⁻¹、296 K、1 atm 条件下的吸收谱"
 
 ---
 
