@@ -348,18 +348,35 @@ def _ensure_table_for(M, I, numin, numax, force=False):
                 f"[hitran][离线] 当前无法访问 hitran.org（网络检测超时），"
                 f"且 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 的线表未在本地缓存。"
                 f"请检查网络连接后重试，或选择已缓存的分子/窗口。")
-        with _quiet():                       # HAPI 下载日志不能进协议流
-            try:
-                hapi.fetch(table, M, I, numin, numax)
-            except Exception as e:
-                hint = ""
-                if "daily limit" in str(e).lower() or "exceeded" in str(e).lower():
-                    hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
-                            "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
-                raise RuntimeError(
-                    f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{e}。"
-                    f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
-                    f"严禁把失败当作'无干扰'。") from e
+        # 下载线表：优先走 HAPI2 官方 API（带 api_key；其产物就是 HAPI 1.x 格式，
+        # 计算层完全不感知）；HAPI2 不可用或失败时回退 HAPI 1.x 的旧下载接口。
+        ht = _hitran()
+        fetch_err = None
+        h2_msg = "HAPI2 未启用"
+        try:
+            h2_ok, h2_msg = ht.hapi2_fetch_table(M, I, numin, numax, table)
+        except Exception as e:                    # 接入层异常绝不阻断主流程
+            h2_ok, h2_msg = False, f"接入异常 {type(e).__name__}: {e}"
+        if h2_ok:
+            with _quiet():
+                if table not in hapi.tableList():
+                    hapi.storage2cache(table)     # HAPI2 产物已在 CACHE_ROOT
+        else:
+            with _quiet():                        # HAPI 下载日志不能进协议流
+                try:
+                    hapi.fetch(table, M, I, numin, numax)
+                except Exception as e:
+                    fetch_err = e
+        if fetch_err is not None:
+            hint = ""
+            if "daily limit" in str(fetch_err).lower() or "exceeded" in str(fetch_err).lower():
+                hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
+                        "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
+            raise RuntimeError(
+                f"[hitran][防呆] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{fetch_err}。"
+                f"常见原因：该窗口无 HITRAN 收录线 / 分子号或同位素不存在 / 无网络 / 官方每日配额超限{hint}。"
+                f"（HAPI2 通道：{h2_msg}）"
+                f"严禁把失败当作'无干扰'。") from fetch_err
         cov = _coverage(table)
         if cov is None:
             raise RuntimeError(f"[hitran][防呆] 抓取失败：{formula} 在 {numin}-{numax} cm-1 无线表")
@@ -1255,10 +1272,13 @@ def t_xsc_search(name=None):
                      "再调 hitran_cross_section(file_path=...) 读入分析。")}
 
 
-def t_apikey_status():
+def t_apikey_status(probe=False):
     """HITRAN API key / 缓存 / 产物 / 截面文件状态速查（排障用，只读）。
 
     工具包不含任何数据：所有缓存与个人文件都在运行期目录（gitignore 区）。
+
+    probe=True 会额外做一次 HAPI2 初始化探测（连带加载 sqlalchemy/numba，
+    约 +100MB 内存）—— 仅供自检使用；GUI 状态面板不要开，否则拖慢启动。
     """
     key = _api_key()
     cache_n, cache_bytes, xsc_n, out_n = 0, 0, 0, 0
@@ -1277,6 +1297,14 @@ def t_apikey_status():
             out_n = n
     from tools import hitran as ht
     caps = ht.get_capabilities()
+    h2 = ht.hapi2_status()
+    # 仅在显式探测时初始化 HAPI2（会连带加载 numba，代价较大）。
+    if probe and h2["installed"] and h2["api_key_present"] and not h2["enabled"]:
+        try:
+            ht.hapi2_bootstrap(force=True)     # 强制重试：本次会话未成功也再试一次
+            h2 = ht.hapi2_status()
+        except Exception:
+            pass
     return {"api_key_configured": bool(key), "api_key_source":
             "env(HITRAN_API_KEY)" if os.environ.get("HITRAN_API_KEY", "").strip()
             else "tools/hitran_api_key.txt" if key else "未配置",
@@ -1284,7 +1312,14 @@ def t_apikey_status():
             "xsc_data_files": xsc_n, "output_files": out_n,
             "hapi_version": caps["hapi_version"],
             "hapi2_available": caps["hapi2_available"],
-            "hapi2_version": caps["hapi2_version"],
+            "hapi2_version": h2["version"] or caps["hapi2_version"],
+            "hapi2_enabled": h2["enabled"],
+            "hapi2_import_error": h2.get("import_error"),
+            "hapi2_last_error": h2["last_error"],
+            "download_engine": ("HAPI2 官方 API（带 api_key）" if h2["enabled"]
+                                else "HAPI2 官方 API（首次下载时自动启用）"
+                                if (h2["installed"] and h2["api_key_present"])
+                                else "HAPI 1.x 旧下载接口（回退）"),
             "numba_available": caps["numba_available"],
             "numba_version": caps["numba_version"],
             "numpy_version": caps["numpy_version"],
@@ -1602,7 +1637,7 @@ def selftest():
     except Exception as e:
         print("— xsearch: ERR", str(e)[:100])
     # 运行状态
-    st = t_apikey_status()
+    st = t_apikey_status(probe=True)
     print("— status :", {k: st[k] for k in ("api_key_configured", "line_cache_files",
                                             "xsc_data_files", "output_files")})
 

@@ -34,23 +34,33 @@ import numpy as np
 # ---- HAPI2 / Numba 能力检测（兼容层框架）----
 # HAPI2 是第二代 HAPI（SQLAlchemy ORM + JIT 加速 + 截面下载），
 # 目前网络安装受限，这里做能力检测，未来可用时可快速切换。
-_HAPI2_AVAILABLE = False
-_HAPI2_VERSION = None
-try:
-    import hapi2 as _hapi2_mod
-    _HAPI2_AVAILABLE = True
-    _HAPI2_VERSION = getattr(_hapi2_mod, "__version__", "unknown")
-except ImportError:
-    pass
+def _spec_exists(name):
+    """轻量判断模块是否可导入（只查导入规格，不真正 import）。"""
+    try:
+        import importlib.util
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
 
-_NUMBA_AVAILABLE = False
-_NUMBA_VERSION = None
-try:
-    import numba as _numba_mod
-    _NUMBA_AVAILABLE = True
-    _NUMBA_VERSION = getattr(_numba_mod, "__version__", "unknown")
-except ImportError:
-    pass
+
+def _pkg_version(name):
+    """从 dist-info 读取版本号（不加载模块本身）。"""
+    try:
+        from importlib.metadata import version
+        return version(name)
+    except Exception:
+        return None
+
+
+# 注意：这里刻意**不真正 import** hapi2 / numba —— 它们会连带加载
+# sqlalchemy + llvmlite（约 +100MB 内存、数秒启动时间），而 GUI 启动时
+# 状态面板就会调用 get_capabilities()。真正的导入延后到 hapi2_bootstrap()。
+_HAPI2_AVAILABLE = _spec_exists("hapi2")
+_HAPI2_VERSION = _pkg_version("hapi2") if _HAPI2_AVAILABLE else None
+_HAPI2_IMPORT_ERROR = None
+
+_NUMBA_AVAILABLE = _spec_exists("numba")
+_NUMBA_VERSION = _pkg_version("numba") if _NUMBA_AVAILABLE else None
 
 
 def get_capabilities():
@@ -103,6 +113,154 @@ def _init_cache():
     _CACHE_READY = True
 
 
+# ---- HAPI2 接入：官方 API 下载（计算仍走 HAPI 1.x）----
+# 为什么只接"下载层"：
+#   实测 hapi2 0.2.1 的 numba 计算后端有两个硬伤 ——
+#     (a) 不支持多表：len(SourceTables) > 1 直接 NotImplementedError；
+#     (b) 内部把 Components 置为 -1（忽略同位素权重），与项目
+#         "全同位素按自然丰度加权 / 单同位素纯气" 的物理口径冲突。
+#   而它的官方 API 下载产物恰好就是标准 HAPI 1.x 的 .data/.header（实测可被
+#   hapi.storage2cache 直接载入，nu/sw/gamma_air/elower 等列齐全），
+#   所以这里只换下载层：用 HAPI2 走官方 API（带 api_key），计算层完全不动。
+_HAPI2_READY = False
+_HAPI2_BOOTSTRAP_DONE = False
+_HAPI2_LAST_ERROR = None
+
+
+def read_api_key():
+    """读取本机 HITRAN API key：环境变量 > tools/ > 缓存目录。"""
+    env = os.environ.get("HITRAN_API_KEY", "").strip()
+    if env:
+        return env
+    for p in (_ROOT / "tools" / "hitran_api_key.txt",
+              CACHE_ROOT / "hitran_api_key.txt"):
+        try:
+            if p.exists():
+                k = p.read_text(encoding="utf-8").strip()
+                if k:
+                    return k
+        except OSError:
+            continue
+    return ""
+
+
+def hapi2_bootstrap(force=False):
+    """按需初始化 HAPI2，使其走官方 API（带 api_key）。成功返回 True。
+
+    hapi2 在 import 阶段就完成了 config/db 初始化，而且它的 config.json 是相对
+    **当前工作目录** 读取的 —— exe 的 CWD 未必是 exe 目录。所以这里不依赖它的
+    配置文件位置：import 之后直接覆盖 SETTINGS，并重建 sqlite 引擎，把数据库与
+    临时目录都固定到 CACHE_ROOT 下。
+    """
+    global _HAPI2_READY, _HAPI2_BOOTSTRAP_DONE, _HAPI2_LAST_ERROR, _HAPI2_VERSION
+    if _HAPI2_READY:
+        return True
+    if _HAPI2_BOOTSTRAP_DONE and not force:
+        return False
+    _HAPI2_BOOTSTRAP_DONE = True
+    if not _HAPI2_AVAILABLE:
+        _HAPI2_LAST_ERROR = "未安装 hapi2"
+        return False
+    try:
+        import hapi2
+        from hapi2.config import SETTINGS
+        from hapi2 import db as _h2db
+        try:
+            _HAPI2_VERSION = getattr(hapi2, "__version__", _HAPI2_VERSION)
+        except Exception:
+            pass
+        _init_cache()
+        tmpdir = CACHE_ROOT / "_hapi2_tmp"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        SETTINGS["database_dir"] = str(CACHE_ROOT) + os.sep
+        SETTINGS["database"] = "hitran2"
+        SETTINGS["tmpdir"] = str(tmpdir) + os.sep
+        SETTINGS["host"] = "https://hitran.org"
+        SETTINGS["api_version"] = "v2"
+        SETTINGS["display_fetch_url"] = False
+        key = read_api_key()
+        if key:
+            SETTINGS["api_key"] = key
+        _h2db.init()                       # 用新 SETTINGS 重建引擎（含建表）
+        if not SETTINGS.get("api_key"):
+            _HAPI2_LAST_ERROR = "未配置 API key（HAPI2 官方 API 需要 key）"
+            return False
+        _HAPI2_READY = True
+        _HAPI2_LAST_ERROR = None
+        return True
+    except Exception as e:
+        _HAPI2_LAST_ERROR = f"{type(e).__name__}: {e}"
+        return False
+
+
+def hapi2_status():
+    """HAPI2 接入状态（供自检 / UI 展示）。"""
+    return {
+        "installed": _HAPI2_AVAILABLE,
+        "version": _HAPI2_VERSION,
+        "enabled": _HAPI2_READY,
+        "api_key_present": bool(read_api_key()),
+        "import_error": _HAPI2_IMPORT_ERROR,
+        "last_error": _HAPI2_LAST_ERROR,
+    }
+
+
+def hapi2_fetch_table(M, I, numin, numax, table_name):
+    """用 HAPI2 官方 API（带 api_key）下载线表，产出 HAPI 1.x 格式文件。
+
+    返回 (ok: bool, info: str)。成功后 .data/.header 已复制到 CACHE_ROOT，
+    之后照常 hapi.storage2cache(table_name) 即可参与计算（计算层不感知 HAPI2）。
+    """
+    if not hapi2_bootstrap():
+        return False, _HAPI2_LAST_ERROR or "HAPI2 不可用"
+    try:
+        import shutil
+        import time as _time
+        import hapi2
+        from hapi2.config import SETTINGS as _S
+
+        formula = FORMULA_OF.get(int(M))
+        if not formula:
+            return False, f"未知分子号 M={M}"
+        rec = hapi.ISO.get((int(M), int(I)))
+        if not rec:
+            return False, f"HITRAN 无此同位素 (M={M}, I={I})"
+        global_iso_id = int(rec[0])        # 与 HAPI2 的 Isotopologue.id 同一套编号
+
+        mol = hapi2.Molecule(formula)
+        isos = list(mol.isotopologues or [])
+        if not isos:                        # 首次使用该分子：先拉同位素元数据
+            hapi2.fetch_isotopologues([mol])
+            isos = list(hapi2.Molecule(formula).isotopologues or [])
+        target = next((x for x in isos if int(x.id) == global_iso_id), None)
+        if target is None:
+            return False, f"HAPI2 元数据中找不到同位素 id={global_iso_id}"
+
+        # linelist 名在 HAPI2 的 SQLite 里必须唯一；已存在时改用带时间戳的名，
+        # 下载完再把文件重命名回 table_name（HAPI2 写的 header 里 table_name 为空，
+        # 所以文件名可以自由改）。
+        llst_name = table_name
+        try:
+            hapi2.fetch_transitions([target], float(numin), float(numax), llst_name)
+        except Exception as e:
+            if "already exists" not in str(e):
+                raise
+            llst_name = f"{table_name}_h2{int(_time.time())}"
+            hapi2.fetch_transitions([target], float(numin), float(numax), llst_name)
+
+        src_dir = Path(str(_S.get("tmpdir") or ""))
+        copied = []
+        for ext in (".data", ".header"):
+            src = src_dir / f"{llst_name}{ext}"
+            if not src.exists():
+                return False, f"下载完成但缺少 {llst_name}{ext}"
+            shutil.copy2(src, CACHE_ROOT / f"{table_name}{ext}")
+            copied.append(f"{table_name}{ext}")
+        return True, f"HAPI2 官方 API 已下载 {table_name}（{', '.join(copied)}）"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 # ---- 物种/同位素速查（全部由 HAPI 官方 ISO 表派生，不硬编码编号）----
 # 表名一律用官方分子式（大写）：与 hitran_mcp 层 _formula(M) 完全一致，
 # 杜绝"CSV 溯源水印里的表名和磁盘上真实缓存文件名对不上"。
@@ -123,10 +281,10 @@ def _build_species():
             best[M] = (ab, I)
     for M, (_, I) in best.items():
         iso_id[formula_of[M]] = I
-    return sp, iso_id
+    return sp, iso_id, formula_of
 
 
-SPECIES, ISO_ID = _build_species()
+SPECIES, ISO_ID, FORMULA_OF = _build_species()
 
 # 常见别名 → 官方分子式（官方把 NO⁺ 记作 NOP，用户/旧代码惯写 NO+）
 _ALIASES = {

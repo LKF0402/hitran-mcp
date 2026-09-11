@@ -20,6 +20,26 @@
 - 命名澄清：可复制弹窗 `show_error` → `show_error_dialog`，与状态栏 `_show_error` 区分开。
 - 代码风格：补上 `_quiet()` 装饰器上方缺失的空行（PEP8 E305）。
 
+**HAPI2 接入（官方 API 下载）**
+
+- **下载引擎升级**：新增 HAPI2 接入 —— 下载线表时优先走 HITRAN 官方 v2 API（URL 携带 `api_key`），
+  失败或不可用时自动回退 HAPI 1.x 旧接口。实测官方 API 的下载产物就是标准 HAPI 1.x
+  `.data/.header`，因此**计算层完全不变** —— 同时规避了 hapi2 numba 计算后端的两处硬伤
+  （不支持多表 `SourceTables>1` 直接 `NotImplementedError`；内部把 `Components` 置为 -1，
+  忽略同位素权重，与"全同位素按自然丰度加权"的物理口径冲突）。
+- **api_key 真正生效**：此前配置的 key 只落到文件、不产生任何效果（HAPI 1.x 旧接口不校验 key）。
+  现在 key 会注入 HAPI2 的 `SETTINGS`（并同步 `config.json`），下载即走官方 API；
+  保存后**立即生效，无需重启**。
+- **配置界面**：新增 HAPI2 状态行（已启用 / 未启用及原因）；保存失败不再静默吞掉
+  （写入 `error.log` 并提示状态栏）。
+- **性能**：HAPI2 / Numba 能力检测改为**轻量探测**（`importlib.util.find_spec` +
+  `importlib.metadata`），不再在 GUI 启动时真正 import hapi2/numba ——
+  启动内存由 225 MB 降至 **137 MB**。
+- **可诊断性**：打包缺依赖时不再静默回退，`hapi2_import_error` 会直接指出缺失模块
+  （本轮据此定位并修复了 `pyparsing`、`unittest` 两个漏打包依赖）。
+- **打包**：`HitranLab.spec` 纳入 hapi2 / sqlalchemy / numba / llvmlite / pyparsing 及 dist-info；
+  体积由 106 MB 增至 **243 MB**（numba/llvmlite 因 `hapi2.opacity.lbl` 无条件 import 而不可排除）。
+
 > 本轮仅修复、尚未发布；待排查积累充分后统一发版。
 
 ## v1.4.2 · 2026-09-11 · 关键 Bug 修复（引擎崩溃 / 分块点数 / 损坏文件检测 / 错误可复制）

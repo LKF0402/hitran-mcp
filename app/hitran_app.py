@@ -440,6 +440,17 @@ class HitranLab(tk.Tk):
         win.focus_force()
         win.protocol("WM_DELETE_WINDOW", lambda w=win: self._close_modal(w))
 
+        # 修复：窗口被最小化/显示桌面后重新显示时，重新设置 grab
+        # （Windows 下 grab 状态会丢失，导致主窗口点不动）
+        def _on_map(e):
+            if e.widget == win:
+                try:
+                    win.grab_set()
+                    win.focus_force()
+                except Exception:
+                    pass
+        win.bind("<Map>", _on_map)
+
     def _close_modal(self, win):
         """关闭模态窗口并释放 grab（避免残留 grab 卡住主窗口）。"""
         try:
@@ -2031,6 +2042,7 @@ class HitranLab(tk.Tk):
             self.stat_text.delete("1.0", tk.END)
             self.stat_text.insert("1.0",
                 f"API key: {'已配置' if st.get('api_key_configured') else '未配置'}（{st.get('api_key_source')}）\n"
+                f"下载引擎: {st.get('download_engine', 'HAPI 1.x 旧下载接口（回退）')}\n"
                 f"线表缓存: {st.get('line_cache_files')} 个 / {st.get('line_cache_MB')} MB\n"
                 f"截面文件: {st.get('xsc_data_files')} 个\n"
                 f"产物: {st.get('output_files')} 个\n"
@@ -2844,13 +2856,21 @@ class HitranLab(tk.Tk):
 
 
     def _show_api_key_config(self):
-        """配置 HITRAN API key（保存到 Hitran_Data/hitran_api_key.txt，已 gitignore）。"""
+        """配置 HITRAN API key（保存到 Hitran_Data/hitran_api_key.txt，已 gitignore）。
+
+        key 的实际用途：HAPI2 经由 HITRAN 官方 v2 API 下载线表（key 带在 URL 里）；
+        HAPI 1.x 的旧下载接口不校验 key。
+        """
         import os
         win = tk.Toplevel(self)
         win.title("配置 API key")
-        win.geometry("480x260")
+        win.geometry("500x330")
         win.configure(bg=self._bg)
-        self._modal(win)
+        # 非模态：用户可以一边看配置一边操作主窗口
+        # （之前用 _modal 模态，用户点"显示桌面"后 grab 丢失，回不来）
+        win.transient(self)
+        win.lift()
+        win.focus_force()
 
         # 当前状态
         current_key = os.environ.get("HITRAN_API_KEY", "").strip()
@@ -2866,6 +2886,33 @@ class HitranLab(tk.Tk):
         status_color = "#34C759" if current_key else "#FF9500"
         ttk.Label(win, text=f"当前状态：{status_text}", background=self._bg,
                   foreground=status_color, font=("", 10, "bold")).pack(anchor="w", padx=16, pady=(16, 4))
+
+        # HAPI2 引擎状态（key 只有经由 HAPI2 官方 API 才真正生效）
+        h2_var = tk.StringVar(value="HAPI2 状态检测中…")
+        h2_lbl = ttk.Label(win, textvariable=h2_var, background=self._bg,
+                           foreground="#8A8A92", font=("", 9),
+                           wraplength=460, justify="left")
+        h2_lbl.pack(anchor="w", padx=16, pady=(0, 4))
+
+        def refresh_h2(force=False):
+            try:
+                ht = hm._hitran()
+                if force:
+                    ht.hapi2_bootstrap(force=True)
+                st = ht.hapi2_status()
+                if not st.get("installed"):
+                    h2_var.set("HAPI2：未安装 → 下载走 HAPI 1.x 旧接口（key 不生效）")
+                    h2_lbl.configure(foreground="#FF9500")
+                elif st.get("enabled"):
+                    h2_var.set(f"HAPI2 {st.get('version')}：已启用 → 下载走官方 API（key 生效）")
+                    h2_lbl.configure(foreground="#34C759")
+                else:
+                    h2_var.set(f"HAPI2 {st.get('version')}：未启用（{st.get('last_error') or '缺少 API key'}）")
+                    h2_lbl.configure(foreground="#FF9500")
+            except Exception as e:
+                h2_var.set(f"HAPI2：状态读取失败（{type(e).__name__}: {e}）")
+
+        refresh_h2()
 
         ttk.Label(win, text="HITRAN API key：", background=self._bg).pack(anchor="w", padx=16, pady=(8, 2))
         key_var = tk.StringVar(value=current_key)
@@ -2884,38 +2931,58 @@ class HitranLab(tk.Tk):
         def save():
             import json
             key = key_var.get().strip()
+            problems = []
             try:
                 (ROOT / "Hitran_Data").mkdir(parents=True, exist_ok=True)
                 if key:
                     key_file.write_text(key, encoding="utf-8")
-                    self.status_var.set("API key 已保存，重启后生效（HAPI 1.x 暂不使用）")
-                else:
-                    if key_file.exists():
-                        key_file.unlink()
-                    self.status_var.set("API key 已清除")
-                # 同步更新 HAPI2 config.json（HAPI2 从此文件读取 api_key）
-                hapi2_config = ROOT / "config.json"
-                try:
-                    if hapi2_config.exists():
-                        with open(hapi2_config, "r", encoding="utf-8") as f:
-                            cfg = json.load(f)
-                    else:
-                        cfg = {}
-                    cfg["api_key"] = key if key else None
-                    with open(hapi2_config, "w", encoding="utf-8") as f:
-                        json.dump(cfg, f, indent=3, ensure_ascii=False)
-                except Exception:
-                    pass  # config.json 更新失败不影响主功能
+                elif key_file.exists():
+                    key_file.unlink()
             except Exception as e:
-                self._show_error(f"保存失败: {e}")
-            win.destroy()
+                self.show_error_dialog("保存失败", f"{type(e).__name__}: {e}")
+                return
+
+            # 同步更新 HAPI2 config.json：失败不再静默吞掉，如实上报
+            try:
+                hapi2_config = ROOT / "config.json"
+                cfg = {}
+                if hapi2_config.exists():
+                    try:
+                        cfg = json.loads(hapi2_config.read_text(encoding="utf-8"))
+                    except Exception as e:
+                        problems.append(f"config.json 解析失败({e})，已重建")
+                        cfg = {}
+                cfg["api_key"] = key or None
+                hapi2_config.write_text(json.dumps(cfg, indent=3, ensure_ascii=False),
+                                        encoding="utf-8")
+            except Exception as e:
+                problems.append(f"config.json 写入失败: {e}")
+
+            # 立即让 key 生效：重跑 bootstrap，无需重启
+            try:
+                ht = hm._hitran()
+                ht.hapi2_bootstrap(force=True)
+                st = ht.hapi2_status()
+                if st.get("enabled"):
+                    msg = "API key 已保存，HAPI2 已即时启用（下载走官方 API）"
+                else:
+                    msg = f"API key 已保存，但 HAPI2 未启用：{st.get('last_error') or '未知原因'}"
+            except Exception as e:
+                msg = f"API key 已保存，HAPI2 初始化异常：{type(e).__name__}: {e}"
+
+            if problems:
+                _log_error("API key 配置", "；".join(problems))
+                msg = f"{msg}｜{'；'.join(problems)}"
+            self.status_var.set(msg)
+            refresh_h2()
 
         def clear():
             key_var.set("")
 
         btn_frame = ttk.Frame(win); btn_frame.pack(fill="x", padx=16, pady=16)
         ttk.Button(btn_frame, text="清除", command=clear).pack(side="left")
-        ttk.Button(btn_frame, text="保存", command=save).pack(side="right")
+        ttk.Button(btn_frame, text="关闭", command=win.destroy).pack(side="right")
+        ttk.Button(btn_frame, text="保存", command=save).pack(side="right", padx=(0, 6))
 
     def _clear_line_cache(self):
         """清理线表缓存：删除 Hitran_Data/ 下的 .data/.header 文件，清空内存计算缓存。"""
@@ -3125,7 +3192,7 @@ def _selftest(out_json):
     try:
         import tools.hitran_mcp as hm
         sp = hm.t_species()
-        st = hm.t_apikey_status()
+        st = hm.t_apikey_status(probe=True)   # 自检时探测 HAPI2 是否真能初始化
         res = hm._compute([{"name": "CH4", "mole_frac": 1.0}],
                           numin=3025.0, numax=3040.0, T=296.0, P=1.0,
                           step=0.01, wingHW=50.0, mode="alpha",
