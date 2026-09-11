@@ -225,9 +225,8 @@ Any MCP-compatible client works. Merge the contents of `mcp.config.example.json`
 
 > On Windows, if `python` is not in PATH, use the full path to the interpreter (forward slashes or double backslashes both work).
 
-Save and restart the client. You should see the `hitran` server with 13 tools — that means it's connected.
+Save and restart the client. You should see the `hitran` server with 12 tools — that means it's connected.
 
-> 💡 **Tip**: After connecting, call `hitran_skill_doc` to get the complete usage guide (parameter conventions, validation workflow).
 
 ## Tool Reference
 
@@ -245,7 +244,6 @@ Save and restart the client. You should see the `hitran` server with 13 tools �
 | `hitran_xsc_files` | List **directly downloadable** files for an XSC molecule (T/P/wavenumber range/resolution/points/size/filename; needs API key) | `name` or `molecule_id`; `include_all` |
 | `hitran_xsc_download` | Download selected files into `xsc_data/` (official API + public data path, no Portal login, default cap 300 MB) | `name`, `filenames`/`ids`; `dry_run`, `overwrite`, `max_total_mb` |
 | `hitran_apikey_status` | Quick status check: API key / cache / outputs / cross-section files | — |
-| `hitran_skill_doc` | Returns the full SKILL.md usage guide for AI agents | — |
 
 Multi-species overlay example (`specs_csv`, mutually exclusive with `name`):
 
