@@ -56,6 +56,7 @@ def _check_network(timeout=3):
         return True
     except Exception:
         return False
+@contextlib.contextmanager
 def _quiet():
     """把 print 收进缓冲区：HAPI/matplotlib 的刷屏不能进 stdout 协议流。"""
     buf = io.StringIO()

@@ -334,6 +334,59 @@ class Worker:
 
 
 class HitranLab(tk.Tk):
+    def show_error(self, title, message):
+        """可复制的错误对话框，同时自动写日志。"""
+        import traceback
+        from tkinter import scrolledtext
+
+        # 写错误日志
+        try:
+            from datetime import datetime
+            log_path = ROOT / "Hitran_Data" / "error.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n===== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+                f.write(f"标题: {title}\n")
+                f.write(message)
+                f.write("\n")
+        except Exception:
+            pass  # 写日志失败不影响弹窗
+
+        # 弹出可复制的错误对话框
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.geometry("600x400")
+        dlg.transient(self)
+        dlg.grab_set()
+
+        # 标题
+        tk.Label(dlg, text=title, font=("Segoe UI", 12, "bold"),
+                 bg=self._colors["SURFACE"], fg=self._colors["TEXT"]).pack(
+            fill="x", padx=10, pady=(10, 5))
+
+        # 可滚动文本框（可选中复制）
+        text = scrolledtext.ScrolledText(dlg, wrap="word",
+                                         font=("Consolas", 10),
+                                         bg=self._colors["SURFACE"],
+                                         fg=self._colors["TEXT"],
+                                         insertbackground=self._colors["TEXT"])
+        text.pack(fill="both", expand=True, padx=10, pady=5)
+        text.insert("1.0", message)
+        text.config(state="disabled")  # 只读，但可选中复制
+
+        # 按钮
+        btn_frame = tk.Frame(dlg, bg=self._colors["SURFACE"])
+        btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        tk.Label(btn_frame, text=f"错误已记录到: Hitran_Data/error.log",
+                 font=("Segoe UI", 9), fg=self._colors["TEXT_SECONDARY"],
+                 bg=self._colors["SURFACE"]).pack(side="left")
+
+        RoundedButton(btn_frame, "关闭", lambda: dlg.destroy(),
+                      bg=self._colors["ACCENT"], fg=self._colors["TEXT"]).pack(side="right")
+
+        dlg.wait_window()
+
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
@@ -1993,7 +2046,7 @@ class HitranLab(tk.Tk):
                 continue
             nu_i = res_i["nu"]
             if len(nu_i) != ref_len:
-                messagebox.showerror("HitranLab",
+                self.show_error("HitranLab",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数点数 {len(nu_i)} "
                     f"与第一组 {ref_len} 不一致。\n\n"
                     f"可能原因：不同波数窗口 / 不同步长 step / 线强模式与吸收谱模式混用。\n"
@@ -2003,7 +2056,7 @@ class HitranLab(tk.Tk):
             start_i = float(nu_i[0])
             end_i = float(nu_i[-1])
             if abs(start_i - ref_start) > 1e-6 or abs(end_i - ref_end) > 1e-6:
-                messagebox.showerror("HitranLab",
+                self.show_error("HitranLab",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数窗口 "
                     f"[{start_i:.4f}, {end_i:.4f}] 与第一组 [{ref_start:.4f}, {ref_end:.4f}] 不同。\n\n"
                     f"点数相同但窗口不同会导致数据静默错位。\n"
@@ -2013,7 +2066,7 @@ class HitranLab(tk.Tk):
         try:
             out = np.column_stack([nu] + data_cols)
         except ValueError as e:
-            messagebox.showerror("HitranLab", f"CSV 导出失败（数组维度不一致）：{e}")
+            self.show_error("HitranLab", f"CSV 导出失败（数组维度不一致）：{e}")
             return
         with open(p, "w", encoding="utf-8", newline="") as f:
             f.write(header)
@@ -2825,7 +2878,7 @@ class HitranLab(tk.Tk):
                 _status += f"（{len(_cache_warn)} 项内存缓存清理失败，见弹窗）"
             self.status_var.set(_status)
         except Exception as e:
-            messagebox.showerror("清理失败", f"清理缓存时出错：{e}")
+            self.show_error("清理失败", f"清理缓存时出错：{e}")
 
 
     def _switch_theme(self, theme=None):
@@ -3029,7 +3082,7 @@ def main():
         app.mainloop()
     except Exception:
         root = tk.Tk(); root.withdraw()
-        messagebox.showerror("HitranLab 启动失败", traceback.format_exc())
+        self.show_error("HitranLab 启动失败", traceback.format_exc())
 
 
 if __name__ == "__main__":
