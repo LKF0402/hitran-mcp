@@ -181,9 +181,15 @@ def _set_dark_titlebar(hwnd):
 class RoundedButton(tk.Canvas):
     """iOS 风格圆角按钮：Canvas 绘制圆角矩形，支持悬停/禁用。"""
 
-    def __init__(self, parent, text, command, bg="#6B8FD4", fg="#D8D8DE",
-                 hover_bg="#8AAAE5", disabled_bg="#2F2F37", disabled_fg="#8A8A92",
+    def __init__(self, parent, text, command, bg=None, fg=None,
+                 hover_bg=None, disabled_bg=None, disabled_fg=None,
                  radius=14, height=44, font=("Microsoft YaHei", 10, "bold"), **kwargs):
+        # 未显式传入时用深色主题默认色（调用方通常会传当前主题色）
+        bg = bg or "#6B8FD4"
+        fg = fg or "#D8D8DE"
+        hover_bg = hover_bg or "#8AAAE5"
+        disabled_bg = disabled_bg or "#2F2F37"
+        disabled_fg = disabled_fg or "#8A8A92"
         # 取父容器背景色：ttk.Frame 没有 "bg" 选项（实测 cget 抛 TclError），
         # 逐级上溯到有 bg 的祖先（如左侧 Canvas），避免底板退化成纯黑与主题面板色不一致
         _pbg, _w = None, parent
@@ -257,8 +263,14 @@ class RoundedButton(tk.Canvas):
             self._draw()
         if "text" in kwargs:
             self._text = kwargs["text"]
+        if any(k in kwargs for k in color_keys + ["state", "text"]):
             self._draw()
-        super().configure(**{k: v for k, v in kwargs.items() if k not in ("state", "text")})
+        # 只把 tk.Canvas 认识的参数透传；自定义颜色键/state/text 由本方法自行处理，
+        # 否则 Canvas 会抛 "unknown option -hover_bg"（切主题即崩）。
+        canvas_kwargs = {k: v for k, v in kwargs.items()
+                         if k not in color_keys + ["state", "text"]}
+        if canvas_kwargs:
+            super().configure(**canvas_kwargs)
 
     def config(self, **kwargs):
         self.configure(**kwargs)
@@ -569,6 +581,9 @@ class HitranLab(tk.Tk):
         TEXT, TEXT_DIM, BORDER = c["TEXT"], c["TEXT_DIM"], c["BORDER"]
 
         self._bg, self._surface, self._accent = BG, SURFACE, ACCENT
+        self._surface2, self._surface3 = SURFACE2, SURFACE3
+        self._text, self._text_dim = TEXT, TEXT_DIM
+        self._border = BORDER
         self.configure(bg=BG)
 
         # 全局
@@ -690,8 +705,8 @@ class HitranLab(tk.Tk):
                                 relief="flat", bd=0, padx=6, pady=3, highlightthickness=0,
                                 cursor="hand2")
             elif isinstance(child, tk.Label):
-                child.configure(bg="#1A1A1F", fg="#8A8A92")
-        self.toolbar.configure(bg="#1A1A1F")
+                child.configure(bg=c["SURFACE"], fg=c["TEXT_DIM"])
+        self.toolbar.configure(bg=self._surface)
 
     def _build_ui(self):
         # ── 菜单栏 ──
@@ -781,7 +796,7 @@ class HitranLab(tk.Tk):
         nu_frame = ttk.Frame(f0)
         nu_frame.grid(row=1, column=1, columnspan=3, sticky="w", padx=(4, 0), pady=(4, 0))
         ttk.Entry(nu_frame, textvariable=self.numin_var, width=8).pack(side="left")
-        ttk.Label(nu_frame, text="—", foreground="#8A8A92").pack(side="left", padx=4)
+        ttk.Label(nu_frame, text="—", foreground=self._text_dim).pack(side="left", padx=4)
         ttk.Entry(nu_frame, textvariable=self.numax_var, width=8).pack(side="left")
         ttk.Label(f0, text="步长:").grid(row=2, column=0, sticky="w", pady=(4, 0))
         ttk.Entry(f0, textvariable=self.step_var, width=8).grid(row=2, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
@@ -830,7 +845,7 @@ class HitranLab(tk.Tk):
         self.cutoff_var = tk.StringVar(value="")
         ttk.Entry(f2, textvariable=self.cutoff_var, width=10).grid(row=4, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
         ttk.Label(f2, text="(单位 cm/molecule，如 1e-26；空=不截断)",
-                  foreground="#8A8A92").grid(row=5, column=0, columnspan=2, sticky="w")
+                  foreground=self._text_dim).grid(row=5, column=0, columnspan=2, sticky="w")
 
         # 高级选项
         f2b = ttk.LabelFrame(inner, text="辅助功能参数", padding=8)
@@ -845,9 +860,9 @@ class HitranLab(tk.Tk):
         self.qtmax_var = tk.StringVar(value="400")
         self.qtstep_var = tk.StringVar(value="20")
         ttk.Entry(qframe, textvariable=self.qtmin_var, width=6).pack(side="left")
-        ttk.Label(qframe, text="–", foreground="#8A8A92").pack(side="left", padx=2)
+        ttk.Label(qframe, text="–", foreground=self._text_dim).pack(side="left", padx=2)
         ttk.Entry(qframe, textvariable=self.qtmax_var, width=6).pack(side="left")
-        ttk.Label(qframe, text="K  步长", foreground="#8A8A92").pack(side="left", padx=(4, 2))
+        ttk.Label(qframe, text="K  步长", foreground=self._text_dim).pack(side="left", padx=(4, 2))
         ttk.Entry(qframe, textvariable=self.qtstep_var, width=5).pack(side="left")
 
         # 混合气
@@ -875,7 +890,7 @@ class HitranLab(tk.Tk):
         ttk.Button(f3, text="添加组分", command=self._add_mix).grid(row=1, column=1, padx=(4, 0), pady=(4, 0))
         ttk.Button(f3, text="删除选中", command=self._del_mix).grid(row=1, column=2, padx=(4, 0), pady=(4, 0))
         self.mix_sum_var = tk.StringVar(value="总和: 0")
-        self.mix_sum_label = ttk.Label(f3, textvariable=self.mix_sum_var, foreground="#8A8A92")
+        self.mix_sum_label = ttk.Label(f3, textvariable=self.mix_sum_var, foreground=self._text_dim)
         self.mix_sum_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
         f3.columnconfigure(0, weight=1)
 
@@ -886,8 +901,8 @@ class HitranLab(tk.Tk):
                                           bg="#6B8FD4", hover_bg="#8AAAE5", height=46, radius=10)
         self.btn_compute.pack(fill=tk.X, pady=(0, 6))
         self.btn_stop = RoundedButton(fb, text="■  停止计算", command=self._stop_compute,
-                                       bg="#1A1A1F", fg="#E07A7A", hover_bg="#25252B",
-                                       disabled_bg="#1A1A1F", disabled_fg="#5A5A62",
+                                       bg=self._surface, fg="#E07A7A", hover_bg="#25252B",
+                                       disabled_bg=self._surface, disabled_fg="#5A5A62",
                                        height=40, radius=8, font=("Microsoft YaHei", 10))
         self.btn_stop.pack(fill=tk.X, pady=(0, 6))
         self.btn_stop.configure(state="disabled")
@@ -948,7 +963,7 @@ class HitranLab(tk.Tk):
         layer_top.pack(fill=tk.X, padx=8, pady=(8, 4))
         ttk.Label(layer_top, text="已绘制曲线（双击或选中后点删除）：").pack(side="left")
         self.layer_list = tk.Listbox(self.layer_tab, font=("Consolas", 9),
-                                      bg="#1A1A1F", fg="#D8D8DE", selectbackground="#6B8FD4",
+                                      bg=self._surface, fg=self._text, selectbackground="#6B8FD4",
                                       selectforeground="#FFFFFF", relief="flat", borderwidth=0,
                                       activestyle="none")
         self.layer_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
@@ -963,7 +978,7 @@ class HitranLab(tk.Tk):
         peak_frame = ttk.Frame(self.peak_tab)
         peak_frame.pack(fill=tk.BOTH, expand=True)
         self.peak_text = tk.Text(peak_frame, height=7, font=("Consolas", 10),
-                                  bg="#1A1A1F", fg="#D8D8DE", insertbackground="#D8D8DE",
+                                  bg=self._surface, fg=self._text, insertbackground=self._text,
                                   relief="flat", borderwidth=0, padx=8, pady=6)
         self.peak_text.pack(side="left", fill=tk.BOTH, expand=True)
         peak_vsb = ttk.Scrollbar(peak_frame, orient="vertical", command=self.peak_text.yview)
@@ -992,7 +1007,7 @@ class HitranLab(tk.Tk):
         xsc_frame = ttk.Frame(self.xsc_tab)
         xsc_frame.pack(fill=tk.BOTH, expand=True)
         self.xsc_text = tk.Text(xsc_frame, height=7, font=("Consolas", 10),
-                                 bg="#1A1A1F", fg="#D8D8DE", insertbackground="#D8D8DE",
+                                 bg=self._surface, fg=self._text, insertbackground=self._text,
                                  relief="flat", borderwidth=0, padx=8, pady=6)
         self.xsc_text.pack(side="left", fill=tk.BOTH, expand=True)
         xsc_vsb = ttk.Scrollbar(xsc_frame, orient="vertical", command=self.xsc_text.yview)
@@ -1005,7 +1020,7 @@ class HitranLab(tk.Tk):
         stat_frame = ttk.Frame(self.stat_tab)
         stat_frame.pack(fill=tk.BOTH, expand=True)
         self.stat_text = tk.Text(stat_frame, height=7, font=("Consolas", 10),
-                                  bg="#1A1A1F", fg="#D8D8DE", insertbackground="#D8D8DE",
+                                  bg=self._surface, fg=self._text, insertbackground=self._text,
                                   relief="flat", borderwidth=0, padx=8, pady=6)
         self.stat_text.pack(side="left", fill=tk.BOTH, expand=True)
         stat_vsb = ttk.Scrollbar(stat_frame, orient="vertical", command=self.stat_text.yview)
@@ -1249,7 +1264,7 @@ class HitranLab(tk.Tk):
         if total > 1.0 + 1e-9:
             self.mix_sum_label.configure(foreground="#E07A7A")
         else:
-            self.mix_sum_label.configure(foreground="#8A8A92")
+            self.mix_sum_label.configure(foreground=self._text_dim)
 
     def _add_mix(self):
         name = self.mol_var.get().strip().upper()
@@ -1734,7 +1749,7 @@ class HitranLab(tk.Tk):
         btn_search = ttk.Button(top, text="搜索")
         btn_search.pack(side="left")
         ttk.Label(top, text="中文名 / 化学式 / 英文名都能搜：丙烷、C3H8、propane、prop",
-                  foreground="#8A8A92").pack(side="left", padx=8)
+                  foreground=self._text_dim).pack(side="left", padx=8)
 
         # 候选分子区：命中多个时在这里挑（选中即加载该分子的截面文件）
         molf = ttk.LabelFrame(win, text="匹配到的分子（单击选中）", padding=6)
@@ -1752,9 +1767,10 @@ class HitranLab(tk.Tk):
 
         mid = ttk.Frame(win, padding=(10, 0))
         mid.pack(fill="both", expand=True)
-        cols = ("T", "p", "rng", "res", "npts", "size", "brd", "file")
+        cols = ("sel", "T", "p", "rng", "res", "npts", "size", "brd", "file")
         tv = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
-        for c, txt, w, anchor in (("T", "T (K)", 64, "center"), ("p", "p (Torr)", 74, "center"),
+        for c, txt, w, anchor in (("sel", "勾选", 46, "center"), ("T", "T (K)", 64, "center"),
+                                  ("p", "p (Torr)", 74, "center"),
                                   ("rng", "波数范围 (cm-1)", 176, "w"), ("res", "分辨率", 64, "center"),
                                   ("npts", "点数", 74, "center"), ("size", "大小(MB)", 70, "center"),
                                   ("brd", "展宽气", 58, "center"), ("file", "文件名", 330, "w")):
@@ -1769,7 +1785,7 @@ class HitranLab(tk.Tk):
         mid.rowconfigure(0, weight=1)
         mid.columnconfigure(0, weight=1)
 
-        stat_var = tk.StringVar(value="输入分子名后点「搜索」；列表中单击行即可选中/取消（默认全选）")
+        stat_var = tk.StringVar(value="输入气体名称后点「搜索」；文件列表单击行可勾选/取消")
         foot = ttk.Frame(win, padding=(10, 6, 10, 10))
         foot.pack(fill="x")
         btn_all = ttk.Button(foot, text="全选")
@@ -1780,7 +1796,7 @@ class HitranLab(tk.Tk):
         btn_close.pack(side="right")
         btn_dl = ttk.Button(foot, text="下载选中")
         btn_dl.pack(side="right", padx=6)
-        ttk.Label(foot, textvariable=stat_var, foreground="#4A4A52").pack(side="left", padx=10)
+        ttk.Label(foot, textvariable=stat_var, foreground=self._text_dim).pack(side="left", padx=10)
 
         def sel_rows():
             return [int(i) for i in tv.selection() if str(i).isdigit()]
@@ -1793,23 +1809,31 @@ class HitranLab(tk.Tk):
                 stat_var.set(f"已选 {len(idx)}/{len(files)} 个，预计 {est:.1f} MB"
                              f"（单次上限 {hm.XSC_DL_LIMIT_MB} MB）")
 
+        def set_check(row, on):
+            tv.set(row, "sel", "☑" if on else "☐")
+            if on:
+                tv.selection_add(row)
+            else:
+                tv.selection_remove(row)
+
         def toggle_row(event):
             row = tv.identify_row(event.y)
             if not row:
                 return
-            if row in tv.selection():
-                tv.selection_remove(row)
-            else:
-                tv.selection_add(row)
+            set_check(row, row not in tv.selection())
             update_stat()
             return "break"          # 拦住默认选择行为，实现"单击=勾选/取消"
 
         def pick_all():
             tv.selection_set(tv.get_children())
+            for r in tv.get_children():
+                tv.set(r, "sel", "☑")
             update_stat()
 
         def pick_none():
             tv.selection_remove(*tv.get_children())
+            for r in tv.get_children():
+                tv.set(r, "sel", "☐")
             update_stat()
 
         def fill_files(files):
@@ -1818,13 +1842,14 @@ class HitranLab(tk.Tk):
             for i, it in enumerate(files):
                 mark = "✓ " if it.get("downloaded") else ""
                 tv.insert("", "end", iid=str(i), values=(
+                    "☐",                                # 默认不勾选，由用户自己挑
                     fmt(it.get("T_K")), fmt(it.get("p_Torr")),
                     f"{fmt(it.get('nu_min_cm-1'))} ~ {fmt(it.get('nu_max_cm-1'))}",
                     fmt(it.get("resolution_cm-1")), fmt(it.get("n_points")),
                     fmt(it.get("est_size_mb")), fmt(it.get("broadener")),
                     mark + str(it.get("filename") or "")))
             if files:
-                pick_all()
+                stat_var.set(f"共 {len(files)} 个文件 —— 单击行勾选（☑），或点「全选」")
             else:
                 stat_var.set("该分子在截面库中没有可下载的文件（换一个分子试试）")
 
@@ -1877,7 +1902,7 @@ class HitranLab(tk.Tk):
             fill_files(files)
             if files:
                 stat_var.set(f"{r.get('query') or '该分子'}：共 {len(files)} 个文件，合计约 "
-                             f"{r.get('total_est_mb')} MB（已全部选中，单击行可取消）")
+                             f"{r.get('total_est_mb')} MB（单击行勾选要下载的，或点「全选」）")
 
         def load_files(mid):
             """按分子 id 拉取截面文件清单（后台线程 + after 轮询）。"""
@@ -2931,7 +2956,7 @@ class HitranLab(tk.Tk):
         wv.trace_add("write", wv_to_nv)
         nv.trace_add("write", nv_to_wv)
         ttk.Label(win, text="公式: ν(cm⁻¹) = 10⁷ / λ(nm)", background=self._bg,
-                  foreground="#8A8A92").pack(pady=12)
+                  foreground=self._text_dim).pack(pady=12)
 
     def _show_molecule_table(self):
         """HITRAN 分子表查询对话框。"""
@@ -2977,7 +3002,7 @@ class HitranLab(tk.Tk):
         win.transient(self)
         for key, desc in shortcuts:
             row = ttk.Frame(win); row.pack(fill="x", padx=16, pady=4)
-            ttk.Label(row, text=key, width=14, foreground="#6B8FD4", background=self._bg).pack(side="left")
+            ttk.Label(row, text=key, width=14, foreground=self._accent, background=self._bg).pack(side="left")
             ttk.Label(row, text=desc, background=self._bg).pack(side="left")
 
     def _show_help(self):
@@ -3018,7 +3043,7 @@ class HitranLab(tk.Tk):
         win.geometry("480x520")
         win.configure(bg=self._bg)
         win.transient(self)
-        txt = tk.Text(win, font=("Microsoft YaHei", 9), bg="#1A1A1F", fg="#D8D8DE",
+        txt = tk.Text(win, font=("Microsoft YaHei", 9), bg=self._surface, fg=self._text,
                       wrap="word", padx=12, pady=10, relief="flat")
         txt.pack(fill="both", expand=True, padx=10, pady=10)
         txt.insert("1.0", help_text)
@@ -3233,7 +3258,7 @@ class HitranLab(tk.Tk):
         # HAPI2 引擎状态（key 只有经由 HAPI2 官方 API 才真正生效）
         h2_var = tk.StringVar(value="HAPI2 状态检测中…")
         h2_lbl = ttk.Label(win, textvariable=h2_var, background=self._bg,
-                           foreground="#8A8A92", font=("", 9),
+                           foreground=self._text_dim, font=("", 9),
                            wraplength=460, justify="left")
         h2_lbl.pack(anchor="w", padx=16, pady=(0, 4))
 
@@ -3269,7 +3294,7 @@ class HitranLab(tk.Tk):
         ttk.Checkbutton(win, text="显示 key", variable=show_var, command=toggle_show).pack(anchor="w", padx=16, pady=(4, 0))
 
         ttk.Label(win, text="获取 key：注册 https://hitran.org 账号 → 用户个人资料页",
-                  background=self._bg, foreground="#8A8A92", font=("", 9)).pack(anchor="w", padx=16, pady=(8, 0))
+                  background=self._bg, foreground=self._text_dim, font=("", 9)).pack(anchor="w", padx=16, pady=(8, 0))
 
         def save():
             import json
@@ -3387,6 +3412,8 @@ class HitranLab(tk.Tk):
             return
         self._theme = theme
         c = self._get_colors(self._theme)     # 必须在 try 块之前定义，否则重着色全部 NameError 被吞
+        old_dim = getattr(self, "_text_dim", None)      # 旧主题的次要文本/强调色，用于精确重设显式配色的 Label
+        old_accent = getattr(self, "_accent", None)
         # 重新应用样式
         self._build_style()
         # 更新窗口背景
@@ -3459,6 +3486,21 @@ class HitranLab(tk.Tk):
                         widget.configure(selectbackground=c["ACCENT"], selectforeground=c["TEXT"])
                 except Exception:
                     pass
+        # 重设"显式 foreground 的 ttk.Label"：这些组件覆盖了 style 的 foreground，
+        # 若不处理，切主题后会残留旧主题的文字色（浅色下仍是一堆深灰字，很突兀）。
+        def _recolor_labels(w):
+            try:
+                if w.winfo_class() == "TLabel":
+                    cur = str(w.cget("foreground"))
+                    if old_dim and cur.upper() == str(old_dim).upper():
+                        w.configure(foreground=self._text_dim)
+                    elif old_accent and cur.upper() == str(old_accent).upper():
+                        w.configure(foreground=self._accent)
+            except Exception:
+                pass
+            for ch in w.winfo_children():
+                _recolor_labels(ch)
+        _recolor_labels(self)
         self.status_var.set(f"已切换到{'浅色' if self._theme == 'light' else '深色'}模式")
 
     def _show_about(self):
@@ -3469,15 +3511,15 @@ class HitranLab(tk.Tk):
         win.configure(bg=self._bg)
         self._modal(win)
         ttk.Label(win, text="HitranLab", font=("Microsoft YaHei", 18, "bold"),
-                  foreground="#6B8FD4", background=self._bg).pack(pady=(24, 4))
-        ttk.Label(win, text=f"版本 v{APP_VERSION}", background=self._bg, foreground="#8A8A92").pack()
+                  foreground=self._accent, background=self._bg).pack(pady=(24, 4))
+        ttk.Label(win, text=f"版本 v{APP_VERSION}", background=self._bg, foreground=self._text_dim).pack()
         ttk.Label(win, text="HITRAN 光谱分析桌面工作站", background=self._bg).pack(pady=(8, 0))
         ttk.Label(win, text="基于 HITRAN2024 + HAPI 1.3.0.0 + TIPS-2025", background=self._bg,
-                  foreground="#8A8A92", font=("Microsoft YaHei", 8)).pack(pady=(4, 0))
+                  foreground=self._text_dim, font=("Microsoft YaHei", 8)).pack(pady=(4, 0))
         ttk.Label(win, text="", background=self._bg).pack()
-        ttk.Label(win, text=f"仓库: {APP_REPO}", background=self._bg, foreground="#6B8FD4",
+        ttk.Label(win, text=f"仓库: {APP_REPO}", background=self._bg, foreground=self._accent,
                   font=("Microsoft YaHei", 8)).pack()
-        ttk.Label(win, text="License: MIT", background=self._bg, foreground="#8A8A92",
+        ttk.Label(win, text="License: MIT", background=self._bg, foreground=self._text_dim,
                   font=("Microsoft YaHei", 8)).pack(pady=(2, 0))
         ttk.Button(win, text="关闭", command=win.destroy).pack(pady=16)
 
