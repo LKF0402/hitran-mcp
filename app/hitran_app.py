@@ -978,14 +978,14 @@ class HitranLab(tk.Tk):
 
     # ───────────────────────── 交互 ─────────────────────────
     def _frac_to_display(self, xf):
-        """摩尔分数 -> 当前单位显示值。"""
+        """摩尔分数 -> 当前单位显示值。用 6 位有效数字避免单位切换时精度损失。"""
         if xf is None:
             return "1 (纯)"
         unit = self.mix_unit_var.get()
         if unit == "ppm":
-            return f"{xf * 1e6:.4g} ppm"
+            return f"{xf * 1e6:.6g} ppm"
         elif unit == "ppb":
-            return f"{xf * 1e9:.4g} ppb"
+            return f"{xf * 1e9:.6g} ppb"
         return f"{xf:.6g}"
 
     def _display_to_frac(self, val_str):
@@ -1300,7 +1300,7 @@ class HitranLab(tk.Tk):
                     raise ValueError(f"混合气浓度非法: {display_str!r}（转换后摩尔分数 {xf} 不在 (0,1]）")
             else:
                 xf = None
-            rows.append({"name": str(v[0]).strip().upper(), "mole_frac": xf})
+            rows.append({"name": str(v[0]).strip().upper(), "mole_frac": xf, "iso": self._selected_iso()})
         return rows
 
     def _selected_iso(self):
@@ -1983,16 +1983,32 @@ class HitranLab(tk.Tk):
                 data_cols.append(per[first_key])
 
         import numpy as np
-        # 校验所有数据集波数轴长度一致（不同窗口/步长/模式无法合并导出）
+        # 校验所有数据集波数轴一致（点数 + 起止波数 + 步长，不同窗口/步长/模式无法合并导出）
         ref_len = len(nu)
+        ref_start = float(nu[0]) if ref_len > 0 else 0.0
+        ref_end = float(nu[-1]) if ref_len > 0 else 0.0
+        ref_step = (ref_end - ref_start) / (ref_len - 1) if ref_len > 1 else 0.0
         for i, ds in enumerate(datasets[1:], 1):
             res_i = ds["data"]["res"]
-            if "nu" in res_i and len(res_i["nu"]) != ref_len:
+            if "nu" not in res_i:
+                continue
+            nu_i = res_i["nu"]
+            if len(nu_i) != ref_len:
                 messagebox.showerror("HitranLab",
-                    f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数点数 {len(res_i['nu'])} "
+                    f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数点数 {len(nu_i)} "
                     f"与第一组 {ref_len} 不一致。\n\n"
                     f"可能原因：不同波数窗口 / 不同步长 step / 线强模式与吸收谱模式混用。\n"
                     f"请分别导出，或使用相同窗口和步长重新计算。")
+                return
+            # 点数相同但波数轴不同（不同窗口但相同点数会静默错位）
+            start_i = float(nu_i[0])
+            end_i = float(nu_i[-1])
+            if abs(start_i - ref_start) > 1e-6 or abs(end_i - ref_end) > 1e-6:
+                messagebox.showerror("HitranLab",
+                    f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数窗口 "
+                    f"[{start_i:.4f}, {end_i:.4f}] 与第一组 [{ref_start:.4f}, {ref_end:.4f}] 不同。\n\n"
+                    f"点数相同但窗口不同会导致数据静默错位。\n"
+                    f"请分别导出，或使用相同窗口重新计算。")
                 return
         # 用 numpy 组装矩阵并一次性写入，避免逐行 Python 循环卡死 UI
         try:
@@ -2729,7 +2745,7 @@ class HitranLab(tk.Tk):
                 (ROOT / "Hitran_Data").mkdir(parents=True, exist_ok=True)
                 if key:
                     key_file.write_text(key, encoding="utf-8")
-                    self.status_var.set("API key 已保存，立即生效")
+                    self.status_var.set("API key 已保存，重启后生效（HAPI 1.x 暂不使用）")
                 else:
                     if key_file.exists():
                         key_file.unlink()
