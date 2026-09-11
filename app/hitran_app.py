@@ -333,31 +333,65 @@ class Worker:
             pass
 
 
+def _log_error(title, message):
+    """把错误追加写入 Hitran_Data/error.log（失败静默，绝不影响主流程）。"""
+    try:
+        from datetime import datetime
+        log_path = ROOT / "Hitran_Data" / "error.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n===== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+            f.write(f"标题: {title}\n")
+            f.write(str(message))
+            f.write("\n")
+    except Exception:
+        pass
+
+
+def _show_fatal(root, message):
+    """启动失败兜底弹窗：**模块级**实现，不依赖 HitranLab 实例。
+
+    main() 是模块级函数、没有 self —— 原先此处写作 self.show_error(...)，
+    一旦启动失败就会抛 NameError，用户连错误都看不到（窗口一闪而过）。
+    """
+    from tkinter import scrolledtext
+
+    _log_error("启动失败", message)
+    win = tk.Toplevel(root)
+    win.title("HitranLab 启动失败")
+    win.geometry("640x420")
+    tk.Label(win, text="HitranLab 启动失败",
+             font=("Segoe UI", 12, "bold")).pack(fill="x", padx=10, pady=(10, 5))
+    txt = scrolledtext.ScrolledText(win, wrap="word", font=("Consolas", 10))
+    txt.pack(fill="both", expand=True, padx=10, pady=5)
+    txt.insert("1.0", message)
+    txt.config(state="disabled")
+    foot = tk.Frame(win)
+    foot.pack(fill="x", padx=10, pady=(0, 10))
+    tk.Label(foot, text="错误已记录到: Hitran_Data/error.log",
+             font=("Segoe UI", 9), fg="#8A8A92").pack(side="left")
+    tk.Button(foot, text="关闭", command=win.destroy).pack(side="right")
+    try:
+        win.grab_set()
+        win.lift()
+        win.focus_force()
+    except Exception:
+        pass
+    root.wait_window(win)
+
+
 class HitranLab(tk.Tk):
-    def show_error(self, title, message):
-        """可复制的错误对话框，同时自动写日志。"""
-        import traceback
+    def show_error_dialog(self, title, message):
+        """可复制的错误对话框（与状态栏提示 `_show_error` 区分），同时写日志。"""
         from tkinter import scrolledtext
 
-        # 写错误日志
-        try:
-            from datetime import datetime
-            log_path = ROOT / "Hitran_Data" / "error.log"
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"\n===== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====\n")
-                f.write(f"标题: {title}\n")
-                f.write(message)
-                f.write("\n")
-        except Exception:
-            pass  # 写日志失败不影响弹窗
+        _log_error(title, message)
 
         # 弹出可复制的错误对话框
         dlg = tk.Toplevel(self)
         dlg.title(title)
         dlg.geometry("600x400")
-        dlg.transient(self)
-        dlg.grab_set()
+        self._modal(dlg)
 
         # 标题
         tk.Label(dlg, text=title, font=("Segoe UI", 12, "bold"),
@@ -386,6 +420,33 @@ class HitranLab(tk.Tk):
                       bg=self._colors["ACCENT"], fg=self._colors["TEXT"]).pack(side="right")
 
         dlg.wait_window()
+
+    def _modal(self, win):
+        """把 Toplevel 设为模态，并确保它真正拿到焦点。
+
+        修复：原先只调用 grab_set()。grab 只在本应用内生效，若弹窗未获得焦点
+        又被切到后台，主窗口会因 grab 仍指向弹窗而点不动 —— 表现为"切走窗口后
+        回不去主窗口"。这里补上 wait_visibility + lift + focus_force，并绑定
+        关闭时显式释放 grab。
+        """
+        win.transient(self)
+        win.update_idletasks()
+        try:
+            win.wait_visibility()        # 等窗口真正映射，避免 Windows 上 grab 失败
+        except Exception:
+            pass
+        win.grab_set()
+        win.lift()
+        win.focus_force()
+        win.protocol("WM_DELETE_WINDOW", lambda w=win: self._close_modal(w))
+
+    def _close_modal(self, win):
+        """关闭模态窗口并释放 grab（避免残留 grab 卡住主窗口）。"""
+        try:
+            win.grab_release()
+        except Exception:
+            pass
+        win.destroy()
 
     def __init__(self):
         super().__init__()
@@ -965,26 +1026,49 @@ class HitranLab(tk.Tk):
 
     # ───────────────────────── 数据加载 ─────────────────────────
     def _on_mol_search(self, event=None):
-        """用户输入分子名时实时筛选下拉列表，并自动匹配别名。"""
+        """输入分子名时筛选候选：防抖 + 不抢焦点。
+
+        修复两个问题：
+        1) 卡顿：原实现每个按键都重建 Combobox 的 values 并 event_generate("<Down>")
+           展开下拉，逐键重绘导致输入发涩。现在改为 180ms 防抖 + 不自动展开。
+        2) 删不掉：下拉一旦展开，BackSpace 会被下拉吞掉，必须先退出下拉才能继续删。
+           现在编辑类按键（退格/删除/方向键等）只做轻量过滤、绝不展开下拉。
+        """
+        keysym = getattr(event, "keysym", "") if event is not None else ""
+        editing = keysym in ("BackSpace", "Delete", "Left", "Right", "Home", "End",
+                             "Up", "Down", "Escape", "Tab", "Return", "KP_Enter")
+        pending = getattr(self, "_mol_search_after", None)
+        if pending:
+            try:
+                self.after_cancel(pending)
+            except Exception:
+                pass
+            self._mol_search_after = None
+        # 编辑类按键立即过滤（保持跟手）；普通输入延迟过滤（避免逐键重绘）
+        self._mol_search_after = self.after(
+            0 if editing else 180, lambda: self._apply_mol_filter(editing))
+
+    def _apply_mol_filter(self, editing=False):
+        """执行分子候选筛选（由 _on_mol_search 防抖后调用）。"""
+        self._mol_search_after = None
+        allsp = getattr(self, "_all_species", None)
+        if not allsp:
+            return
         text = self.mol_var.get().strip()
         if not text:
-            # 清空输入时恢复完整列表
-            if hasattr(self, "_all_species"):
-                self.mol_cb["values"] = self._all_species
+            if self.mol_cb["values"] != tuple(allsp):
+                self.mol_cb["values"] = allsp
             return
-        # 先尝试别名匹配
-        std, matched = resolve_molecule_alias(text)
-        if matched and std in (self._all_species if hasattr(self, "_all_species") else []):
-            # 匹配到别名且在分子表中，自动替换
-            self.mol_var.set(std)
-            self._load_isotopologues()
-            return
-        # 筛选包含输入文本的分子（不区分大小写）
-        if hasattr(self, "_all_species"):
-            filtered = [m for m in self._all_species if text.upper() in m]
+        # 别名替换：仅在"非编辑键 + 长度>=2 + 确能归一化"时进行，避免敲一个字母就被顶掉
+        if not editing and len(text) >= 2:
+            std, matched = resolve_molecule_alias(text)
+            if matched and std in allsp and std != text:
+                self.mol_var.set(std)
+                self._load_isotopologues()
+                return
+        filtered = [m for m in allsp if text.upper() in m] or allsp
+        if self.mol_cb["values"] != tuple(filtered):
             self.mol_cb["values"] = filtered
-            if filtered:
-                self.mol_cb.event_generate("<Down>")  # 展开下拉
 
     def _on_mol_enter(self, event=None):
         """回车时确认分子选择，加载同位素。"""
@@ -2046,7 +2130,7 @@ class HitranLab(tk.Tk):
                 continue
             nu_i = res_i["nu"]
             if len(nu_i) != ref_len:
-                self.show_error("HitranLab",
+                self.show_error_dialog("HitranLab",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数点数 {len(nu_i)} "
                     f"与第一组 {ref_len} 不一致。\n\n"
                     f"可能原因：不同波数窗口 / 不同步长 step / 线强模式与吸收谱模式混用。\n"
@@ -2056,7 +2140,7 @@ class HitranLab(tk.Tk):
             start_i = float(nu_i[0])
             end_i = float(nu_i[-1])
             if abs(start_i - ref_start) > 1e-6 or abs(end_i - ref_end) > 1e-6:
-                self.show_error("HitranLab",
+                self.show_error_dialog("HitranLab",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数窗口 "
                     f"[{start_i:.4f}, {end_i:.4f}] 与第一组 [{ref_start:.4f}, {ref_end:.4f}] 不同。\n\n"
                     f"点数相同但窗口不同会导致数据静默错位。\n"
@@ -2066,7 +2150,7 @@ class HitranLab(tk.Tk):
         try:
             out = np.column_stack([nu] + data_cols)
         except ValueError as e:
-            self.show_error("HitranLab", f"CSV 导出失败（数组维度不一致）：{e}")
+            self.show_error_dialog("HitranLab", f"CSV 导出失败（数组维度不一致）：{e}")
             return
         with open(p, "w", encoding="utf-8", newline="") as f:
             f.write(header)
@@ -2111,7 +2195,8 @@ class HitranLab(tk.Tk):
             self._set_busy(False, "已停止（后台计算结果将被丢弃）")
 
     def _show_error(self, msg):
-        """状态栏红字提示错误，不弹窗打断。"""
+        """状态栏红字提示错误，不弹窗打断（同时落盘，保证所有错误可回溯）。"""
+        _log_error("界面提示", msg)
         self.status_label.configure(foreground="#E07A7A")
         self.status_var.set(f"✗ {msg}")
         self.after(5000, self._restore_status)
@@ -2401,8 +2486,7 @@ class HitranLab(tk.Tk):
         win.title("首选项")
         win.geometry("380x450")
         win.configure(bg=self._bg)
-        win.transient(self)
-        win.grab_set()
+        self._modal(win)
 
         def row(label, var):
             ttk.Label(win, text=label, background=self._bg).pack(anchor="w", padx=16, pady=(10, 2))
@@ -2766,8 +2850,7 @@ class HitranLab(tk.Tk):
         win.title("配置 API key")
         win.geometry("480x260")
         win.configure(bg=self._bg)
-        win.transient(self)
-        win.grab_set()
+        self._modal(win)
 
         # 当前状态
         current_key = os.environ.get("HITRAN_API_KEY", "").strip()
@@ -2878,7 +2961,7 @@ class HitranLab(tk.Tk):
                 _status += f"（{len(_cache_warn)} 项内存缓存清理失败，见弹窗）"
             self.status_var.set(_status)
         except Exception as e:
-            self.show_error("清理失败", f"清理缓存时出错：{e}")
+            self.show_error_dialog("清理失败", f"清理缓存时出错：{e}")
 
 
     def _switch_theme(self, theme=None):
@@ -2969,8 +3052,7 @@ class HitranLab(tk.Tk):
         win.title("关于 HitranLab")
         win.geometry("380x280")
         win.configure(bg=self._bg)
-        win.transient(self)
-        win.grab_set()
+        self._modal(win)
         ttk.Label(win, text="HitranLab", font=("Microsoft YaHei", 18, "bold"),
                   foreground="#6B8FD4", background=self._bg).pack(pady=(24, 4))
         ttk.Label(win, text=f"版本 v{APP_VERSION}", background=self._bg, foreground="#8A8A92").pack()
@@ -3081,8 +3163,12 @@ def main():
         app.protocol("WM_DELETE_WINDOW", app._on_exit)
         app.mainloop()
     except Exception:
-        root = tk.Tk(); root.withdraw()
-        self.show_error("HitranLab 启动失败", traceback.format_exc())
+        tb = traceback.format_exc()
+        try:
+            root = tk.Tk(); root.withdraw()
+            _show_fatal(root, tb)      # 模块级函数，不依赖 HitranLab 实例
+        except Exception:
+            print(tb)                  # 兜底中的兜底：连窗口都起不来时至少留下痕迹
 
 
 if __name__ == "__main__":

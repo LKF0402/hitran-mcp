@@ -50,6 +50,10 @@ logs/
 outputs/
 *.bak
 *.tmp
+selftest.json
+
+# 一次性发布/运维脚本（含 git 凭据读取逻辑，严禁入库）
+replace_asset*.py
 
 # Python 虚拟环境
 .venv/

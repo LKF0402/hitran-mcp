@@ -56,6 +56,8 @@ def _check_network(timeout=3):
         return True
     except Exception:
         return False
+
+
 @contextlib.contextmanager
 def _quiet():
     """把 print 收进缓冲区：HAPI/matplotlib 的刷屏不能进 stdout 协议流。"""
@@ -296,8 +298,10 @@ def _load_local_table(table):
     header_path = root / f"{table}.header"
     if not data_path.exists() or not header_path.exists():
         return None
-    # 完整性校验：下载中断被截断的文件通常远小于正常大小（<1KB）
-    # 正常线表（至少几十条线）至少几 KB；太小视为损坏，强制重下
+    # 完整性校验（第一道）：明显残缺的残骸直接丢弃（历史上出现过 161 字节的文件）。
+    # 注意这里只能挡住"极小残骸"：若下载在**行边界**被截断，文件语法依旧完整，
+    # HAPI 仍会将其当作合法表读入（实测 flag_EOF 仍为 True），读取侧无法识别；
+    # 该类情况改由 _absorption 的「覆盖率合理性检查」给出告警。
     if data_path.stat().st_size < 1024:
         return None
     if table not in hapi.tableList():
@@ -509,8 +513,15 @@ _CHUNK_POINTS = 4000     # 分块粒度：约 4 千点/块，兼顾进度平滑�
 
 
 def _n_grid(numin, numax, step):
-    """网格点数（与 HAPI 取点规则一致：numin, numin+step, ... <= numax）。"""
-    return int(round((float(numax) - float(numin)) / float(step))) + 1
+    """网格点数：**必须与 HAPI 的 hapi.arange_() 完全一致**。
+
+    HAPI 的规则是 floor((upper-lower)/step) + 1，另有一个边界容差修正；
+    旧实现用 round()，当 (numax-numin)/step 的小数部分 >= 0.5 时会多算 1 点，
+    造成"分块计算(GUI)"与"整窗计算(MCP)"点数不一致，且分块结果末点会超出
+    用户设定的波数上限。这里直接复用 HAPI 的实现，避免规则再次漂移。
+    """
+    import hapi
+    return len(hapi.arange_(float(numin), float(numax), float(step)))
 
 
 def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
@@ -549,6 +560,7 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     steps_done = 0
 
     entries, skipped = [], []
+    warn_msgs = []                         # 非致命问题（分块对齐 / 覆盖率可疑）如实上报
     for I, ab in isos:
         try:
             table, cov, refetched = _ensure_table_for(M, I, numin, numax, force)
@@ -567,6 +579,22 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
             progress(steps_done, total_steps, "抓取线表")
     if not entries:
         raise RuntimeError(f"[hitran][防呆] {formula} 的所有同位素在 {numin}-{numax} cm-1 均抓取失败：{skipped}")
+
+    # 覆盖率合理性检查：线表覆盖上界若明显低于请求上界，可能是"未下载完整"的表
+    # （行边界截断在读取侧识别不了，只能靠这一层兜底提示）。阈值取窗口宽度的 10%，
+    # 只告警不阻断，避免把"窗口上半段确实无谱线"误判为错误。
+    try:
+        _span = float(numax) - float(numin)
+        _hi = float(numax)
+        if _span > 0:
+            for _e in entries:
+                _cov = _e.get("cov")
+                if _cov and float(_cov[1]) < _hi - 0.1 * _span:
+                    warn_msgs.append(
+                        f"[线表覆盖] '{_e['table']}' 覆盖上界 {float(_cov[1]):.3f} cm-1 明显低于请求上界 "
+                        f"{_hi:.3f}；该表可能未下载完整，建议『工具 → 清理线表缓存』后重算。")
+    except Exception:
+        pass
 
     pkey = str(profile or "voigt").strip().lower()
     if pkey not in PROFILES:
@@ -608,14 +636,21 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
             progress(steps_done, total_steps, "计算谱线")
         nu = np.concatenate(nus)
         coef = np.concatenate(coefs)
-        # 分块拼接可能因浮点数精度多出/少 1 个点，统一截断到整窗预期点数
+        # 分块拼接的点数应与整窗 HAPI 取点一致；修正 _n_grid 后正常不会走到这里。
+        # 若仍不一致，说明分块边界/浮点处理有偏差 —— 如实告警，绝不静默改数据
+        # （旧的静默截断/重复点补齐会污染结果且无人知晓）。
         expected = n_seg + 1
-        if len(nu) > expected:
-            nu, coef = nu[:expected], coef[:expected]
-        elif len(nu) < expected:
-            pad = expected - len(nu)
-            nu = np.concatenate([nu, np.full(pad, nu[-1])])
-            coef = np.concatenate([coef, np.full(pad, coef[-1])])
+        if len(nu) != expected:
+            warn_msgs.append(
+                f"[分块对齐] 拼接点数 {len(nu)} 与预期 {expected} 不一致"
+                f"（窗口 {float(numin):g}-{float(numax):g}, step={float(step):g}）；"
+                f"已按预期点数对齐，末点附近可能存在 1 点偏差。")
+            if len(nu) > expected:
+                nu, coef = nu[:expected], coef[:expected]
+            else:
+                pad = expected - len(nu)
+                nu = np.concatenate([nu, np.full(pad, nu[-1])])
+                coef = np.concatenate([coef, np.full(pad, coef[-1])])
     tinfo = {"molecule": formula, "M": M, "profile": pkey, "diluent": bath,
              "isotope_mode": "all(自然丰度加权)" if full else f"single(I={entries[0]['I']})",
              "table": ",".join(e["table"] for e in entries),
@@ -628,6 +663,8 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                             for e in entries]}
     if skipped:
         tinfo["skipped_isotopologues"] = skipped
+    if warn_msgs:
+        tinfo["warnings"] = warn_msgs
     nu, coef = np.asarray(nu, dtype=float), np.asarray(coef, dtype=float)
 
     # 写入缓存（超限时清空一半旧缓存）
