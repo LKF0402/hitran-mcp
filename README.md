@@ -33,7 +33,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 > 自然语言驱动，AI 直接调用
 
-将以下内容发送给您的 AI 助手（豆包 / Claude / Cursor）：
+将以下内容发送给您的 AI 助手（支持 MCP 协议的客户端均可）：
 
 > "请帮我配置 HITRAN MCP 服务器，仓库地址：https://github.com/LKF0402/hitran-mcp"
 
