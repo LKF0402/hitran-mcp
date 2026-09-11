@@ -9,7 +9,6 @@
 运行:  python app/hitran_app.py
 打包:  PyInstaller（见 README 或本文件底部注释）
 """
-APP_VERSION = "1.4.0"
 APP_REPO = "https://github.com/LKF0402/hitran-mcp"
 import os
 import queue
@@ -41,6 +40,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI 惰性加载）
+APP_VERSION = hm.VERSION  # 单一版本号源，引用 tools/hitran_mcp.py:VERSION
 
 APP_TITLE = "HitranLab · HITRAN 光谱分析工作站"
 PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
