@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <h1>hitran-mcp</h1>
 
@@ -10,6 +10,10 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 <a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB" alt="Python">
+<a href="https://github.com/LKF0402/hitran-mcp/stargazers"><img src="https://img.shields.io/github/stars/LKF0402/hitran-mcp?color=yellow" alt="Stars"></a>
+<a href="https://github.com/LKF0402/hitran-mcp/issues"><img src="https://img.shields.io/github/issues/LKF0402/hitran-mcp" alt="Issues"></a>
+<img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
+[![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
 
 </div>
 
