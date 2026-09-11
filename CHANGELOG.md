@@ -40,6 +40,20 @@
 - **打包**：`HitranLab.spec` 纳入 hapi2 / sqlalchemy / numba / llvmlite / pyparsing 及 dist-info；
   体积由 106 MB 增至 **243 MB**（numba/llvmlite 因 `hapi2.opacity.lbl` 无条件 import 而不可排除）。
 
+**发布流程加固（防止"产物落后源码"）**
+
+- 新增 `tools/build_release.py` 一键发布脚本，把"打包 exe"与"生成 zip 资产"绑为一个
+  原子流程：打包 → 原子替换 `dist/HitranLab/`（**保留**线表缓存与 `hitran_api_key.txt`）
+  → 对产物跑无界面自检 → 生成 `dist/HitranLab-windows-x64.zip`
+  → **校验 zip 内的 exe 与 `dist` 下的 exe 大小与 CRC32 完全一致**，不一致直接报错退出。
+  此前这两步是手工分开做的，zip 极易漏做 —— 本项目真实发生过 zip 停留在旧 exe、
+  用户下载到过期版本的问题；现在从结构上不可能再发生。
+  另提供 `--zip-only`（只重建 zip）与 `--no-selftest` 两个开关。
+- README 打包章节改用该脚本，并明确提示**不要手写 `pyinstaller` 参数**：
+  `HitranLab.spec` 内含 HAPI2 / sqlalchemy / numba / llvmlite / pyparsing 等必需依赖，
+  手写命令会漏掉，导致打包版 HAPI2 不可用。
+- 保存项目时移除只写不读的 `n_layers` 字段。
+
 > 本轮仅修复、尚未发布；待排查积累充分后统一发版。
 
 ## v1.4.2 · 2026-09-11 · 关键 Bug 修复（引擎崩溃 / 分块点数 / 损坏文件检测 / 错误可复制）

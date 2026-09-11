@@ -2248,7 +2248,6 @@ class HitranLab(tk.Tk):
             "mixture": [(self.mix_tree.item(it)["values"][0], self.mix_tree.item(it)["values"][1])
                         for it in self.mix_tree.get_children()],
             "mix_unit": self.mix_unit_var.get(),
-            "n_layers": len(self._overlay_data),
         }
         try:
             Path(p).write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")

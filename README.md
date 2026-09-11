@@ -125,22 +125,37 @@ python app/hitran_app.py
 4. 可继续调整参数再次计算，谱线会自动叠加到同一画布
 5. 点击「清空图」重置画布，点击「导出 CSV/PNG」保存结果
 
-### 从源码打包
+### 从源码打包 / 发版
 
-如需自行打包为 exe：
+**推荐使用一键发布脚本** —— 它把"打包 exe"与"生成 zip 资产"绑成一步，并自动校验一致性：
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --clean --name HitranLab --windowed --onedir \
-  --icon app/hitranlab.ico --paths . \
-  --collect-all matplotlib --hidden-import hapi \
-  --exclude-module pandas --exclude-module lxml --exclude-module scipy \
-  app/hitran_app.py
+python tools/build_release.py
 ```
 
-打包产物位于 `dist/HitranLab/`，约 100 MB（one-dir 模式）。将整个 `HitranLab/` 目录压缩即可分发。
+脚本按顺序完成：
 
-> 打包前请确保关闭所有正在运行的 HitranLab 进程，否则可能因文件锁定导致打包失败。
+1. 依据 `HitranLab.spec` 打包 exe；
+2. 替换 `dist/HitranLab/`（**保留** exe 侧的线表缓存与 `hitran_api_key.txt`）；
+3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
+4. 生成 GitHub release 资产 `dist/HitranLab-windows-x64.zip`；
+5. **校验 zip 内的 exe 与 `dist/HitranLab/HitranLab.exe` 的大小与 CRC32 完全一致**
+   —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
+
+可选参数：
+
+```bash
+python tools/build_release.py --zip-only      # 只重建 zip（沿用现有 dist）
+python tools/build_release.py --no-selftest   # 跳过打包后的自检
+```
+
+打包产物约 100 MB（one-dir 模式）。发布时上传第 4 步生成的 zip 作为 release 资产即可。
+
+> 打包前请关闭所有正在运行的 HitranLab 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
+>
+> **不要手写 `pyinstaller` 命令**：`HitranLab.spec` 中包含 HAPI2 / sqlalchemy / numba /
+> llvmlite / pyparsing 等必需依赖，手写参数极易漏掉，导致打包版 HAPI2 不可用。
 
 ## 快速开始（MCP 服务器）
 
