@@ -2093,7 +2093,23 @@ TOOLS = [
                          "dry_run": {"type": "boolean", "description": "只报告不下载（默认 False）"},
                          "overwrite": {"type": "boolean", "description": "已存在文件是否覆盖（默认 False 跳过）"}},
                      "required": []}},
+    {"name": "hitran_skill_doc",
+     "description": "返回 SKILL.md 完整内容（AI agent 使用本 MCP 的规则手册：触发条件、参数规范、"
+                    "完整性校验流程、输出模式、物理口径）。首次使用本 MCP 前建议先调用此工具获取完整指南。",
+     "inputSchema": {"type": "object", "properties": {}, "required": []}},
 ]
+def t_skill_doc():
+    """返回 SKILL.md 完整内容（AI agent 使用本 MCP 的规则手册）。"""
+    from pathlib import Path
+    skill_path = Path(__file__).parent.parent / "SKILL.md"
+    if skill_path.exists():
+        return {"skill_md": skill_path.read_text(encoding="utf-8"),
+                "path": str(skill_path),
+                "note": "首次使用本 MCP 前建议完整阅读此文档，特别是参数完整性校验流程。"}
+    else:
+        return {"error": "SKILL.md not found", "expected_path": str(skill_path)}
+
+
 DISPATCH = {
     "hitran_species": t_species,
     "hitran_fetch": t_fetch,
@@ -2107,6 +2123,7 @@ DISPATCH = {
     "hitran_xsc_molecules": t_xsc_molecules,
     "hitran_xsc_download": t_xsc_download,
     "hitran_apikey_status": t_apikey_status,
+    "hitran_skill_doc": t_skill_doc,
 }
 
 
