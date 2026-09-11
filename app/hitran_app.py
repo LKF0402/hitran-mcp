@@ -2517,7 +2517,7 @@ class HitranLab(tk.Tk):
                 f"（下载完成后需重启程序，替换时保留 Hitran_Data 线表缓存）"):
             self.status_var.set(f"已有新版本 v{d['latest']}，可到 {d['url']} 下载")
             return
-        self._set_busy(True, "下载更新包…")
+        self._set_busy(True, "下载更新包…", allow_stop=False)
         self.worker.run(self._job_download_update, d["asset_url"], UPDATE_ASSET)
 
     def _job_download_update(self, url, name):
@@ -2553,7 +2553,7 @@ class HitranLab(tk.Tk):
             self.status_var.set("更新包已下载，可手动解压 _update 目录替换")
             return
         # 解压挪到 worker，避免大文件解压阻塞主线程
-        self._set_busy(True, "正在解压更新包…")
+        self._set_busy(True, "正在解压更新包…", allow_stop=False)
         if not self.worker.run(self._job_prepare_update, d["zip"], d["dir"]):
             self._set_busy(False, "启动解压失败")
 
@@ -2889,7 +2889,8 @@ class HitranLab(tk.Tk):
         ttk.Button(win, text="关闭", command=win.destroy).pack(pady=16)
 
     # ───────────────────────── 工具 ─────────────────────────
-    def _set_busy(self, busy, msg):
+    def _set_busy(self, busy, msg, allow_stop=True):
+        """设置忙碌状态。allow_stop=False 时禁用停止按钮（如下载/解压，避免语义混淆）。"""
         self.status_label.configure(foreground="")
         self.status_var.set(msg or "就绪")
         if busy:
@@ -2903,7 +2904,7 @@ class HitranLab(tk.Tk):
         if hasattr(self, "btn_compute"):
             self.btn_compute.configure(state="disabled" if busy else "normal")
         if hasattr(self, "btn_stop"):
-            self.btn_stop.configure(state="normal" if busy else "disabled")
+            self.btn_stop.configure(state="normal" if (busy and allow_stop) else "disabled")
         self.update_idletasks()
 
 
