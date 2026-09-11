@@ -9,7 +9,7 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 <a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
-<img src="https://img.shields.io/badge/Python-3.9%2B-3776AB" alt="Python">
+<img src="https://img.shields.io/badge/Python-3.10%2B-3776AB" alt="Python">
 <img src="https://img.shields.io/badge/MCP-stdio%20JSON--RPC-6B8FD4" alt="MCP">
 <img src="https://img.shields.io/badge/Data-HITRAN2024-red" alt="HITRAN2024">
 
@@ -187,7 +187,7 @@ The build directory is ~245 MB (one-dir mode, HAPI2 / numba / llvmlite included)
 
 ### Requirements
 
-- Python ≥ 3.9
+- Python ≥ 3.10
 - Dependencies: `hitran-api` (official HAPI), `numpy`, `matplotlib` (lazy-loaded for computation/plotting)
 
 ### Installation

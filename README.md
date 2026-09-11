@@ -9,7 +9,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 <a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases"><img src="https://img.shields.io/github/downloads/LKF0402/hitran-mcp/total" alt="Downloads"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform">
-<img src="https://img.shields.io/badge/Python-3.9%2B-3776AB" alt="Python">
+<img src="https://img.shields.io/badge/Python-3.10%2B-3776AB" alt="Python">
 
 </div>
 
@@ -214,7 +214,7 @@ python tools/build_release.py --no-selftest   # 跳过打包后的自检
 
 ### 环境要求
 
-- Python ≥ 3.9
+- Python ≥ 3.10
 - 依赖：`hitran-api`（官方 HAPI）、`numpy`、`matplotlib`（仅绘图/计算时惰性加载）
 
 ### 安装
