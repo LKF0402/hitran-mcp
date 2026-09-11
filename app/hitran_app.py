@@ -1130,6 +1130,7 @@ class HitranLab(tk.Tk):
 
     def _on_mouse_hover(self, event):
         """鼠标悬停在谱图上时，在状态栏显示精确波数和吸收系数/透过率。"""
+        import numpy as np
         if event.inaxes != self.ax or not self._overlay_data:
             # 鼠标离开 axes 或无数据时，恢复之前的状态栏
             if self._hover_last_status is not None:
@@ -2702,6 +2703,7 @@ class HitranLab(tk.Tk):
                   background=self._bg, foreground="#8A8A92", font=("", 9)).pack(anchor="w", padx=16, pady=(8, 0))
 
         def save():
+            import json
             key = key_var.get().strip()
             try:
                 (ROOT / "Hitran_Data").mkdir(parents=True, exist_ok=True)
