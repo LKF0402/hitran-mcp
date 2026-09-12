@@ -1573,10 +1573,11 @@ class HitranLab(tk.Tk):
 
     def _prog_cb(self):
         """给后台线程用的进度回调：只往队列投消息，绝不直接碰 Tk（跨线程安全）。"""
+        gen = self.worker._gen          # 捕获本任务世代（run() 启动线程前已 ++）
         def cb(done, total, label):
             try:
                 self.worker.q.put(("progress", {"done": int(done), "total": int(total),
-                                                "label": str(label)}))
+                                                "label": str(label), "gen": gen}))
             except Exception:
                 pass
         return cb
@@ -2136,6 +2137,8 @@ class HitranLab(tk.Tk):
                     self._set_busy(False, "出错")
                     self._show_error(payload)
                 elif tag == "progress":        # 后台线程上报的进度（不结束忙碌态）
+                    if payload.get("gen") != self.worker._gen:
+                        continue               # 旧世代进度，丢弃（防止停止后旧任务继续刷进度条）
                     self._on_progress(payload)
                 else:
                     try:
