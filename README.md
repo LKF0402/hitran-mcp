@@ -195,9 +195,9 @@ python tools/build_release.py
 脚本按顺序完成：
 
 1. 依据 `HitranLab.spec` 打包 exe；
-2. 替换 `dist/HitranLab/`（**保留** exe 侧的线表缓存与 `hitran_api_key.txt`）；
+2. 替换 `dist/HitranLab/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
 3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
-4. 生成 GitHub release 资产 `dist/HitranLab-windows-x64.zip`；
+4. 生成 GitHub release 资产 `dist/HitranLab-windows-x64.zip`（**白名单式**：只含 `HitranLab.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
 5. **校验 zip 内的 exe 与 `dist/HitranLab/HitranLab.exe` 的大小与 CRC32 完全一致**
    —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
 

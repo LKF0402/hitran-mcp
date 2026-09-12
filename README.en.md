@@ -166,9 +166,9 @@ python tools/build_release.py
 The script performs, in order:
 
 1. Build the exe from `HitranLab.spec` (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing included);
-2. Replace `dist/HitranLab/` (**keeping** the exe-side line-table cache and `hitran_api_key.txt`);
+2. Replace `dist/HitranLab/` (keeping the exe-side line-table cache and `hitran_api_key.txt` — for the **publisher's local use only**; never share the `dist/` directory directly);
 3. Run a headless self-test on the packaged build (molecule count / spectrum points / peak / download engine);
-4. Generate the GitHub release asset `dist/HitranLab-windows-x64.zip`;
+4. Generate the GitHub release asset `dist/HitranLab-windows-x64.zip` (**allow-list only**: just `HitranLab.exe` + `_internal/`; API key / cache / logs never enter the zip);
 5. **Verify that the exe inside the zip matches `dist/HitranLab/HitranLab.exe` in size and CRC32**
    — mismatches abort with an error, so "stale zip with a new exe" can no longer happen.
 

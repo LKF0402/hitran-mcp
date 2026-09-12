@@ -101,7 +101,12 @@ def build_exe() -> None:
 
 
 def publish() -> None:
-    """用重命名方式原子替换 dist/HitranLab，并保留 exe 侧缓存与 API key。"""
+    """用重命名方式原子替换 dist/HitranLab，并保留 exe 侧缓存与 API key。
+
+    注意：这里的"保留 key"仅服务于**发布者本机**的 dist 目录（再次运行 exe 免重配）。
+    dist/ 已在 .gitignore，且对外发布经 make_zip() 白名单（key/缓存/日志永不进 zip），
+    因此不构成泄露。但**切勿直接把 dist/HitranLab 整个目录分享给他人**。
+    """
     cache_src = APP_DIR / "Hitran_Data"
     if cache_src.exists():
         shutil.rmtree(CACHE_BAK, ignore_errors=True)
@@ -174,18 +179,34 @@ def selftest(timeout: int = 150) -> None:
 
 # ───────────────────────── zip ─────────────────────────
 
+# 发布白名单：只允许这些顶层条目进入 zip（PyInstaller onedir 的标准发布物）。
+# 其余运行时/敏感产物（Hitran_Data/ 线表缓存、config.json 含 key、*.log、
+# .provenance/、local/、~tmp/、_update/）一律排除 —— 防止发布者本机的
+# API key / 日志 / 缓存被打进公开发布包（历史事故：key 曾随 zip 泄露）。
+RELEASE_ALLOW = {"HitranLab.exe", "_internal"}
+
+
 def make_zip() -> None:
-    """把 dist/HitranLab 打成 zip（条目以该目录为根，与既有资产结构一致）。"""
+    """把 dist/HitranLab 打成 zip（白名单式，条目以该目录为根）。
+
+    只打包 exe 与 PyInstaller 依赖目录 _internal/，其它一律不进 zip。
+    """
     if not EXE.exists():
         die("dist/HitranLab/HitranLab.exe 不存在，无法打包 zip")
+    if not (APP_DIR / "_internal").is_dir():
+        die("dist/HitranLab/_internal 不存在，PyInstaller 产物结构异常")
     tmp = ZIP.with_name(ZIP.name + ".tmp")
     tmp.unlink(missing_ok=True)
     n = 0
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for p in sorted(APP_DIR.rglob("*")):
-            if p.is_file():
-                z.write(p, p.relative_to(APP_DIR).as_posix())
-                n += 1
+            if not p.is_file():
+                continue
+            rel = p.relative_to(APP_DIR)
+            if rel.parts[0] not in RELEASE_ALLOW:   # 白名单判定：顶层条目必须命中
+                continue
+            z.write(p, rel.as_posix())
+            n += 1
     os.replace(tmp, ZIP)
     log(f"zip 已生成：{ZIP.name}（{n} 个条目，{ZIP.stat().st_size / 1e6:.1f} MB）")
 
