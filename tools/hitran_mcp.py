@@ -575,10 +575,10 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     import hapi
     from hapi import absorptionCoefficient_Voigt
 
-    # 缓存查找（force 不影响结果，不纳入键）
+    # 缓存查找（force=True 时跳过缓存，强制重算）
     key = _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                           profile, diluent, intensity_cutoff, min_abundance)
-    if key in _ABSORPTION_CACHE:
+    if not force and key in _ABSORPTION_CACHE:
         _ABS_CACHE_HITS += 1
         nu, coef, tinfo = _ABSORPTION_CACHE[key]
         return nu.copy(), coef.copy(), dict(tinfo)
@@ -1227,7 +1227,7 @@ def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
         return {"available_files": avail, "hint": (
             "请从 above 列表选择一个文件，用 file_path 参数传入（可附 source_label 溯源标签）")}
     # 防路径穿越：只允许从 xsc_data/ 目录读取
-    xsc_dir = XSC_DATA_DIR.resolve()
+    xsc_dir = XSC_DIR.resolve()
     user_path = Path(str(file_path)).resolve()
     if not str(user_path).startswith(str(xsc_dir)):
         avail = _list_xsc_files()
