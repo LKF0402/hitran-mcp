@@ -1227,7 +1227,7 @@ class HitranLab(tk.Tk):
             try:
                 return float(display_str)
             except ValueError:
-                return 1.0
+                return 0.0  # 解析失败返回 0，用户一眼就能看出输错了（谱线是平的）
         # 按单位转换
         if unit == "ppm":
             return v / 1e6
@@ -1555,7 +1555,8 @@ class HitranLab(tk.Tk):
             # 线强模式：获取线表数据，绘制竖线图
             self._set_busy(True, "查询线表…")
             name = specs[0]["name"] if specs else self.mol_var.get()
-            self.worker.run(self._job_linestrength, name, numin, numax, T, profile)
+            iso = specs[0].get("iso") if specs else self._selected_iso()
+            self.worker.run(self._job_linestrength, name, numin, numax, T, profile, iso)
             return
         if mode == "alpha":
             cmode = "alpha"
@@ -1604,11 +1605,11 @@ class HitranLab(tk.Tk):
                 "mode": cmode, "hitran_units": hunits, "ylog": ylog,
                 "specs": specs, "profile": profile}
 
-    def _job_linestrength(self, name, numin, numax, T, profile):
+    def _job_linestrength(self, name, numin, numax, T, profile, iso=None):
         """获取线表数据，用于线强模式。
         注意：HITRAN 线表的 S 列是参考温度 296K 下的线强，
         非用户设定温度。标签如实标注 S(296K)，不谎报。"""
-        data = hm.t_lines(name, numin, numax, top_n=10000, min_intensity=0)
+        data = hm.t_lines(name, numin, numax, top_n=10000, min_intensity=0, iso=iso)
         lines = data.get("lines", [])
         import numpy as np
         nu = np.array([l["nu_cm-1"] for l in lines])
@@ -1675,11 +1676,17 @@ class HitranLab(tk.Tk):
         if self.worker.busy:
             messagebox.showinfo("HitranLab", "计算进行中，请稍候")
             return
+        # 配分函数只需要 name 和 T，不需要 step/wingHW/窗口验证
+        name = self.mol_var.get().strip().upper()
+        if not name:
+            self._show_error("请选择分子")
+            return
         try:
-            specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
-            name = specs[0]["name"]
+            T = float(self.T_var.get())
+            if T <= 0:
+                raise ValueError("温度 T 必须 > 0 K")
         except ValueError as e:
-            self._show_error(str(e))
+            self._show_error(f"温度 T 非法: {self.T_var.get()!r}")
             return
         self._set_busy(True, "计算配分函数…")
         self.worker.run(self._job_partition, name, T)
@@ -2195,9 +2202,9 @@ class HitranLab(tk.Tk):
         nu, per, total = res["nu"], res["per"], res["total"]
         self._last_fig_data = d
         ax = self.ax
-        # 如果当前是 Q(T) 或截面视图，切换回谱线视图（清空旧图层数据）
-        if self._view_mode != "spectrum":
-            self._view_mode = "spectrum"
+        # 如果当前不是线强视图，切换过来（清空旧图层数据）
+        if self._view_mode != "linestrength":
+            self._view_mode = "linestrength"
             self._overlay_count = 0
             self._overlay_data = []
             self.ax.clear()
@@ -2318,9 +2325,9 @@ class HitranLab(tk.Tk):
             tag = f"{disp} {float(numin):g}-{float(numax):g} S(296K)"
         else:
             tag = f"{name} S(296K)"
-        # 如果当前是 Q(T) 或截面视图，切换回谱线视图（清空旧图层数据）
-        if self._view_mode != "spectrum":
-            self._view_mode = "spectrum"
+        # 如果当前不是线强视图，切换过来（清空旧图层数据）
+        if self._view_mode != "linestrength":
+            self._view_mode = "linestrength"
             self._overlay_count = 0
             self._overlay_data = []
             self.ax.clear()
@@ -2719,25 +2726,14 @@ class HitranLab(tk.Tk):
             return
         try:
             import numpy as np
-            nu, coef = [], []
-            with open(p, encoding="utf-8", errors="replace") as f:
-                for ln in f:
-                    s = ln.strip()
-                    if not s or s.startswith("#"):
-                        continue
-                    parts = s.replace(",", " ").split()
-                    if len(parts) >= 2:
-                        try:
-                            nu.append(float(parts[0]))
-                            coef.append(float(parts[1]))
-                        except ValueError:
-                            continue
-            if not nu:
+            # 用 numpy 一次性读入，避免逐行 Python 循环卡死 UI
+            data = np.loadtxt(p, delimiter=",", comments="#", usecols=(0, 1), unpack=False)
+            if data.size == 0:
                 self._show_error("文件中无有效数据（需要两列：波数, 值）")
                 return
+            nu = data[:, 0]
+            coef = data[:, 1]
             # 按波数排序：源文件若乱序，直接画折线会出现来回穿插的错乱图形
-            nu = np.asarray(nu, dtype=float)
-            coef = np.asarray(coef, dtype=float)
             _order = np.argsort(nu)
             nu, coef = nu[_order], coef[_order]
             tag = f"{Path(p).stem} (imported)"
@@ -3470,17 +3466,22 @@ class HitranLab(tk.Tk):
             except Exception as e:
                 problems.append(f"config.json 写入失败: {e}")
 
-            # 立即让 key 生效：重跑 bootstrap，无需重启
-            try:
-                ht = hm._hitran()
-                ht.hapi2_bootstrap(force=True)
-                st = ht.hapi2_status()
-                if st.get("enabled"):
-                    msg = "API key 已保存，HAPI2 已即时启用（下载走官方 API）"
-                else:
-                    msg = f"API key 已保存，但 HAPI2 未启用：{st.get('last_error') or '未知原因'}"
-            except Exception as e:
-                msg = f"API key 已保存，HAPI2 初始化异常：{type(e).__name__}: {e}"
+            # 立即让 key 生效：后台跑 bootstrap，不卡 UI
+            msg = "API key 已保存，HAPI2 正在后台初始化…"
+            def _bootstrap_in_bg():
+                try:
+                    ht = hm._hitran()
+                    ht.hapi2_bootstrap(force=True)
+                    st = ht.hapi2_status()
+                    if st.get("enabled"):
+                        bg_msg = "✅ HAPI2 已启用（下载走官方 API）"
+                    else:
+                        bg_msg = f"⚠️ HAPI2 未启用：{st.get('last_error') or '未知原因'}"
+                except Exception as e:
+                    bg_msg = f"⚠️ HAPI2 初始化异常：{type(e).__name__}: {e}"
+                # 主线程更新提示
+                self.after(0, lambda: messagebox.showinfo("HAPI2 初始化", bg_msg))
+            threading.Thread(target=_bootstrap_in_bg, daemon=True).start()
 
             if problems:
                 _log_error("API key 配置", "；".join(problems))
