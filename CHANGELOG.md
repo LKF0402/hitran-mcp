@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [Unreleased]
+
+### Bug Fixes
+- Fixed `NameError` in `hitran_cross_section`: undefined `XSC_DATA_DIR` → now correctly uses `XSC_DIR`
+- Fixed `force=True` being short-circuited by the compute cache (could return stale spectra)
+- Fixed `force=True` not re-fetching tables already loaded in memory (now drops table from memory + disk first)
+- Normalized isotopologue abundances in `iso='all'` mode (avoid systematic under-estimate when filtered/skipped)
+- Fixed cross-section path guard: prefix match could admit sibling dirs → now uses `is_relative_to`
+- Chunked computation now falls back to full-window recompute on point-count mismatch (no more padding/truncating fabricated data)
+- Relaxed coverage check to avoid false "incomplete download" warnings on legitimate band edges
+- `hitran_xsc_search` detail query now retried + friendly error on network jitter
+- `hitran_xsc_download` checks size limit *before* downloading each file
+- Atomic writes for `compute_cache/index.json` and molecule index (temp file + `os.replace`)
+- Deep-copy cached `tinfo` before returning (prevent caller mutation corrupting cache)
+- Removed unused import; canonicalized `env` cache key ordering in `hitran.py`
+
+---
+
 ## [v1.5.2] - 2026-09-11
 
 ### Bug Fixes

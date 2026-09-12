@@ -315,6 +315,21 @@ def _load_local_table(table):
     return _coverage(table)
 
 
+def _drop_table(table):
+    """强制重抓前：把表从内存与磁盘同时移除，确保 fetch 真正重新下载（否则会静默复用旧表）。"""
+    import hapi
+    try:
+        hapi.dropTable(table)
+    except Exception:
+        pass
+    root = _hitran().CACHE_ROOT
+    for ext in (".data", ".header"):
+        try:
+            (root / f"{table}{ext}").unlink()
+        except OSError:
+            pass
+
+
 def _ensure_table_for(M, I, numin, numax, force=False):
     """保证拿到一张**真正覆盖** [numin,numax] 的线表。
 
@@ -344,6 +359,8 @@ def _ensure_table_for(M, I, numin, numax, force=False):
                 return base, cov, False
 
         table = wtable
+        if force:
+            _drop_table(table)                 # 强制重抓：先清内存+磁盘，否则 fetch 会静默复用
         # 联网检测：断网且数据未缓存时立即报错，不让用户干等超时
         if not _check_network():
             raise RuntimeError(
@@ -481,15 +498,17 @@ def _save_cache_entry(key, nu, coef, tinfo):
             fpath = _PERSIST_CACHE_DIR / fname
             np.savez_compressed(fpath, nu=nu, coef=coef,
                                 tinfo_json=np.array(json.dumps(tinfo, ensure_ascii=False)))
-            # 更新索引
+            # 更新索引（写锁 + 临时文件 + os.replace 原子写，双重防并发/半截）
             index = {}
             if _PERSIST_INDEX_FILE.exists():
                 try:
                     index = json.loads(_PERSIST_INDEX_FILE.read_text(encoding="utf-8"))
                 except Exception:
-                    pass
+                    index = {}
             index[json.dumps(list(key), ensure_ascii=False)] = fname
-            _PERSIST_INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+            tmp = _PERSIST_INDEX_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, _PERSIST_INDEX_FILE)
         except Exception:
             pass  # 落盘失败不影响内存缓存和计算结果
 
@@ -520,7 +539,7 @@ def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                     profile, diluent, intensity_cutoff, min_abundance):
     """生成可哈希的缓存键。
 
-    `force` 不影响结果、不纳入键；`_CACHE_SCHEMA` 也不影响物理结果，它用于在
+    `force` 通过跳过缓存实现（见 _absorption），不进键；`_CACHE_SCHEMA` 用于在
     算法变更后让旧缓存自动失效。
     """
     dil_items = tuple(sorted((k, float(v)) for k, v in (diluent or {}).items())) if isinstance(diluent, dict) else str(diluent)
@@ -573,16 +592,17 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
     ht, np = _hitran(), _np()
     import hapi
-    from hapi import absorptionCoefficient_Voigt
+    import copy
 
-    # 缓存查找（force=True 时跳过缓存，强制重算）
+    # 缓存查找（force=True 时跳过缓存，强制重算——否则命中缓存会返回过期旧谱）
     key = _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
                           profile, diluent, intensity_cutoff, min_abundance)
     if not force and key in _ABSORPTION_CACHE:
         _ABS_CACHE_HITS += 1
         nu, coef, tinfo = _ABSORPTION_CACHE[key]
-        return nu.copy(), coef.copy(), dict(tinfo)
-    _ABS_CACHE_MISSES += 1
+        return nu.copy(), coef.copy(), copy.deepcopy(tinfo)   # 深拷贝，防调用方改动污染缓存
+    if not force:
+        _ABS_CACHE_MISSES += 1
 
     formula, M = _resolve_M(name)
     isos = _isotopologues(M, iso, min_abundance)
@@ -616,28 +636,38 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     if not entries:
         raise RuntimeError(f"[hitran][防呆] {formula} 的所有同位素在 {numin}-{numax} cm-1 均抓取失败：{skipped}")
 
-    # 覆盖率合理性检查：线表覆盖上界若明显低于请求上界，可能是"未下载完整"的表
-    # （行边界截断在读取侧识别不了，只能靠这一层兜底提示）。阈值取窗口宽度的 10%，
-    # 只告警不阻断，避免把"窗口上半段确实无谱线"误判为错误。
+    # 覆盖率合理性检查：线表若连窗口上半段都没覆盖到，才可能是"未下载完整"的表
+    # （行边界截断在读取侧识别不了，只能靠这一层兜底提示）。阈值放宽到"覆盖上界低于窗口
+    # 中点"，只告警不阻断，避免把"窗口上段确实无谱线"的正常带结构误判为错误。
     try:
         _span = float(numax) - float(numin)
         _hi = float(numax)
         if _span > 0:
             for _e in entries:
                 _cov = _e.get("cov")
-                if _cov and float(_cov[1]) < _hi - 0.1 * _span:
+                if _cov and float(_cov[1]) < float(numin) + 0.5 * _span:
                     warn_msgs.append(
                         f"[线表覆盖] '{_e['table']}' 覆盖上界 {float(_cov[1]):.3f} cm-1 明显低于请求上界 "
                         f"{_hi:.3f}；该表可能未下载完整，建议『工具 → 清理线表缓存』后重算。")
     except Exception:
         pass
 
+    # 全同位素近似：把入选同位素丰度归一化到 1（被 min_abundance/max_n 过滤或
+    # 抓取失败跳过的份额不再丢失，避免 α 系统性偏低）；单同位素权重保持 1.0 不变。
+    for e in entries:
+        e["ab_norm"] = 1.0
+    if full:
+        _s = sum(e["ab"] for e in entries)
+        if _s > 0:
+            for e in entries:
+                e["ab_norm"] = e["ab"] / _s
+
     pkey = str(profile or "voigt").strip().lower()
     if pkey not in PROFILES:
         raise ValueError(f"[hitran] 未知线型 '{profile}'，官方可选: {sorted(PROFILES)}")
     bath = _diluent_dict(diluent)
     _hapi_kwargs = dict(
-        Components=[(M, e["I"], e["ab"] if full else 1.0) for e in entries],
+        Components=[(M, e["I"], e["ab_norm"]) for e in entries],
         SourceTables=[e["table"] for e in entries],
         WavenumberRange=(float(numin), float(numax)), WavenumberStep=float(step),
         WavenumberWingHW=float(wingHW), HITRAN_units=bool(hitran_units),
@@ -677,16 +707,12 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
         # （旧的静默截断/重复点补齐会污染结果且无人知晓）。
         expected = n_seg + 1
         if len(nu) != expected:
+            # 分块拼接点数异常：绝不用截断/重复补点伪造数据，回退整窗一次计算保证物理正确
             warn_msgs.append(
                 f"[分块对齐] 拼接点数 {len(nu)} 与预期 {expected} 不一致"
                 f"（窗口 {float(numin):g}-{float(numax):g}, step={float(step):g}）；"
-                f"已按预期点数对齐，末点附近可能存在 1 点偏差。")
-            if len(nu) > expected:
-                nu, coef = nu[:expected], coef[:expected]
-            else:
-                pad = expected - len(nu)
-                nu = np.concatenate([nu, np.full(pad, nu[-1])])
-                coef = np.concatenate([coef, np.full(pad, coef[-1])])
+                f"已回退整窗重算，结果物理正确。")
+            nu, coef = func(**_hapi_kwargs)
     tinfo = {"molecule": formula, "M": M, "profile": pkey, "diluent": bath,
              "isotope_mode": "all(自然丰度加权)" if full else f"single(I={entries[0]['I']})",
              "table": ",".join(e["table"] for e in entries),
@@ -695,7 +721,8 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
              "n_lines_table": sum(e["cov"][2] for e in entries),
              "n_lines_in_window": sum(e["n_in"] for e in entries),
              "refetched": any(e["refetched"] for e in entries),
-             "components": [{"I": e["I"], "abundance": e["ab"], "table": e["table"]}
+             "components": [{"I": e["I"], "natural_abundance": e["ab"],
+                             "weight": e["ab_norm"], "table": e["table"]}
                             for e in entries]}
     if skipped:
         tinfo["skipped_isotopologues"] = skipped
@@ -1226,10 +1253,10 @@ def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
                 "然后传入 file_path 调用本工具。")}
         return {"available_files": avail, "hint": (
             "请从 above 列表选择一个文件，用 file_path 参数传入（可附 source_label 溯源标签）")}
-    # 防路径穿越：只允许从 xsc_data/ 目录读取
+    # 防路径穿越：只允许从 xsc_data/ 目录读取（is_relative_to 精确判定，防前缀误放行兄弟目录）
     xsc_dir = XSC_DIR.resolve()
     user_path = Path(str(file_path)).resolve()
-    if not str(user_path).startswith(str(xsc_dir)):
+    if not user_path.is_relative_to(xsc_dir):
         avail = _list_xsc_files()
         hint = "；xsc_data/ 下现有: " + ", ".join(a["name"] for a in avail[:10]) if avail else ""
         raise ValueError(f"[hitran_cross_section] 非法路径: 只允许从 xsc_data/ 目录读取截面文件{hint}")
@@ -1346,8 +1373,12 @@ def t_xsc_search(name=None):
         return {"query": str(name).strip(), "found": False, "hint": (
             f"截面子库未找到 '{name}'。可能：① 名称不是 Portal 页面显示的英文名；"
             f"② 该分子未收录于截面子库（也即 HITRAN 全库无此分子数据）。")}
-    meta = json.loads(_http_get_text(
-        f"https://hitran.org/xsc/get-meta?molecule_id={mid}"))
+    try:
+        meta = json.loads(_xsc_retry(lambda: _http_get_text(
+            f"https://hitran.org/xsc/get-meta?molecule_id={mid}")))
+    except Exception as e:
+        raise RuntimeError(f"[hitran_xsc_search] 查询分子详情失败（{type(e).__name__}: {e}）。"
+                           f"可能网络抖动或接口限流，请稍后重试。") from e
     html = meta.get("html", "")
     nm = re.search(r"<h3>([^:<]+)", html)
     rows = re.findall(r'class="xsec-(\d+)"[^>]*>(.*?)</tr>', html, re.S)
@@ -1461,7 +1492,9 @@ def _molecules_index(force=False):
     if mols:
         try:
             _MOL_CACHE.parent.mkdir(parents=True, exist_ok=True)
-            _MOL_CACHE.write_text(json.dumps(mols, ensure_ascii=False), encoding="utf-8")
+            tmp = _MOL_CACHE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(mols, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, _MOL_CACHE)   # 原子写，避免读侧拿到半截文件
         except Exception:
             pass
     return mols
@@ -1836,6 +1869,11 @@ def t_xsc_download(name=None, filenames=None, ids=None, molecule_id=None, max_to
                 progress(i, len(targets), fname, done_bytes)
             except Exception:
                 pass
+        # 下载前先按估算体积判断是否会超限（避免超限文件被下下来才喊停）
+        if limit_mb and (done_bytes / 1e6 + (it.get("est_size_mb") or 0)) > limit_mb:
+            failed.append({"filename": fname,
+                           "error": f"下载后将超上限 {limit_mb} MB，已跳过（如需下载请调大 max_total_mb）"})
+            break
         try:
             n = _xsc_download_one(fname, XSC_DIR)
         except Exception as e:
@@ -1845,10 +1883,6 @@ def t_xsc_download(name=None, filenames=None, ids=None, molecule_id=None, max_to
         downloaded.append({"filename": fname, "path": str(dest),
                            "size_mb": round(n / 1e6, 2),
                            "T_K": it.get("T_K"), "p_Torr": it.get("p_Torr")})
-        if limit_mb and done_bytes / 1e6 > limit_mb:
-            failed.append({"filename": "(后续已停止)",
-                           "error": f"累计 {done_bytes / 1e6:.0f} MB 已超上限 {limit_mb} MB"})
-            break
     out = {"downloaded": downloaded, "skipped": skipped, "failed": failed,
            "n_downloaded": len(downloaded), "total_mb": round(done_bytes / 1e6, 2),
            "dest_dir": str(XSC_DIR), "plan": plan}
@@ -2247,8 +2281,8 @@ def selftest():
     import numpy as _np2
     nu_s = _np2.linspace(2800, 3100, 1501)
     sig = 1.6e-18 * _np2.exp(-((nu_s - 2967.0) / 8.0) ** 2)
-    demo = OUT_DIR / "_demo_c3h8_pnnl.txt"
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    demo = XSC_DIR / "_demo_c3h8_pnnl.txt"
+    XSC_DIR.mkdir(parents=True, exist_ok=True)
     with open(demo, "w", encoding="utf-8") as f:
         f.write("# synthetic demo cross-section (not real data)\n")
         for a, b in zip(nu_s, sig):

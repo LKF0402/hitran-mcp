@@ -559,8 +559,14 @@ _CACHE_MISSES = 0
 
 
 def _cache_key(name, numin, numax, T, P, step, wingHW, iso, hitran_units, env):
-    """生成可哈希的缓存键。env 字典转排序元组。"""
-    env_items = tuple(sorted((k, str(v)) for k, v in (env or {}).items()))
+    """生成可哈希的缓存键。env 字典递归规范化为排序元组（dict/list 不依赖插入顺序）。"""
+    def _canon(v):
+        if isinstance(v, dict):
+            return tuple(sorted((kk, _canon(vv)) for kk, vv in v.items()))
+        if isinstance(v, (list, tuple)):
+            return tuple(_canon(x) for x in v)
+        return repr(v)
+    env_items = tuple(sorted((k, _canon(v)) for k, v in (env or {}).items()))
     return (str(name).strip().upper(), float(numin), float(numax), float(T), float(P),
             float(step), float(wingHW), iso, bool(hitran_units), env_items)
 
