@@ -2727,7 +2727,12 @@ class HitranLab(tk.Tk):
         try:
             import numpy as np
             # 用 numpy 一次性读入，避免逐行 Python 循环卡死 UI
-            data = np.loadtxt(p, delimiter=",", comments="#", usecols=(0, 1), unpack=False)
+            # delimiter=None 自动识别逗号/空格/制表符；ndmin=2 防单行文件崩溃
+            try:
+                data = np.loadtxt(p, delimiter=None, comments="#", usecols=(0, 1), ndmin=2)
+            except ValueError as e:
+                self._show_error(f"CSV 导入失败：{e}\n\n请确认文件第一列是波数、第二列是数值，且无其他非数值行。")
+                return
             if data.size == 0:
                 self._show_error("文件中无有效数据（需要两列：波数, 值）")
                 return
