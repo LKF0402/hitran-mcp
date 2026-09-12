@@ -19,6 +19,7 @@ import io
 import json
 import os
 import re
+import threading
 import sys
 import threading
 import traceback
@@ -467,27 +468,30 @@ def _load_persistent_cache():
         _ABS_CACHE_HITS += loaded  # 从磁盘加载也算命中（避免重复计算）
 
 
+_CACHE_WRITE_LOCK = threading.RLock()  # 缓存写入锁（防并发损坏索引）
+
 def _save_cache_entry(key, nu, coef, tinfo):
     """写入内存缓存后同步落盘。失败静默（不影响计算结果）。"""
-    try:
-        import json
-        np = _np()  # 延迟导入 numpy
-        _PERSIST_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        fname = _cache_hash(key) + ".npz"
-        fpath = _PERSIST_CACHE_DIR / fname
-        np.savez_compressed(fpath, nu=nu, coef=coef,
-                            tinfo_json=np.array(json.dumps(tinfo, ensure_ascii=False)))
-        # 更新索引
-        index = {}
-        if _PERSIST_INDEX_FILE.exists():
-            try:
-                index = json.loads(_PERSIST_INDEX_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        index[json.dumps(list(key), ensure_ascii=False)] = fname
-        _PERSIST_INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass  # 落盘失败不影响内存缓存和计算结果
+    with _CACHE_WRITE_LOCK:
+        try:
+            import json
+            np = _np()  # 延迟导入 numpy
+            _PERSIST_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            fname = _cache_hash(key) + ".npz"
+            fpath = _PERSIST_CACHE_DIR / fname
+            np.savez_compressed(fpath, nu=nu, coef=coef,
+                                tinfo_json=np.array(json.dumps(tinfo, ensure_ascii=False)))
+            # 更新索引
+            index = {}
+            if _PERSIST_INDEX_FILE.exists():
+                try:
+                    index = json.loads(_PERSIST_INDEX_FILE.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            index[json.dumps(list(key), ensure_ascii=False)] = fname
+            _PERSIST_INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass  # 落盘失败不影响内存缓存和计算结果
 
 
 def _clear_persistent_cache():
@@ -2159,7 +2163,8 @@ def handle(req):
             text = json.dumps(payload, ensure_ascii=False, indent=2)
             return rid, {"content": [{"type": "text", "text": text}], "isError": False}, None
         except Exception as e:
-            msg = f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}"
+            # 只返回错误类型和消息，不暴露完整 traceback（文件路径/内部结构）
+            msg = f"{type(e).__name__}: {e}"
             return rid, {"content": [{"type": "text", "text": msg}], "isError": True}, None
     if rid is None:                                # 未知通知：忽略
         return None, None, None
