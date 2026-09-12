@@ -1222,14 +1222,21 @@ def t_cross_section(file_path=None, source_label=None, numin=None, numax=None,
                 "然后传入 file_path 调用本工具。")}
         return {"available_files": avail, "hint": (
             "请从 above 列表选择一个文件，用 file_path 参数传入（可附 source_label 溯源标签）")}
-    if not Path(str(file_path)).exists():
+    # 防路径穿越：只允许从 xsc_data/ 目录读取
+    xsc_dir = XSC_DATA_DIR.resolve()
+    user_path = Path(str(file_path)).resolve()
+    if not str(user_path).startswith(str(xsc_dir)):
+        avail = _list_xsc_files()
+        hint = "；xsc_data/ 下现有: " + ", ".join(a["name"] for a in avail[:10]) if avail else ""
+        raise ValueError(f"[hitran_cross_section] 非法路径: 只允许从 xsc_data/ 目录读取截面文件{hint}")
+    if not user_path.exists():
         avail = _list_xsc_files()
         hint = ""
         if avail:
             hint = "；xsc_data/ 下现有: " + ", ".join(a["name"] for a in avail[:10])
         raise ValueError(f"[hitran_cross_section] 截面文件不存在: {file_path}{hint}")
-    nu, coef, header, skipped = _read_hotw_file(file_path)
-    label = str(source_label or Path(str(file_path)).name)
+    nu, coef, header, skipped = _read_hotw_file(str(user_path))
+    label = str(source_label or user_path.name)
     win = [float(numin) if numin is not None else float(nu.min()),
            float(numax) if numax is not None else float(nu.max())]
     if not (win[0] <= win[1]):
