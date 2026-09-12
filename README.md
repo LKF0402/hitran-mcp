@@ -253,9 +253,10 @@ pip install -r hitran-mcp/requirements.txt
 }
 ```
 
-> Windows 下若 `python` 不在 PATH，`command` 请使用解释器的完整路径（正斜杠或双反斜杠均可）。
+> ⚠️ **Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
+> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/你/AppData/Local/Programs/Python/Python310/python.exe`）。
 
-保存后重启客户端，看到 `hitran` 服务器与 12 个工具即接入成功。
+保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
 
 ## 工具参考
 
