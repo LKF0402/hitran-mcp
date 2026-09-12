@@ -308,15 +308,13 @@ class Worker:
                     stale = (gen != self._gen) or self.cancel_event.is_set()
                 if not stale:
                     self.q.put(("ok", result))
-                else:
-                    self.q.put(("ok", {"kind": "cancelled"}))
+                # else: 旧世代线程结束，不往队列塞消息（force_reset 已处理 UI 重置）
             except Exception as e:
                 with self._lock:
                     stale = (gen != self._gen) or self.cancel_event.is_set()
                 if not stale:
                     self.q.put(("err", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
-                else:
-                    self.q.put(("ok", {"kind": "cancelled"}))
+                # else: 旧世代线程出错，不往队列塞消息
             finally:
                 with self._lock:
                     if gen == self._gen:   # 只由"当前世代"清 busy，避免旧线程抢清新任务
@@ -2103,6 +2101,17 @@ class HitranLab(tk.Tk):
         self.worker.run(self._job_xsc, p)
 
     def _job_xsc(self, path):
+        # 安全措施：如果文件不在 xsc_data/ 内，先复制过去（引擎强制要求）
+        from pathlib import Path
+        import shutil
+        xsc_dir = ROOT / 'xsc_data'
+        xsc_dir.mkdir(parents=True, exist_ok=True)
+        src = Path(path)
+        dest = xsc_dir / src.name
+        if src.resolve() != dest.resolve():
+            shutil.copy2(src, dest)
+            path = str(dest)  # 用复制后的路径调引擎
+
         out = hm.t_cross_section(file_path=path)
         nu, coef, header, skipped = _read_hotw(path)
         if skipped:
@@ -2896,7 +2905,7 @@ class HitranLab(tk.Tk):
         except Exception:
             pass
         try:
-            self.worker.stop()
+            self.worker.force_reset()
         except Exception:
             pass
         self.destroy()
