@@ -1,181 +1,26 @@
-# Changelog
-
-All notable changes to this project are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
-
----
-
-## [Unreleased]
-
-### Bug Fixes
-- Fixed `NameError` in `hitran_cross_section`: undefined `XSC_DATA_DIR` → now correctly uses `XSC_DIR`
-- Fixed `force=True` being short-circuited by the compute cache (could return stale spectra)
-- Fixed `force=True` not re-fetching tables already loaded in memory (now drops table from memory + disk first)
-- Normalized isotopologue abundances in `iso='all'` mode (avoid systematic under-estimate when filtered/skipped)
-- Fixed cross-section path guard: prefix match could admit sibling dirs → now uses `is_relative_to`
-- Chunked computation now falls back to full-window recompute on point-count mismatch (no more padding/truncating fabricated data)
-- Relaxed coverage check to avoid false "incomplete download" warnings on legitimate band edges
-- `hitran_xsc_search` detail query now retried + friendly error on network jitter
-- `hitran_xsc_download` checks size limit *before* downloading each file
-- Atomic writes for `compute_cache/index.json` and molecule index (temp file + `os.replace`)
-- Deep-copy cached `tinfo` before returning (prevent caller mutation corrupting cache)
-- Removed unused import; canonicalized `env` cache key ordering in `hitran.py`
-
----
-
-## [v1.5.2] - 2026-09-11
-
-### Bug Fixes
-- Fixed auto-updater hang on Windows
-- Added real-time progress display during updates
-- Added automatic retry (up to 3 attempts)
-- Fixed Chinese character garbling in UTF-8 terminals
-
----
-
-## [v1.5.1] - 2026-09-11
-
-### License Change
-- Changed license from MIT to GNU GPLv3
-
-### Bug Fixes
-- Fixed cross-section download selection not registering
-- Fixed bottom control bar being squeezed off-screen on small displays
-- Eliminated duplicate cross-section queries
-- Centralized checkbox state management
-
----
-
-## [v1.5.0] - 2026-09-11
-
-### New Features
-- Cross-section database online search and one-click download (600+ heavy molecules)
-- Chinese/chemical formula molecule search (no need to memorize English names)
-- HAPI2 official API integration for line list downloads
-- Support for native HITRAN `.xsc` file format
-
-### Improvements
-- Reduced startup memory usage (225 MB → 137 MB)
-- Added network retry with exponential backoff
-- Enhanced error logging and diagnostics
-
-### Bug Fixes
-- Fixed silent data corruption during chunked computation
-- Fixed line list truncation detection
-- Fixed dialog focus issues (API key / preferences / about)
-- Fixed molecular search input lag
-
----
-
-## [v1.4.2] - 2026-09-11
-
-### Critical Fixes
-- Fixed engine crash on startup (all computation failed)
-- Fixed chunked computation point count inconsistency
-- Added truncated line list file detection and auto-re-download
-
-### Improvements
-- Error dialog now supports text selection and copy
-- All errors automatically logged to `Hitran_Data/error.log`
-
----
-
-## [v1.4.1] - 2026-09-11
-
-> **Note:** This release had a source code bug and is deprecated. Users are recommended to upgrade to v1.4.2 or later.
-
-### New Features
-- API key configuration dialog (Tools → Configure API Key)
-- Network connectivity check before computation
-
-### Bug Fixes
-- Fixed undefined variable errors (numpy, json)
-- Fixed stop button incorrectly interrupting downloads
-- Fixed mixture mode dropping isotope selection
-- Fixed import spectrum bypassing grid/legend toggles
-- Fixed unit switch precision loss
-- Fixed CSV export wave number axis validation
-
-### Performance
-- Reduced package size from 362 MB to 106 MB (70.7% reduction)
-
----
-
-## [v1.4.0] - 2026-09-10
-
-### New Features
-- Molecular alias search (166 aliases, supports English names, chemical formulas, and M-numbers)
-- Enhanced legend with English molecule names (55 species)
-- Extended configuration persistence (molecule, isotope, path length, cutoff, etc.)
-- HAPI2 compatibility layer framework
-- Numba capability detection
-
----
-
-## [v1.3.0] - 2026-09-10
-
-### New Features
-- Light/Dark mode toggle (View → Light Mode / Dark Mode)
-- iOS-inspired light color scheme (soft, low-saturation)
-- Optional HAPI2 support (auto-detect, auto-fallback to HAPI1)
-
-### Architecture
-- Refactored color configuration to dynamic retrieval system
-- Extended RoundedButton for runtime color updates
-
----
-
-## [v1.2.3] - 2026-09-10
-
-### New Features
-- Menu: Tools → Clear Line Cache (one-click cache cleanup)
-
-### UI Fixes
-- Fixed dark mode button color confusion
-- Improved listbox selected text readability
-
----
-
-## [v1.2.2] - 2026-09-10
-
-### Performance
-- Line list local caching (no repeated network downloads)
-- Chunked computation with real-time progress reporting
-
-### UI
-- Real progress bar with elapsed/remaining time
-- Fixed intensity cutoff unit label (cm/molecule)
-
-### Auto-Update
-- One-click auto-upgrade (download → extract → replace → restart)
-- Preserves line list cache during updates
-
----
-
-## [v1.2.1] - 2026-09-10
-
-### Engine
-- Cross-section file separator compatibility (space / tab / comma)
-- Line list window safety check (auto re-download if cached table doesn't cover requested window)
-
-### Desktop UI
-- Transmittance mode CSV export now outputs actual displayed transmittance
-- Clear plot button also clears strong line data
-- Added project open/save (Ctrl+O / Ctrl+S)
-- Preferences persistence (step size, wing half-width, line profile)
-- Fixed rounded button background color degradation
-
-### Build
-- HitranLab.spec included in version control for reproducible builds
-
----
-
 # 更新日志
 
 本文件记录了项目的所有重要变更。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/)，本项目遵循 [语义化版本](https://semver.org/)。
+
+---
+
+## [未发布]
+
+### 问题修复
+- 修复 `hitran_cross_section` 的 `NameError`：未定义的 `XSC_DATA_DIR` → 改用 `XSC_DIR`
+- 修复 `force=True` 被计算缓存短路（可能返回过期旧谱）
+- 修复 `force=True` 不重抓内存中已加载的线表（现在先清内存+磁盘再重抓）
+- 归一化 `iso='all'` 模式下的同位素丰度（避免被过滤/跳过时系统性低估）
+- 修复截面路径校验：前缀匹配可能放行同级目录 → 改用 `is_relative_to`
+- 分块计算点数不匹配时自动回退整窗重算（不再填充/截断伪造数据）
+- 放宽覆盖率检查，避免在合法波段边缘误报"下载不完整"
+- `hitran_xsc_search` 详情查询加重试 + 网络抖动时友好提示
+- `hitran_xsc_download` 在下载每个文件前先检查大小限制
+- `compute_cache/index.json` 和分子索引改为原子写入（临时文件 + `os.replace`）
+- 返回缓存的 `tinfo` 前深拷贝（防止调用方修改污染缓存）
+- 移除未使用导入；`hitran.py` 中 `env` 缓存键排序规范化
 
 ---
 
