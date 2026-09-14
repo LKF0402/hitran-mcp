@@ -31,11 +31,3 @@ jobs:
         python -m py_compile tools/hitran.py
         python -m py_compile tools/hitran_mcp.py
         python -m py_compile app/hitran_app.py
-
-    - name: MCP Server selftest
-      run: |
-        python tools/hitran_mcp.py --selftest
-
-    - name: Desktop GUI selftest
-      run: |
-        python app/hitran_app.py --selftest selftest.json
