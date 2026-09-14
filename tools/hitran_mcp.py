@@ -1978,11 +1978,11 @@ _CONFIRM_NOTE = ("数据实时取自 HITRANonline。"
                  "使用默认值时需在结果中告知用户。"
                  "【混合气】specs_csv 格式：'CH4:0.01,C2H6:1e-5'。")
 
-# 2026-09-08 客户端兼容 workaround：豆包 MCP 客户端对 inputSchema 中的
+# 2026-09-08 客户端兼容 workaround：部分 MCP 客户端对 inputSchema 中的
 # "数组 / 嵌套对象 / 联合类型" 参数定义解析失败（tools/list 里只暴露空对象，
 # 导致参数无法传入、调用永远空参）。故全部工具 schema 一律改为扁平、单类型、
 # 标量参数。服务器函数本体不改：specs 数组、diluent 字典等仍受内部支持，
-# 只是不再向客户端广告。豆包客户端修复 schema 摄入后，可恢复丰富参数形式。
+# 只是不再向客户端广告。该客户端修复 schema 摄入后，可恢复丰富参数形式。
 TOOLS = [
     {"name": "hitran_species",
      "description": "查询 HITRAN 官方分子表（HAPI ISO 表，覆盖全部分子与同位素）：分子号 M、主同位素、"
