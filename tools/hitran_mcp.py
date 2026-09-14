@@ -2210,7 +2210,7 @@ def _iter_requests():
 
     逐条产生 (raw_text, use_framing)。use_framing=True 表示客户端走标准 framing，
     响应必须用同样的 framing 回写，否则严格客户端解析不到响应 —— 这是能否接入
-    标准 MCP 客户端（WorkBuddy / Claude Desktop 等）的关键。
+    标准 MCP 客户端（通用 MCP 客户端）的关键。
     """
     stdin = sys.stdin.buffer
     while True:
