@@ -214,6 +214,75 @@ def selftest(timeout: int = 150) -> None:
 RELEASE_ALLOW = {"HitranLab.exe", "_internal"}
 
 
+# ───────────────────────── 隐私擦除（打 zip 前）─────────────────────────
+
+
+def _builder_path_patterns() -> list:
+    """构建机可识别路径的字节模式。
+
+    只针对"本机家目录 / C:\\Users\\<本机用户名>"，不匹配第三方 DLL 自带的
+    其它用户路径（例如微软编译机的路径），避免误伤导致构建失败。
+    """
+    pats = []
+    home = str(Path.home())
+    pats.append(home.encode("utf-8", "ignore"))
+    m = re.match(r"^([A-Za-z]:\\Users\\)([^\\]+)$", home)
+    if m:
+        pats.append((m.group(1) + m.group(2)).encode("utf-8", "ignore"))
+    return [p for p in pats if len(p) >= 6]
+
+
+def scrub_privacy() -> None:
+    """擦除产物中会泄露**构建机**信息的文件，并回扫确认无残留。
+
+    为什么需要（真实事故）：numba 会把**源文件绝对路径**写进磁盘编译缓存 `.nbc`，
+    例如 `C:\\Users\\<构建者>\\AppData\\Roaming\\Python\\Python313\\site-packages\\
+    hapi2\\opacity\\lbl\\numba\\fast_abscoef.py`。这些缓存随依赖一起被打进 zip，
+    任何人下载解压后都能读到构建机的用户名与路径。
+    而 numba 磁盘缓存本身**与源文件路径绑定**（换机即失效、会重新 JIT），
+    所以删掉是"零功能损失"的净收益：既去隐私泄露，又省体积。
+    """
+    victims = [p for p in APP_DIR.rglob("*.nbc") if p.is_file()]
+    for p in victims:
+        try:
+            p.unlink()
+        except OSError as e:
+            die(f"隐私擦除失败，无法删除 {p.relative_to(APP_DIR).as_posix()}：{e}")
+    if victims:
+        log(f"隐私擦除：删除 {len(victims)} 个 numba 磁盘缓存（.nbc，含构建机绝对路径）")
+    for d in sorted({p.parent for p in victims}, key=lambda x: -len(x.parts)):
+        try:
+            if d.name == "__pycache__" and not any(d.iterdir()):
+                d.rmdir()
+        except OSError:
+            pass
+
+    pats = _builder_path_patterns()
+    hits = {}
+    for p in APP_DIR.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(APP_DIR).as_posix()
+        try:
+            with open(p, "rb") as f:
+                carry = b""
+                while True:
+                    chunk = f.read(1 << 22)
+                    if not chunk:
+                        break
+                    buf = carry + chunk
+                    if any(pat in buf for pat in pats):
+                        hits[rel] = True
+                        break
+                    carry = buf[-64:]
+        except OSError:
+            continue
+    if hits:
+        die("隐私擦除未完成：产物中仍含构建机路径，禁止发布！\n         "
+            + "\n         ".join(sorted(hits)[:10]))
+    log("隐私擦除：回扫通过，产物内无构建机路径残留")
+
+
 def make_zip() -> None:
     """把 dist/HitranLab 打成 zip（白名单式，条目以该目录为根）。
 
@@ -297,6 +366,7 @@ def main() -> int:
     else:
         log("--zip-only：沿用现有 dist/HitranLab")
 
+    scrub_privacy()        # 隐私闸门：清 numba 缓存里的构建机路径，回扫确认
     make_zip()
     verify_zip()
 

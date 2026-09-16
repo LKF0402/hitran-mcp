@@ -25,6 +25,7 @@
 ### 安全与隐私
 - **凭据脱敏（新）**：HITRAN 官方 v2 API 把 key 放在请求 **URL 路径** 里（`/api/v2/<key>/…`），任何携带 URL 的异常文本 / HTTP 调试输出都可能把 key 带进 MCP 返回值、`log` 字段、GUI 提示与 `Hitran_Data/error.log`（该日志常被用户贴出来求助）。新增 `redact_secrets()`（`tools/hitran.py` / `tools/hitran_mcp.py` 各一份，自包含），并在三处出口统一脱敏：MCP 响应边界 `handle()`（成功与失败两条路径）、hapi2 错误来源（`_HAPI2_LAST_ERROR` / `hapi2_fetch_table`）、`_log_error()` 落盘前
 - **自更新加固**：更新包地址强制 `https://`，下载文件名只取 basename（`url`/`name` 来自 GitHub API 响应，防止被篡改后下载明文包或写到 `_update/` 之外）；`_write_update_bat()` 对命令实参的 `%` 做 `%%` 转义（此前只转义了 `echo` 文本，安装路径含 `%` 时 `robocopy`/`start`/`rmdir` 会拿到错误路径），并自建 `_update/` 目录避免调用顺序依赖
+- **发布流程隐私闸门（新）**：打 zip 前自动删除 numba 磁盘编译缓存（`*.nbc` 会内嵌构建机绝对路径 `C:\Users\<用户名>\AppData\...\hapi2\...`，随依赖一起进发布包等于公开构建者用户名），并回扫整个产物确认无构建机路径残留；该缓存与源文件路径绑定、换机即失效，删除无功能损失
 - 顺手删除 `tools/hitran_mcp.py` 中重复的 `import threading`
 
 ### 优化改进
