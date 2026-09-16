@@ -6,6 +6,32 @@
 
 ---
 
+## [v1.5.4] - 2026-09-16
+
+### 问题修复
+- 修复「图层管理」删除曲线误报"当前为 Q(T) / 截面视图"：谱线视图的 `_view_mode` 实际取值 `linestrength`，与旧判据 `!= "spectrum"` 冲突，导致任何谱线视图下删除曲线都被错误拦截
+- 修复「运行状态」API key 显示为"未配置（未配置）"的重复文案
+- 修复取消 API key 后「下载引擎」仍显示"HAPI2 官方 API（带 api_key）"：`hapi2_bootstrap(force=True)` 此前被 `_HAPI2_READY` 短路而忽略 `force`，且取消 key 后 `SETTINGS["api_key"]` 残留旧值；「清除」按钮现在会真正取消 key（此前仅清空输入框）
+- 修复「运行状态」面板不刷新：切换到该页时自动刷新，保存/清除 API key 后立即刷新
+- 修复「导入光谱」与「计算光谱」互相清空叠加：曲线视图的 `_view_mode` 实为 `spectrum` / `linestrength` 两个取值，旧判据只认 `spectrum`，导致"导入后计算"或"计算后导入"会静默丢弃已有曲线；现统一为 `_in_curve_view()`
+- 修复鼠标悬停读数在截面 σ 模式下把单位谎标成 `α (cm⁻¹)`（实际是 cm²/molecule）；外部导入数据单位未知，也不再谎标 α
+- 修复合并导出 CSV 时，若第一组数据为外部导入，表头单位被谎标成 `alpha cm-1`（现标注 `unknown (imported external data)`）
+- 修复峰统计中 `np.trapz` 在 NumPy 2 下的弃用告警（改用 `np.trapezoid`，向下兼容）
+- 磁盘计算缓存加上限（`_PERSIST_MAX_ENTRIES`，与内存上限一致）：启动时只加载最新 N 条，写盘时按时间淘汰最旧条目并删除其 `.npz`。此前缓存文件与启动加载量随使用无限增长（大窗口一组即 MB 级），会拖慢启动并占满磁盘
+- 为无调用方的遗留 API `tools.hitran.fetch()` / `absorption()` 增加弃用告警与口径说明（前者会静默复用旧窗口线表；后者只算单同位素、不支持摩尔分数缩放，被误当"混合气/全同位素"使用会算错），防止将来误用
+- `check_spectrum` 的"峰值偏小"提示改写为说明性文案（明确 ppm/ppb 级痕量气属正常，可忽略），减少告警疲劳；并把该提示中 GBK 不可编码的字符换成普通汉字，避免在非 UTF-8 控制台 print 时抛 `UnicodeEncodeError`
+
+### 安全与隐私
+- **凭据脱敏（新）**：HITRAN 官方 v2 API 把 key 放在请求 **URL 路径** 里（`/api/v2/<key>/…`），任何携带 URL 的异常文本 / HTTP 调试输出都可能把 key 带进 MCP 返回值、`log` 字段、GUI 提示与 `Hitran_Data/error.log`（该日志常被用户贴出来求助）。新增 `redact_secrets()`（`tools/hitran.py` / `tools/hitran_mcp.py` 各一份，自包含），并在三处出口统一脱敏：MCP 响应边界 `handle()`（成功与失败两条路径）、hapi2 错误来源（`_HAPI2_LAST_ERROR` / `hapi2_fetch_table`）、`_log_error()` 落盘前
+- **自更新加固**：更新包地址强制 `https://`，下载文件名只取 basename（`url`/`name` 来自 GitHub API 响应，防止被篡改后下载明文包或写到 `_update/` 之外）；`_write_update_bat()` 对命令实参的 `%` 做 `%%` 转义（此前只转义了 `echo` 文本，安装路径含 `%` 时 `robocopy`/`start`/`rmdir` 会拿到错误路径），并自建 `_update/` 目录避免调用顺序依赖
+- 顺手删除 `tools/hitran_mcp.py` 中重复的 `import threading`
+
+### 优化改进
+- 取数错误分类：联网失败（如 `Cannot connect to http://hitran.org`）不再与"该窗口无 HITRAN 收录线"并列，改为独立提示，避免把网络问题误读成"该分子/窗口无谱线"（实测 CH4 2967–2970 cm⁻¹ 有 175 条线却报抓取失败）
+- 网络预检纳入代理连通性：`HTTP(S)_PROXY` 指向的代理不可达时提前判定为离线，并给出具体代理地址与处置建议
+
+---
+
 ## [v1.5.3] - 2026-09-12
 
 ### 问题修复

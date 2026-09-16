@@ -344,9 +344,17 @@ class Worker:
 
 
 def _log_error(title, message):
-    """把错误追加写入 Hitran_Data/error.log（失败静默，绝不影响主流程）。"""
+    """把错误追加写入 Hitran_Data/error.log（失败静默，绝不影响主流程）。
+
+    脱敏：这份日志常被用户贴出来求助，而异常文本可能夹带含 api_key 的请求 URL
+    （官方 v2 API 把 key 放在 URL 路径里）—— 落盘前统一抹掉。
+    """
     try:
         from datetime import datetime
+        try:
+            message = hm._redact_secrets(message)          # 凭据脱敏（隐私）
+        except Exception:
+            pass
         log_path = ROOT / "Hitran_Data" / "error.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
@@ -1033,6 +1041,8 @@ class HitranLab(tk.Tk):
         stat_btn = ttk.Frame(self.stat_tab)
         stat_btn.pack(fill=tk.X, padx=8, pady=(4, 8))
         ttk.Button(stat_btn, text="刷新状态", command=self._refresh_status).pack(side="left")
+        # 切换到「运行状态」页时自动刷新，避免面板永远停在开机快照
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         # 底部状态栏（文字 + 进度条）
         sb = ttk.Frame(self)
@@ -1319,22 +1329,29 @@ class HitranLab(tk.Tk):
                 tag = ds["tag"]
                 res = ds["data"]["res"]
                 nu = res["nu"]
-                # 确定 y 数据：透过率模式用 trans，否则用 total 或单组分
+                # 确定 y 数据与单位：透过率→T；截面模式→σ(cm²/molecule)；外部导入→单位未知
                 if res.get("trans") is not None:
                     ydata = res["trans"]
                     unit = "T"
                 elif len(res["per"]) > 1 and res.get("total") is not None:
                     ydata = res["total"]
-                    unit = "α"
+                    unit = "σ" if ds["data"].get("hitran_units") else "α"
                 else:
                     ydata = list(res["per"].values())[0]
-                    unit = "α"
+                    if ds["data"].get("kind") == "imported":
+                        unit = "y"          # 外部导入数据单位未知，不能谎标成 α
+                    else:
+                        unit = "σ" if ds["data"].get("hitran_units") else "α"
                 # 找到最近的索引
                 idx = int(np.argmin(np.abs(nu - x)))
                 if 0 <= idx < len(ydata):
                     y_val = float(ydata[idx])
                     if unit == "T":
                         parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, T={y_val:.6f}")
+                    elif unit == "σ":
+                        parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, σ={y_val:.4e} cm²/molecule")
+                    elif unit == "y":
+                        parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, y={y_val:.6e}（单位未知）")
                     else:
                         # 吸收系数用科学计数法
                         parts.append(f"{tag}: ν={nu[idx]:.4f} cm⁻¹, α={y_val:.4e} cm⁻¹")
@@ -1342,6 +1359,16 @@ class HitranLab(tk.Tk):
                 self.status_var.set(" | ".join(parts))
         except Exception:
             pass  # 悬停探查失败不影响其他功能
+
+    def _in_curve_view(self):
+        """当前是否处于「谱线 / 线强」这类曲线视图。
+
+        _view_mode 的取值集合是 {"spectrum"(初始/清空/导入), "linestrength"(计算谱或线强),
+        "qcurve", "xsc"} —— 计算出的谱线视图实际记为 "linestrength"。因此判断"是否在曲线
+        视图"必须同时包含这两个值；早前用单一 `!= "spectrum"` 比较，会把计算后的谱线视图
+        误判为 Q(T)/截面视图，造成「导入谱 ↔ 计算谱 互相清空叠加」等连锁问题。
+        """
+        return self._view_mode in ("spectrum", "linestrength")
 
     def _clear_plot(self):
         """只清空画布，不改变参数。重置叠加计数器和数据。"""
@@ -1379,7 +1406,8 @@ class HitranLab(tk.Tk):
         """删除选中的图层，重新绘制剩余曲线。"""
         if not hasattr(self, "layer_list"):
             return
-        if self._view_mode != "spectrum":
+        # 仅在 Q(T) / 截面视图下拦截；曲线视图（spectrum / linestrength）一律允许删除。
+        if not self._in_curve_view():
             messagebox.showinfo("HitranLab", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
             return
         sel = self.layer_list.curselection()
@@ -2205,8 +2233,8 @@ class HitranLab(tk.Tk):
         nu, per, total = res["nu"], res["per"], res["total"]
         self._last_fig_data = d
         ax = self.ax
-        # 如果当前不是线强视图，切换过来（清空旧图层数据）
-        if self._view_mode != "linestrength":
+        # 从 Q(T)/截面视图切过来才清空旧图层；已是曲线视图则保留（支持导入谱与计算谱叠加）
+        if not self._in_curve_view():
             self._view_mode = "linestrength"
             self._overlay_count = 0
             self._overlay_data = []
@@ -2302,7 +2330,8 @@ class HitranLab(tk.Tk):
             idx = int(np.argmax(total))
             peak_val = float(total[idx])
             peak_nu = float(nu[idx])
-            integral = float(np.trapz(total, nu)) if len(nu) > 1 else 0.0
+            _trapz = getattr(np, "trapezoid", None) or np.trapz   # numpy 2 起改名，向下兼容
+            integral = float(_trapz(total, nu)) if len(nu) > 1 else 0.0
             txt.append(f"[TOTAL] 峰值 {peak_val:.4g} @ {peak_nu:.3f} cm$^{-1}$  "
                        f"(积分 {integral:.4g})")
         for w in res.get("warnings", []):
@@ -2328,8 +2357,8 @@ class HitranLab(tk.Tk):
             tag = f"{disp} {float(numin):g}-{float(numax):g} S(296K)"
         else:
             tag = f"{name} S(296K)"
-        # 如果当前不是线强视图，切换过来（清空旧图层数据）
-        if self._view_mode != "linestrength":
+        # 从 Q(T)/截面视图切过来才清空旧图层；已是曲线视图则保留
+        if not self._in_curve_view():
             self._view_mode = "linestrength"
             self._overlay_count = 0
             self._overlay_data = []
@@ -2460,12 +2489,26 @@ class HitranLab(tk.Tk):
         self._refresh_layers()
         self.status_var.set("截面导入完成")
 
+    def _on_tab_changed(self, event=None):
+        """切到「运行状态」页时自动刷新一次状态。"""
+        try:
+            if self.nb.index(self.nb.select()) == self.nb.index(self.stat_tab):
+                self._refresh_status()
+        except Exception:
+            pass
+
     def _refresh_status(self):
         try:
             st = hm.t_apikey_status()
             self.stat_text.delete("1.0", tk.END)
+            # 未配置时只显示"未配置"：旧写法无条件拼 "（source）"，而 source 本身
+            # 就是"未配置"，于是显示成"未配置（未配置）"。
+            if st.get("api_key_configured"):
+                key_line = f"API key: 已配置（{st.get('api_key_source')}）"
+            else:
+                key_line = "API key: 未配置"
             self.stat_text.insert("1.0",
-                f"API key: {'已配置' if st.get('api_key_configured') else '未配置'}（{st.get('api_key_source')}）\n"
+                key_line + "\n"
                 f"下载引擎: {st.get('download_engine', 'HAPI 1.x 旧下载接口（回退）')}\n"
                 f"线表缓存: {st.get('line_cache_files')} 个 / {st.get('line_cache_MB')} MB\n"
                 f"截面文件: {st.get('xsc_data_files')} 个\n"
@@ -2526,7 +2569,9 @@ class HitranLab(tk.Tk):
 
         header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n"
         header += f"# {len(datasets)} dataset(s) overlaid\n"
-        if first_res.get("trans") is not None:
+        if datasets[0]["data"].get("kind") == "imported":
+            header += "# units: unknown (imported external data)\n"   # 外部导入：单位未知，不谎标 α
+        elif first_res.get("trans") is not None:
             header += (f"# units: transmittance (dimensionless), "
                        f"L={first_res.get('path_length_cm') or 1.0:g} cm\n")
         elif datasets[0]["data"].get("hitran_units"):
@@ -2745,8 +2790,9 @@ class HitranLab(tk.Tk):
             _order = np.argsort(nu)
             nu, coef = nu[_order], coef[_order]
             tag = f"{Path(p).stem} (imported)"
-            # 若当前处于 Q(T)/截面视图，先切回谱线视图（清空旧图层）
-            if self._view_mode != "spectrum":
+            # 仅当当前是 Q(T)/截面视图时才切回谱线视图并清空；
+            # 谱线/线强视图下应**保留**已有曲线（导入谱与计算谱可以共存叠加）
+            if not self._in_curve_view():
                 self._view_mode = "spectrum"
                 self._overlay_count = 0
                 self._overlay_data = []
@@ -3139,8 +3185,14 @@ class HitranLab(tk.Tk):
     def _job_download_update(self, url, name):
         """后台下载新版免安装包到 _update/（复用进度通道，按字节上报）。"""
         import urllib.request
+        # 安全加固：url / name 均来自 GitHub API 响应 —— 万一响应被篡改，也不能让我们
+        # 去 http 明文站点下载，或把文件写到 _update/ 目录之外（故只取 basename）。
+        if not str(url).lower().startswith("https://"):
+            raise RuntimeError(f"更新包地址不是 https，已拒绝下载：{url}")
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-        dst = UPDATE_DIR / (name or UPDATE_ASSET)
+        dst = UPDATE_DIR / Path(str(name or UPDATE_ASSET)).name
+        if not dst.name:
+            raise RuntimeError("更新包文件名为空，已拒绝下载")
         cb = self._prog_cb()
         req = urllib.request.Request(url, headers={"User-Agent": "HitranLab"})
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -3238,6 +3290,15 @@ class HitranLab(tk.Tk):
                     .replace("<", "^<").replace(">", "^>").replace("(", "^(")
                     .replace(")", "^)").replace("%", "%%"))
 
+        def q(p):
+            """命令行的路径参数：加引号 + 把 % 转义为 %%。
+
+            批处理里 % 会被当作变量展开，安装路径若含 %（如 C:\\100%disk\\HitranLab），
+            直接拼接会让 robocopy/start/rmdir 拿到错误路径 —— 早前只在 echo 文本里转义了 %，
+            命令实参漏了。这里统一处理。
+            """
+            return '"%s"' % str(p).replace("%", "%%")
+
         try:
             appdir = Path(sys.executable).resolve().parent
             exe_name = Path(sys.executable).name
@@ -3282,7 +3343,7 @@ class HitranLab(tk.Tk):
                 ":try",
                 "set /a _try+=1",
                 "echo [2/4] 替换程序文件（第 %_try% 次尝试，保留 Hitran_Data 线表缓存）...",
-                f'robocopy "{src}" "{appdir}" /E /NFL /NDL /NJH /NJS /R:2 /W:1 >>"{log}" 2>&1',
+                f'robocopy {q(src)} {q(appdir)} /E /NFL /NDL /NJH /NJS /R:2 /W:1 >>{q(log)} 2>&1',
                 "set _rc=%errorlevel%",
                 "if %_rc% LSS 8 goto copied",
                 "echo    第 %_try% 次替换未完成（robocopy 返回 %_rc%）。",
@@ -3295,11 +3356,11 @@ class HitranLab(tk.Tk):
                 "echo      文件替换完成。",
                 "",
                 "echo [3/4] 启动新版本...",
-                f'start "" "{exe_full}"',
+                f'start "" {q(exe_full)}',
                 "",
                 "echo [4/4] 清理临时文件...",
-                f'rmdir /S /Q "{newdir}" >nul 2>&1',
-                f'del /Q "{zip_path}" >nul 2>&1',
+                f'rmdir /S /Q {q(newdir)} >nul 2>&1',
+                f'del /Q {q(zip_path)} >nul 2>&1',
                 "",
                 "echo.",
                 "echo ============================================================",
@@ -3325,6 +3386,7 @@ class HitranLab(tk.Tk):
                 "pause",
                 "exit /b 1",
             ]
+            UPDATE_DIR.mkdir(parents=True, exist_ok=True)   # 幂等：正常流程已建好，此处兜底
             bat = UPDATE_DIR / "apply_update.bat"
             bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
             return bat
@@ -3487,8 +3549,11 @@ class HitranLab(tk.Tk):
                         bg_msg = f"⚠️ HAPI2 未启用：{st.get('last_error') or '未知原因'}"
                 except Exception as e:
                     bg_msg = f"⚠️ HAPI2 初始化异常：{type(e).__name__}: {e}"
-                # 主线程更新提示
-                self.after(0, lambda: messagebox.showinfo("HAPI2 初始化", bg_msg))
+                # 主线程更新提示 + 刷新状态面板（下载引擎可能已变）
+                def _done():
+                    messagebox.showinfo("HAPI2 初始化", bg_msg)
+                    self._refresh_status()
+                self.after(0, _done)
             threading.Thread(target=_bootstrap_in_bg, daemon=True).start()
 
             if problems:
@@ -3496,9 +3561,13 @@ class HitranLab(tk.Tk):
                 msg = f"{msg}｜{'；'.join(problems)}"
             self.status_var.set(msg)
             refresh_h2()
+            self._refresh_status()      # 立即刷新「运行状态」页，无需等下一次计算
 
         def clear():
+            # 「清除」= 立即取消 key 并生效（旧实现只清空输入框，key 文件仍保留，
+            # 于是"取消 key"后下载引擎仍显示 HAPI2 官方 API（带 api_key））
             key_var.set("")
+            save()
 
         btn_frame = ttk.Frame(win); btn_frame.pack(fill="x", padx=16, pady=16)
         ttk.Button(btn_frame, text="清除", command=clear).pack(side="left")

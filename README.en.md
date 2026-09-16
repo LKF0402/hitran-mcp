@@ -306,6 +306,7 @@ Verifies that the engine + data + network are fully usable in the packaged envir
 ## FAQ
 
 - **Fetch fails with "daily limit"**: Official daily quota exceeded — try again tomorrow. If cache is not deleted, most windows don't need re-fetching.
+- **Error "Cannot connect to http://hitran.org" / "fetch failed", yet the species clearly has absorption in that window**: this is a **network failure**, unrelated to whether the window has HITRAN lines. The usual cause is an unusable proxy in `HTTP_PROXY` / `HTTPS_PROXY` (e.g. `127.0.0.1:7892` while the VPN is off) — enable the proxy/VPN, or clear those env vars to go direct, then retry (re-fetch is automatic once connectivity returns). Already-cached species/windows can be computed offline.
 - **Code changes don't take effect**: Restart the AI client (MCP process starts with the client); desktop workstation requires restarting the program.
 - **Clear cache**: Delete `Hitran_Data/*.data|*.header` — they will be auto-refetched when needed.
 - **Can't find XSC molecules (e.g., propane C₃H₈)**: it belongs to the cross-section database, distributed separately from the line-by-line database. Use `hitran_xsc_molecules` to search → `hitran_xsc_files` to list → `hitran_xsc_download` to fetch in one click, then read with `hitran_cross_section`; without an API key, follow the [Bridging the Two Channels](#bridging-the-two-channels) workflow to download manually.

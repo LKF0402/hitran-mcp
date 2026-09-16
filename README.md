@@ -336,6 +336,7 @@ python app/hitran_app.py --selftest selftest.json
 ## 常见问题
 
 - **抓取失败 "daily limit"**：官方每日配额超限，次日重试；缓存未删时大部分窗口无需重新抓取。
+- **报错 "Cannot connect to http://hitran.org" 或"无法抓取"，但该分子在此窗口明明有吸收**：这是**联网失败**，与"该窗口无收录线"无关。最常见原因是环境变量 `HTTP_PROXY` / `HTTPS_PROXY` 指向的代理不可用（例如 VPN 关闭时的 `127.0.0.1:7892`）——开启代理/VPN，或清空该环境变量走直连后重试即可（联网恢复后会自动重抓）；已缓存过的分子/窗口可离线计算。
 - **修改代码不生效**：重启 AI 客户端（MCP 进程随客户端启动）；桌面工作站需重启程序。
 - **清理缓存**：删除 `Hitran_Data/*.data|*.header` 即可，需要时自动重抓。
 - **截面库分子（如丙烷 C₃H₈）查不到**：该分子属截面库，与逐线库分开分发。用 `hitran_xsc_molecules` 检索 → `hitran_xsc_files` 列清单 → `hitran_xsc_download` 一键下载，再用 `hitran_cross_section` 读入；无 API key 时可按[双库桥接](#双库桥接)流程手动下载。

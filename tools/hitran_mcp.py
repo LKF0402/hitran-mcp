@@ -19,7 +19,6 @@ import io
 import json
 import os
 import re
-import threading
 import sys
 import threading
 import traceback
@@ -35,7 +34,7 @@ if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.5.3"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.5.4"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -43,20 +42,83 @@ _NP = None
 _FETCH_LOCK = threading.RLock()   # hapi.fetch 串行化，防 .data 并发写（TOCTOU）
 
 
-def _check_network(timeout=3):
-    """检测是否能访问 HITRAN 服务器（hitran.org:443）。返回 True/False。
+def _proxy_host_port():
+    """从环境变量取 HTTP(S)_PROXY 的 (host, port)；未配置/非法返回 None。
 
-    断网时 3 秒内返回，避免用户在 hapi.fetch 超时前干等几十秒。
+    为什么需要：git/urllib 都会读 HTTP_PROXY/HTTPS_PROXY，但"裸 socket 探测
+    hitran.org:443"绕过代理，于是出现"探测通过、真正下载却因代理不可达而失败"
+    的假阴性。这里把代理本身也纳入连通性判断。
+    """
+    import urllib.parse
+    for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        v = os.environ.get(k, "").strip()
+        if not v:
+            continue
+        try:
+            u = urllib.parse.urlsplit(v if "://" in v else "http://" + v)
+            if u.hostname and u.port:
+                return u.hostname, int(u.port)
+        except Exception:
+            continue
+    return None
+
+
+def _check_network(timeout=3):
+    """检测能否真正访问 HITRAN 服务器（考虑代理）。返回 True/False。
+
+    断网时数秒内返回，避免用户在 hapi.fetch 超时前干等几十秒。
+    注意：不能只做 hitran.org:443 的裸 socket 探测 —— 若 HTTP(S)_PROXY 指向一个
+    已下线的本地代理（如 VPN 关闭时的 127.0.0.1:7892），裸 socket 仍能连通，
+    但真正走 urllib 的 HAPI 下载会报 'Cannot connect to http://hitran.org'。
+    故此处额外校验：配置了 HTTP(S)_PROXY 时，代理端口也必须可达。
     """
     import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        s.connect(("hitran.org", 443))
-        s.close()
-        return True
-    except Exception:
+
+    def _tcp(host, port):
+        try:
+            s = socket.create_connection((host, int(port)), timeout)
+            s.close()
+            return True
+        except Exception:
+            return False
+
+    if not _tcp("hitran.org", 443):
         return False
+    pp = _proxy_host_port()
+    if pp is not None:
+        # NO_PROXY 匹配的是**目标主机**（hitran.org），不是代理主机——此前错误地拿
+        # 代理主机去比对 NO_PROXY，而本机 NO_PROXY 恰含 127.0.0.1，导致代理检查
+        # 被静默跳过（假阳性）。
+        _np = (os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "")
+        _np_set = {e.strip().lstrip(".").lower() for e in _np.split(",") if e.strip()}
+        _bypass = ("*" in _np_set) or any(
+            "hitran.org" == e or "hitran.org".endswith("." + e) for e in _np_set if e)
+        if not _bypass and not _tcp(pp[0], pp[1]):
+            return False
+    return True
+
+
+# 抓取异常的文案归类：区分"联网失败"与"该窗口确实无线"。
+# 前者与数据无关，绝不能与"无收录线"并列，否则会误导用户以为分子/窗口无谱线。
+_NET_ERR_PAT = ("cannot connect", "global_host", "urlopen error", "connection refused",
+                "connection reset", "connection aborted", "connectionerror",
+                "timed out", "timeout", "max retries", "proxyerror", "proxy error",
+                "temporary failure", "name or service not known", "getaddrinfo",
+                "ssl", "remote end closed", "remotedisconnected", "bad gateway",
+                "gateway timeout", "network is unreachable", "no route to host")
+
+
+def _classify_fetch_error(msg):
+    """把抓取异常归类：'quota' | 'network' | 'nodata'。"""
+    s = str(msg or "")
+    sl = s.lower()
+    if "[hitran][网络]" in s or "[hitran][离线]" in s:   # 框架自身已判定为网络问题
+        return "network"
+    if "daily limit" in sl or "exceeded" in sl:
+        return "quota"
+    if any(p in sl for p in _NET_ERR_PAT):
+        return "network"
+    return "nodata"
 
 
 @contextlib.contextmanager
@@ -88,6 +150,33 @@ def _api_key():
         except Exception:
             pass
     return ""
+
+
+# ---- 凭据脱敏（隐私）----
+# 官方 v2 API 把 key 放在 URL 路径里（/api/v2/<key>/cross-sections），因此任何携带
+# URL 的异常文本、HTTP 调试输出都可能把 key 带进 MCP 返回值 / log 字段 / GUI 提示 /
+# Hitran_Data/error.log（用户常把该日志贴出来求助）。对外返回的文本一律先过这里。
+# （与 tools/hitran.py 的 redact_secrets() 同源，此处自包含以避免拉起重依赖）
+_REDACT_PATS = (
+    (re.compile(r"(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|"
+                r"secret|password|passwd)(\s*[=:]\s*)([^\s&,;\"')\]}]+)"), r"\1\2***"),
+    (re.compile(r"(?i)(/api/v2/)([^/\s?&\"')\]}]+)"), r"\1***"),
+    (re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._\-]{6,})"), r"\1***"),
+)
+
+
+def _redact_secrets(text):
+    """把疑似凭据抹成 ***（只做字符串替换，绝不抛错；失败则原样返回）。"""
+    try:
+        s = str(text if text is not None else "")
+        for pat, repl in _REDACT_PATS:
+            s = pat.sub(repl, s)
+        k = _api_key()
+        if k and len(k) >= 6:            # 兜底：已知本机 key 直接抹掉
+            s = s.replace(k, "***")
+        return s
+    except Exception:
+        return str(text)
 
 
 def _hitran():
@@ -361,12 +450,15 @@ def _ensure_table_for(M, I, numin, numax, force=False):
         table = wtable
         if force:
             _drop_table(table)                 # 强制重抓：先清内存+磁盘，否则 fetch 会静默复用
-        # 联网检测：断网且数据未缓存时立即报错，不让用户干等超时
+        # 联网检测：断网/代理不可达且数据未缓存时立即报错，不让用户干等超时
         if not _check_network():
+            _pp = _proxy_host_port()
+            _ptxt = (f"（检测到 HTTP(S)_PROXY={_pp[0]}:{_pp[1]} 不可达 —— "
+                     f"请先开启对应代理/VPN，或清空该环境变量走直连）") if _pp else "（网络检测超时）"
             raise RuntimeError(
-                f"[hitran][离线] 当前无法访问 hitran.org（网络检测超时），"
+                f"[hitran][离线] 当前无法访问 hitran.org{_ptxt}，"
                 f"且 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 的线表未在本地缓存。"
-                f"请检查网络连接后重试，或选择已缓存的分子/窗口。")
+                f"请检查网络/代理后重试，或选择已缓存的分子/窗口。")
         # 下载线表：优先走 HAPI2 官方 API（带 api_key；其产物就是 HAPI 1.x 格式，
         # 计算层完全不感知）；HAPI2 不可用或失败时回退 HAPI 1.x 的旧下载接口。
         ht = _hitran()
@@ -392,8 +484,22 @@ def _ensure_table_for(M, I, numin, numax, force=False):
                 except Exception as e:
                     fetch_err = e
         if fetch_err is not None:
+            kind = _classify_fetch_error(fetch_err)
+            if kind == "network":
+                # 关键区分：联网失败 ≠ 该窗口无收录线。旧文案把两者并列，导致用户
+                # 明明该窗口有谱线（如 CH4 2967-2970 实测 175 条线）却被告知"无收录线"。
+                raise RuntimeError(
+                    f"[hitran][网络] 抓取 {formula}(M={M},I={I}) 于 {numin}-{numax} cm-1 失败：{fetch_err}。"
+                    f"判定：这是**联网失败**，与「该窗口有无 HITRAN 收录线」无关 —— "
+                    f"切勿据此认定该窗口无谱线。"
+                    f"常见原因：① 环境变量 HTTP_PROXY / HTTPS_PROXY 指向的代理不可用"
+                    f"（本机常为 127.0.0.1:7892，需先开启对应代理/VPN）；"
+                    f"② 断网，或 hitran.org 不可达。"
+                    f"处理：确认网络/代理可用后重试（联网恢复即会自动重抓）；"
+                    f"或改用已缓存的分子/窗口离线计算。"
+                    f"（HAPI2 通道：{h2_msg}）") from fetch_err
             hint = ""
-            if "daily limit" in str(fetch_err).lower() or "exceeded" in str(fetch_err).lower():
+            if kind == "quota":
                 hint = ("（HITRAN 官方每日抓取配额已超限：今日请勿再 force 重抓，"
                         "尽量复用缓存；确认已配置 API key：tools/hitran_api_key.txt）")
             raise RuntimeError(
@@ -440,6 +546,9 @@ _ABS_CACHE_MISSES = 0
 # ---- 计算缓存持久化（重启后秒出，避免重复 HAPI 计算）----
 _PERSIST_CACHE_DIR = ROOT / "Hitran_Data" / "compute_cache"
 _PERSIST_INDEX_FILE = _PERSIST_CACHE_DIR / "index.json"
+# 磁盘缓存条目上限：超出时按文件时间**淘汰最旧**。否则 .npz 与启动加载量会随使用
+# 无上限增长（一个大窗口一组就是 MB 级），长期使用会拖慢启动并占满磁盘。
+_PERSIST_MAX_ENTRIES = _ABS_CACHE_MAX
 
 
 def _cache_hash(key):
@@ -467,12 +576,21 @@ def _load_persistent_cache():
         return  # 索引损坏，当作无缓存
     loaded = 0
     np = _np()  # 延迟导入 numpy
+    # 只加载最新的 _PERSIST_MAX_ENTRIES 条（按 .npz 修改时间），避免启动时把全部历史
+    # 缓存读进内存。索引引用但文件缺失/损坏的条目一律跳过。
+    ent = []
     for key_json, fname in index.items():
-        fpath = _PERSIST_CACHE_DIR / fname
-        if not fpath.exists():
-            continue
+        fp = _PERSIST_CACHE_DIR / fname
         try:
-            data = np.load(fpath, allow_pickle=False)
+            if not fp.exists():
+                continue
+            ent.append((fp.stat().st_mtime, key_json, fp))
+        except OSError:
+            continue
+    ent.sort(reverse=True)                       # 最新的在前
+    for _, key_json, fp in ent[:_PERSIST_MAX_ENTRIES]:
+        try:
+            data = np.load(fp, allow_pickle=False)
             nu = np.asarray(data["nu"], dtype=float)
             coef = np.asarray(data["coef"], dtype=float)
             tinfo = json.loads(str(data["tinfo_json"]))
@@ -506,9 +624,30 @@ def _save_cache_entry(key, nu, coef, tinfo):
                 except Exception:
                     index = {}
             index[json.dumps(list(key), ensure_ascii=False)] = fname
+            # 超上限则淘汰最旧条目：**先提交索引、再删文件** —— 索引写失败最多留个孤儿
+            # 文件（下次加载会因索引无引用而忽略），而先删文件则可能删掉仍在索引里的条目。
+            stale = []
+            if len(index) > _PERSIST_MAX_ENTRIES:
+                def _mt(fn):
+                    try:
+                        return (_PERSIST_CACHE_DIR / fn).stat().st_mtime
+                    except OSError:
+                        return 0.0
+                for k, fn in sorted(index.items(), key=lambda kv: _mt(kv[1])):
+                    if len(index) <= _PERSIST_MAX_ENTRIES:
+                        break
+                    if fn == fname:              # 保护本次刚写入的条目
+                        continue
+                    index.pop(k, None)
+                    stale.append(fn)
             tmp = _PERSIST_INDEX_FILE.with_suffix(".json.tmp")
             tmp.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
             os.replace(tmp, _PERSIST_INDEX_FILE)
+            for fn in stale:
+                try:
+                    (_PERSIST_CACHE_DIR / fn).unlink()
+                except OSError:
+                    pass
         except Exception:
             pass  # 落盘失败不影响内存缓存和计算结果
 
@@ -634,6 +773,12 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
         if progress:
             progress(steps_done, total_steps, "抓取线表")
     if not entries:
+        _reasons = " ".join(str(s.get("reason", "")) for s in skipped)
+        if _classify_fetch_error(_reasons) == "network":
+            raise RuntimeError(
+                f"[hitran][网络] {formula} 的所有同位素在 {numin}-{numax} cm-1 抓取失败 —— "
+                f"判定为**联网失败**（非「该窗口无谱线」）。请检查网络/代理(VPN) 后重试。"
+                f"\n明细：{skipped}")
         raise RuntimeError(f"[hitran][防呆] {formula} 的所有同位素在 {numin}-{numax} cm-1 均抓取失败：{skipped}")
 
     # 覆盖率合理性检查：线表若连窗口上半段都没覆盖到，才可能是"未下载完整"的表
@@ -2194,11 +2339,12 @@ def handle(req):
             if log:
                 payload = dict(payload) if isinstance(payload, dict) else {"result": payload}
                 payload.setdefault("log", log[-4000:])
-            text = json.dumps(payload, ensure_ascii=False, indent=2)
+            # 统一在返回边界脱敏：log 字段/HAPI 输出可能含带 api_key 的 URL
+            text = _redact_secrets(json.dumps(payload, ensure_ascii=False, indent=2))
             return rid, {"content": [{"type": "text", "text": text}], "isError": False}, None
         except Exception as e:
-            # 只返回错误类型和消息，不暴露完整 traceback（文件路径/内部结构）
-            msg = f"{type(e).__name__}: {e}"
+            # 只返回错误类型和消息，不暴露完整 traceback（文件路径/内部结构）；同样脱敏
+            msg = _redact_secrets(f"{type(e).__name__}: {e}")
             return rid, {"content": [{"type": "text", "text": msg}], "isError": True}, None
     if rid is None:                                # 未知通知：忽略
         return None, None, None

@@ -24,6 +24,7 @@ hitran — HITRAN 数据库调取与谱计算的统一薄壳（跨项目通用�
 依赖：HAPI 1.3.0.0（pip install hitran-api）；Python 3.9+
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -144,6 +145,33 @@ def read_api_key():
     return ""
 
 
+# ---- 凭据脱敏（隐私）----
+# HITRAN 官方 v2 API 把 key 放在 **URL 路径** 里（/api/v2/<key>/cross-sections），
+# 因此任何携带 URL 的异常文本、HTTP 调试输出都可能把 key 带进：MCP 返回值、
+# GUI 提示、Hitran_Data/error.log（用户常把该日志贴出来求助）。
+# 凡"对外输出"的文本都应先过一遍 redact_secrets()。
+_REDACT_PATS = (
+    (re.compile(r"(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|"
+                r"secret|password|passwd)(\s*[=:]\s*)([^\s&,;\"')\]}]+)"), r"\1\2***"),
+    (re.compile(r"(?i)(/api/v2/)([^/\s?&\"')\]}]+)"), r"\1***"),
+    (re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._\-]{6,})"), r"\1***"),
+)
+
+
+def redact_secrets(text):
+    """把疑似凭据从文本中抹成 ***（只做字符串替换，绝不抛错；失败则原样返回）。"""
+    try:
+        s = str(text if text is not None else "")
+        for pat, repl in _REDACT_PATS:
+            s = pat.sub(repl, s)
+        k = read_api_key()
+        if k and len(k) >= 6:            # 兜底：已知本机 key 直接抹掉
+            s = s.replace(k, "***")
+        return s
+    except Exception:
+        return str(text)
+
+
 def hapi2_bootstrap(force=False):
     """按需初始化 HAPI2，使其走官方 API（带 api_key）。成功返回 True。
 
@@ -153,13 +181,19 @@ def hapi2_bootstrap(force=False):
     临时目录都固定到 CACHE_ROOT 下。
     """
     global _HAPI2_READY, _HAPI2_BOOTSTRAP_DONE, _HAPI2_LAST_ERROR, _HAPI2_VERSION
-    if _HAPI2_READY:
+    # force=True 必须**真正重评**：key 可能刚被清除/更换，此时若沿用缓存态
+    # （旧实现 `if _HAPI2_READY: return True` 忽略 force）会永远停在"已启用"，
+    # 导致「取消 key 后下载引擎仍显示 HAPI2 官方 API（带 api_key）」。
+    if _HAPI2_READY and not force:
         return True
     if _HAPI2_BOOTSTRAP_DONE and not force:
         return False
     _HAPI2_BOOTSTRAP_DONE = True
+    if force:
+        _HAPI2_READY = False               # 强制重评前先复位，按下述真实探测结果重设
     if not _HAPI2_AVAILABLE:
         _HAPI2_LAST_ERROR = "未安装 hapi2"
+        _HAPI2_READY = False
         return False
     try:
         import hapi2
@@ -179,17 +213,21 @@ def hapi2_bootstrap(force=False):
         SETTINGS["api_version"] = "v2"
         SETTINGS["display_fetch_url"] = False
         key = read_api_key()
-        if key:
-            SETTINGS["api_key"] = key
+        # 有 key 就写入；没有则**显式清空**（不能只"有 key 才赋值" —— 否则旧 key
+        # 残留于 SETTINGS，取消 key 后下面那句检查仍会判为"已配置"）。
+        SETTINGS["api_key"] = key or None
         _h2db.init()                       # 用新 SETTINGS 重建引擎（含建表）
         if not SETTINGS.get("api_key"):
             _HAPI2_LAST_ERROR = "未配置 API key（HAPI2 官方 API 需要 key）"
+            _HAPI2_READY = False
             return False
         _HAPI2_READY = True
         _HAPI2_LAST_ERROR = None
         return True
     except Exception as e:
-        _HAPI2_LAST_ERROR = f"{type(e).__name__}: {e}"
+        # 脱敏：hapi2 的异常常带请求 URL，而 URL 里含 api_key（见 redact_secrets 说明）
+        _HAPI2_LAST_ERROR = redact_secrets(f"{type(e).__name__}: {e}")
+        _HAPI2_READY = False
         return False
 
 
@@ -239,7 +277,7 @@ def hapi2_clear_db():
             con.close()
         return True, f"HAPI2 线表数据已清理（transition {n_tr} / linelist {n_ll}）"
     except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
+        return False, redact_secrets(f"{type(e).__name__}: {e}")   # 脱敏：异常可能带含 key 的 URL
 
 
 def _hapi2_purge_tmp(src_dir):
@@ -321,7 +359,7 @@ def hapi2_fetch_table(M, I, numin, numax, table_name):
         _hapi2_purge_tmp(src_dir)
         return True, f"HAPI2 官方 API 已下载 {table_name}"
     except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
+        return False, redact_secrets(f"{type(e).__name__}: {e}")   # 脱敏：异常可能带含 key 的 URL
 
 
 # ---- 物种/同位素速查（全部由 HAPI 官方 ISO 表派生，不硬编码编号）----
@@ -497,12 +535,22 @@ def _wnum(v):
 
 
 def fetch(name, numin, numax, iso=None, force=False):
-    """抓取并注册某物种在 [numin, numax] cm-1 的线表，返回可用于计算的表名。
+    """**[已弃用 · 仅供历史回溯]** 抓取并注册某物种在 [numin, numax] cm-1 的线表。
+
+    注意：本函数**当前无任何调用方**（MCP 与 GUI 均走 hitran_mcp._ensure_table_for）。
+    保留仅供可能的外部引用；新代码请改用 `hitran_mcp._ensure_table_for()` —— 它额外提供
+    "表名带窗口后缀 + 覆盖区间校验 + HAPI2 官方 API 下载"，而这里的 `hapi.fetch` 只按
+    基础表名复用，存在"同名表静默复用旧窗口 → 谱线缺失被误读为无干扰"的老坑。
 
     窗口安全（与 hitran_mcp._ensure_table_for 同口径）：已缓存表若不覆盖请求窗口，
     改用带窗口后缀的表名重抓 —— 杜绝历史坑"同名表静默复用旧窗口 → 谱线缺失被误读为无干扰"。
     防呆：先校验输入窗口（_validate_params），抓取/加载后强制校验线数，空表直接报错（见 _guard_nonempty）。
     """
+    import warnings
+    warnings.warn(
+        "tools.hitran.fetch() 已弃用：它按基础表名复用线表，可能静默复用旧窗口导致漏谱线。"
+        "请改用 tools.hitran_mcp._ensure_table_for()。",
+        DeprecationWarning, stacklevel=2)
     _validate_params(name, numin, numax, 296.0, 1.01325, 0.01)  # 仅校验分子/窗口，T/P/step 用占位合法值
     _init_cache()
     numin, numax = float(numin), float(numax)
@@ -587,7 +635,16 @@ def cache_clear():
 
 def absorption(name, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
                iso=None, hitran_units=False, poll=True, use_cache=True, **env):
-    """返回 (nu, coef) —— 某物种在 [numin,numax] 的吸收系数谱。
+    """**[已弃用 · 仅供历史回溯]** 返回 (nu, coef) —— **单个同位素**的吸收系数谱。
+
+    注意：本函数**当前无任何调用方**（MCP 与 GUI 均走 hitran_mcp._absorption/_compute）。
+    它的口径比主引擎窄，直接当"全同位素 / 混合气"用会**静默算错**：
+      · 只算 `Components=[(M, I, 1.0)]`（单个同位素纯气），不按自然丰度加权；
+      · 不接收摩尔分数 → 无 x·α_pure 缩放，痕量组分会被高估约 1/x 倍；
+      · 复用线表时不校验窗口覆盖（见 fetch 的说明）。
+    新代码请改用 `hitran_mcp._compute(specs, ...)`（支持多组分/摩尔分数/全同位素/线型选择）。
+
+    返回 (nu, coef) —— 某物种在 [numin,numax] 的吸收系数谱。
 
     单位：hitran_units=False（默认）-> coef 单位 cm-1（吸收系数 α，已含数密度，
           1 atm 纯气体线中心峰值约 0.1~1 cm-1 量级）；
@@ -597,6 +654,11 @@ def absorption(name, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     T,K; P,atm; step,cm-1; wingHW,cm-1(线翼半宽)。env 可覆盖 HAPI Environment
     其余字段(Diluent 等)。poll=True 时算完自动跑一次 check_spectrum 轮询自检。
     """
+    import warnings
+    warnings.warn(
+        "tools.hitran.absorption() 已弃用：只算单同位素、不支持摩尔分数缩放（混合气会算错），"
+        "且复用线表时不校验窗口覆盖。请改用 tools.hitran_mcp._compute()/_absorption()。",
+        DeprecationWarning, stacklevel=2)
     global _CACHE_HITS, _CACHE_MISSES
     _validate_params(name, numin, numax, T, P, step)
 
@@ -685,7 +747,14 @@ def check_spectrum(nu, coef, name=None, *, numin=None, numax=None,
         else:
             lo, hi = 1e-4, 1e3           # cm^-1 吸收系数（1atm 纯气典型 0.01~100）
         if peak < lo:
-            warns.append(f"峰值 {peak:.2e} 偏小（<{lo:.0e}），可能步长太粗漏采样线中心，或压强/浓度过小")
+            # 该阈值是"cm-1 口径下的常规下限"，**不是**错误判据：痕量气（摩尔分数很小，
+            # ppm/ppb 级）的 α 峰值本来就小。旧文案只说"偏小"，会让 ppm 级正常结果被反复
+            # 报成可疑，造成告警疲劳（用户逐渐忽略所有 warning）。
+            # 注意：本函数用 print 输出到 stdout，文案只能用 GBK 可编码字符（勿用 ≪ 等）。
+            warns.append(
+                f"峰值 {peak:.2e} 小于常规下限 {lo:.0e} —— 若确为痕量气（摩尔分数很小，"
+                f"ppm/ppb 级）属正常，可忽略本提示；否则请检查 step 是否过粗漏采样线中心、"
+                f"或浓度/单位是否填错")
         elif peak > hi:
             warns.append(f"峰值 {peak:.2e} 偏大（>{hi:.0e}），确认压强/浓度/单位是否填错（cm-1 vs cm2/mol）")
 
