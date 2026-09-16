@@ -107,6 +107,9 @@ def publish() -> None:
     dist/ 已在 .gitignore，且对外发布经 make_zip() 白名单（key/缓存/日志永不进 zip），
     因此不构成泄露。但**切勿直接把 dist/HitranLab 整个目录分享给他人**。
     """
+    # 首次构建（干净仓库）时 dist/ 尚不存在：os.rename 的目标父目录必须已存在，
+    # 否则 Windows 直接 FileNotFoundError(WinError 3) 中断发布。先建好目录。
+    DIST.mkdir(parents=True, exist_ok=True)
     cache_src = APP_DIR / "Hitran_Data"
     if cache_src.exists():
         shutil.rmtree(CACHE_BAK, ignore_errors=True)

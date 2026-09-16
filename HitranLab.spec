@@ -35,6 +35,10 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=['pandas', 'lxml', 'scipy',
+              # Qt 绑定：本程序界面是 Tkinter（matplotlib 也只走 TkAgg），不需要任何 Qt。
+              # 若构建环境同时装了 PyQt5 与 PySide6，PyInstaller 会因"多个 Qt 绑定"
+              # 直接中止构建（实测 anaconda 环境）—— 显式排除即可，顺带减小体积。
+              'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
               # 以下依赖未被实际使用，仅为间接依赖，排除以减小体积
               # 注意：numba / llvmlite 不可排除 —— HAPI2 的 opacity 子模块会
               # 无条件 import 它们（hapi2/opacity/lbl/__init__.py）。
