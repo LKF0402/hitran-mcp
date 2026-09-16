@@ -8,6 +8,21 @@ GitHub release 资产 `dist/HitranLab-windows-x64.zip`。这两步分开做时�
 本脚本把两步绑定为原子操作，并在最后**校验 zip 内的 HitranLab.exe 与 dist 下的
 exe 大小 + CRC32 完全一致**，不一致直接以非 0 退出 —— 从结构上消除"忘记重建 zip"。
 
+**构建环境（重要：直接决定发布包体积）**：请用**干净环境**构建，不要用 anaconda。
+anaconda 的 numpy 链接 Intel MKL，PyInstaller 会把整套 `mkl_*.dll` 打进包 —— 实测发布
+资产由 ~90 MiB 膨胀到 ~250 MiB（其中 MKL 独占 143 MiB），而功能完全一样。
+干净环境配方（Python 3.10 + PyPI numpy/OpenBLAS，与官方 release 同构）::
+
+    # 只装运行期必需；hapi2 用 --no-deps（它的元数据声明依赖 jupyter/sphinx，
+    # 装了就会被 PyInstaller 收进包，实测多出 12 MiB 文档链 + 十几 MiB 无用代码）
+    .buildenv\\py310\\python.exe -m pip install numpy matplotlib "SQLAlchemy" numba ^
+        tabulate python-dateutil pyparsing hitran-api pyinstaller packaging
+    .buildenv\\py310\\python.exe -m pip install --no-deps "git+https://github.com/hitranonline/hapi2"
+
+构建前必须隔离外部污染（否则会从别的 Python 的用户级 site-packages 里"蹭"依赖）::
+
+    $env:PYTHONNOUSERSITE='1'; Remove-Item Env:PYTHONPATH
+
 用法::
 
     python tools/build_release.py              # 完整构建（打包 + 发布 + 自检 + zip + 校验）

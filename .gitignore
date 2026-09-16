@@ -63,6 +63,11 @@ venv/
 env/
 ENV/
 
+# 发布构建专用干净环境（对齐官方口径：Python 3.10 + PyPI numpy(OpenBLAS)）
+# 存在的意义：本机 anaconda 的 numpy 链接 Intel MKL，直接打包会把 25 个 mkl_*.dll
+# （压缩后约 143 MiB）打进发布包；用本环境构建可回到 ~100 MiB。详见 tools/build_release.py
+.buildenv/
+
 # Python 包与构建
 *.egg-info/
 *.egg
