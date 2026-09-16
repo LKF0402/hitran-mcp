@@ -88,6 +88,31 @@ def git_head() -> str:
 
 # ───────────────────────── 构建 ─────────────────────────
 
+# 发布产物**必须**内置 HAPI2（线表下载走 HITRAN 官方 v2 API 的通道）。
+# 允许用 --allow-no-hapi2 显式跳过，但绝不允许"环境没装就静默打个残包"。
+_ALLOW_NO_HAPI2 = False
+
+
+def check_hapi2() -> None:
+    """构建前校验 hapi2 可导入 —— 缺了就是功能回退，必须拦住。
+
+    真实事故：某次在未装 hapi2 的环境里打包，产物静默丢掉 HAPI2，用户填了 API key
+    却看到"HAPI2：未安装"，属于"修复 bug 却砍掉功能"。故这里改为**硬失败**。
+    安装：pip install --user "git+https://github.com/hitranonline/hapi2"
+    """
+    import importlib.util
+    if importlib.util.find_spec("hapi2") is not None:
+        log("HAPI2 已就绪（产物将内置官方 API 下载通道）")
+        return
+    hint = ('构建环境缺少 hapi2 —— 产物会丢失 HAPI2 官方 API 下载功能（功能回退）。'
+            '安装：pip install --user "git+https://github.com/hitranonline/hapi2"')
+    if _ALLOW_NO_HAPI2:
+        log(f"[warn] {hint}")
+        log("[warn] 已按 --allow-no-hapi2 继续，产物不含 HAPI2（仅用于临时验证）")
+        return
+    die(hint + "\n           如确要打不含 HAPI2 的包，请显式加 --allow-no-hapi2")
+
+
 def build_exe() -> None:
     log("PyInstaller 打包中（约 40 秒）…")
     code = subprocess.run(
@@ -198,6 +223,10 @@ def make_zip() -> None:
         die("dist/HitranLab/HitranLab.exe 不存在，无法打包 zip")
     if not (APP_DIR / "_internal").is_dir():
         die("dist/HitranLab/_internal 不存在，PyInstaller 产物结构异常")
+    # 兜底复检（--zip-only 也走这里）：产物里必须真的有 hapi2，否则拒绝打包。
+    if not _ALLOW_NO_HAPI2 and not (APP_DIR / "_internal" / "hapi2").is_dir():
+        die("dist/HitranLab/_internal/hapi2 不存在 —— 这份产物丢了 HAPI2 功能，拒绝打 zip。\n"
+            "          请在装了 hapi2 的环境重跑本脚本；确要临时验证可加 --allow-no-hapi2")
     tmp = ZIP.with_name(ZIP.name + ".tmp")
     tmp.unlink(missing_ok=True)
     n = 0
@@ -248,7 +277,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="一键构建发布产物（打包 + zip + 校验）")
     ap.add_argument("--zip-only", action="store_true", help="只重建 zip，沿用现有 dist")
     ap.add_argument("--no-selftest", action="store_true", help="跳过分自检")
+    ap.add_argument("--allow-no-hapi2", action="store_true",
+                    help="允许产物不含 HAPI2（仅临时验证用，正式发布禁止）")
     args = ap.parse_args()
+    global _ALLOW_NO_HAPI2
+    _ALLOW_NO_HAPI2 = bool(args.allow_no_hapi2)
 
     ver = read_version()
     log(f"VERSION = {ver}    HEAD = {git_head()}")
@@ -256,6 +289,7 @@ def main() -> int:
         log("[warn] 工作区有未提交改动 —— 请确认这些改动确实要进产物")
 
     if not args.zip_only:
+        check_hapi2()          # 缺 hapi2 直接失败，绝不产出"丢功能"的包
         build_exe()
         publish()
         if not args.no_selftest:

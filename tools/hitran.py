@@ -57,7 +57,10 @@ def _pkg_version(name):
 # sqlalchemy + llvmlite（约 +100MB 内存、数秒启动时间），而 GUI 启动时
 # 状态面板就会调用 get_capabilities()。真正的导入延后到 hapi2_bootstrap()。
 _HAPI2_AVAILABLE = _spec_exists("hapi2")
-_HAPI2_VERSION = _pkg_version("hapi2") if _HAPI2_AVAILABLE else None
+# 注意：hapi2 的 **发行包名是 hitran-api2**（import 名才是 hapi2），只查 'hapi2' 会得到
+# None，界面就会显示成"HAPI2 None：已启用"。这里按发行名兜底。
+_HAPI2_VERSION = ((_pkg_version("hapi2") or _pkg_version("hitran-api2"))
+                  if _HAPI2_AVAILABLE else None)
 _HAPI2_IMPORT_ERROR = None
 
 _NUMBA_AVAILABLE = _spec_exists("numba")
