@@ -1550,6 +1550,12 @@ def t_xsc_search(name=None):
 # 截面子库（600+ 重分子）没有 HAPI 在线计算接口，但 hitran.org 官方 API
 # /api/v2/<key>/cross-sections 能列出**可直接下载的文件名**，数据文件位于公开路径
 # /data/xsec/ 下（实测 HTTP 200，无需登录）。故"搜索 → 勾选 → 下载"无需 HAPI2。
+#
+# ⚠ 2026-09-16 实测记录：官方 /api/v2/<key>/... 对**任何** key（有效/无效）都返回
+#   HTTP 500，`/api/v2/` 根与 /docs/api/ 为 404；而站点首页、截面库页、免登录的
+#   /xsc/get-molecule 与 /xsc/get-meta 均正常（丙烷可探到 136 个文件条目，但不含
+#   文件名）。即：**v2 API 侧故障期间"列清单/一键下载"无法工作，与 key、hapi2 无关**；
+#   免登录搜索仍可用（t_xsc_search）。错误提示已按状态码区分，见 _xsc_err_hint()。
 
 XSC_DL_LIMIT_MB = 300                # 单次批量下载总体积上限（防手抖把整个分子全下）
 _XSC_BYTES_PER_POINT = 10.1          # HOTW 两列文本实测 ~10.1 B/点（43145 点 → 435915 B）
@@ -1707,6 +1713,34 @@ def _xsc_should_retry(e):
     return True
 
 
+def _xsc_err_hint(e):
+    """把截面相关异常翻成**可操作**的提示（不把官方服务端故障说成用户的问题）。
+
+    背景（2026-09-16 实测）：官方 /api/v2/<key>/... 对**任何** key（有效/无效）都返回
+    HTTP 500，而免登录的 /xsc/get-meta 仍 200 —— 因此 5xx 时**不能**断言"key 无效"，
+    也不能断言"是网络问题"。旧文案一律写"请确认可直连 hitran.org 且 API key 有效"，
+    把服务端故障栽给用户，导致排查方向被带偏。
+    """
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):          # 注意 HTTPError 是 URLError 子类，须先判
+        code = int(getattr(e, "code", 0) or 0)
+        if code in (401, 403):
+            return (f"HTTP {code}：API key 未授权（无效/过期）或当日配额超限 —— "
+                    f"请到 hitran.org 个人资料页重新复制 key 后重试")
+        if code == 404:
+            return f"HTTP {code}：接口或资源不存在（API key 为空时会出现）"
+        if 500 <= code < 600:
+            return (f"HTTP {code}：官方接口服务端错误。该接口对「无效 key 与正常 key」都返回 500，"
+                    f"无法据此判断 key 是否有效；实测免登录的 /xsc/get-meta 仍正常，"
+                    f"多为官方 v2 API 侧故障 —— 请稍后重试，或到 hitran.org 官网登录后手动下载")
+        return f"HTTP {code}：请求被官方拒绝（参数或权限问题），请核对输入"
+    if isinstance(e, urllib.error.URLError):
+        return "网络不可达（含 HTTP(S)_PROXY 代理不可用）：请检查网络/代理(VPN) 后重试"
+    if isinstance(e, TimeoutError):
+        return "请求超时：官方接口响应慢或网络抖动，稍后重试"
+    return f"{type(e).__name__}: {e}"
+
+
 def _xsc_retry(fn, tries=3, delay=1.5):
     """网络抖动重试。实测 hitran.org 偶发 URLError（约 1/8），重试即成功。"""
     import time
@@ -1771,8 +1805,8 @@ def _xsc_api_records(molecule_id, timeout=90):
         data = _xsc_retry(lambda: json.loads(_http_get_text(url, timeout=timeout)),
                           tries=3, delay=1.5)
     except Exception as e:
-        raise RuntimeError(f"[hitran_xsc_files] 查询失败（{type(e).__name__}: {e}）；"
-                           f"请确认可直连 hitran.org 且 API key 有效。") from e
+        raise RuntimeError(f"[hitran_xsc_files] 查询失败（{type(e).__name__}: {e}）。"
+                           f"{_xsc_err_hint(e)}") from e
     if str(data.get("status", "")).upper() != "OK":
         raise RuntimeError(f"[hitran_xsc_files] API 返回异常："
                            f"{data.get('message') or data.get('status')}")
@@ -2022,7 +2056,7 @@ def t_xsc_download(name=None, filenames=None, ids=None, molecule_id=None, max_to
         try:
             n = _xsc_download_one(fname, XSC_DIR)
         except Exception as e:
-            failed.append({"filename": fname, "error": f"{type(e).__name__}: {e}"})
+            failed.append({"filename": fname, "error": _xsc_err_hint(e)})
             continue
         done_bytes += n
         downloaded.append({"filename": fname, "path": str(dest),

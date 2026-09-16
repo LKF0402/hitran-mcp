@@ -13,6 +13,7 @@
 - 修复「运行状态」API key 显示为"未配置（未配置）"的重复文案
 - 修复取消 API key 后「下载引擎」仍显示"HAPI2 官方 API（带 api_key）"：`hapi2_bootstrap(force=True)` 此前被 `_HAPI2_READY` 短路而忽略 `force`，且取消 key 后 `SETTINGS["api_key"]` 残留旧值；「清除」按钮现在会真正取消 key（此前仅清空输入框）
 - 修复「运行状态」面板不刷新：切换到该页时自动刷新，保存/清除 API key 后立即刷新
+- 截面接口报错文案按 HTTP 状态码区分，不再把官方服务端故障栽给用户（旧文案在 5xx 时也写"请确认可直连 hitran.org 且 API key 有效"）：新增 `_xsc_err_hint()` —— 401/403→key 未授权或配额超限；404→资源不存在；**5xx→官方服务端故障（实测官方 `/api/v2/<key>/...` 对无效 key 与正常 key 都返回 500，无法据此判断 key 有效性）**并给出"稍后重试／官网手动下载"的替代路径；URLError→网络或代理不可用；TimeoutError→超时
 - 修复「导入光谱」与「计算光谱」互相清空叠加：曲线视图的 `_view_mode` 实为 `spectrum` / `linestrength` 两个取值，旧判据只认 `spectrum`，导致"导入后计算"或"计算后导入"会静默丢弃已有曲线；现统一为 `_in_curve_view()`
 - 修复鼠标悬停读数在截面 σ 模式下把单位谎标成 `α (cm⁻¹)`（实际是 cm²/molecule）；外部导入数据单位未知，也不再谎标 α
 - 修复合并导出 CSV 时，若第一组数据为外部导入，表头单位被谎标成 `alpha cm-1`（现标注 `unknown (imported external data)`）

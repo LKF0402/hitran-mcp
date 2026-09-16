@@ -341,6 +341,7 @@ python app/hitran_app.py --selftest selftest.json
 - **清理缓存**：删除 `Hitran_Data/*.data|*.header` 即可，需要时自动重抓。
 - **截面库分子（如丙烷 C₃H₈）查不到**：该分子属截面库，与逐线库分开分发。用 `hitran_xsc_molecules` 检索 → `hitran_xsc_files` 列清单 → `hitran_xsc_download` 一键下载，再用 `hitran_cross_section` 读入；无 API key 时可按[双库桥接](#双库桥接)流程手动下载。
 - **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
+- **列截面清单报 HTTP 500 / "查询失败"**：这是官方 `/api/v2/` 接口的服务端故障（实测该接口对**无效 key 与正常 key 都返回 500**，所以 500 不能说明你的 key 有问题；免登录的在线探测 `hitran_xsc_search` 通常仍可用）。请稍后重试，或到 [hitran.org/xsc](https://hitran.org/xsc) 登录后手动下载截面文件放进 `xsc_data/`，再用 `hitran_cross_section` 读入。
 
 
 ## 免责声明

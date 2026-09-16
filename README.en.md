@@ -311,6 +311,7 @@ Verifies that the engine + data + network are fully usable in the packaged envir
 - **Clear cache**: Delete `Hitran_Data/*.data|*.header` — they will be auto-refetched when needed.
 - **Can't find XSC molecules (e.g., propane C₃H₈)**: it belongs to the cross-section database, distributed separately from the line-by-line database. Use `hitran_xsc_molecules` to search → `hitran_xsc_files` to list → `hitran_xsc_download` to fetch in one click, then read with `hitran_cross_section`; without an API key, follow the [Bridging the Two Channels](#bridging-the-two-channels) workflow to download manually.
 - **exe flagged by antivirus**: PyInstaller-packaged Python programs occasionally trigger false positives — add to trust list or run from source.
+- **Listing cross-sections fails with HTTP 500 / "query failed"**: this is a server-side failure of the official `/api/v2/` endpoints (measured: these endpoints return 500 for **both invalid and valid keys**, so a 500 does not indicate a bad key; the login-free online probe `hitran_xsc_search` usually still works). Retry later, or download the cross-section files manually from [hitran.org/xsc](https://hitran.org/xsc) into `xsc_data/` and read them with `hitran_cross_section`.
 
 
 ## Disclaimer
