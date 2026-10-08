@@ -777,13 +777,19 @@ def check_spectrum(nu, coef, name=None, *, numin=None, numax=None,
 # ----------------------------------------------------------------------------
 def provenance(name, numin, numax, T, P, iso=None, hitran_units=False):
     """返回溯源字符串（多行 '#' 注释），可写入 CSV 头或图注，防孤儿数据。"""
-    M, I, table = _resolve(name, iso)
+    canonical = _canonical(name)
+    M = SPECIES[canonical]
+    if iso == "all":
+        iso_desc, table = "all (natural-abundance merged)", f"{canonical}_all"
+    else:
+        I = int(iso) if iso is not None else ISO_ID.get(canonical, 1)
+        iso_desc, table = I, f"{canonical}_{M}_{I}"
     unit = ("cm2/molecule (cross section σ)"
             if hitran_units else "cm-1 (absorption coeff α)")
     return "\n".join([
         "# ===== HITRAN spectrum provenance =====",
         "# source: HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807)",
-        f"# molecule={name} (M={M}, iso={I})  table={table}",
+        f"# molecule={name} (M={M}, iso={iso_desc})  table={table}",
         f"# fetch window = {numin}–{numax} cm-1",
         f"# condition: T={T} K, P={P} atm, bath=air, profile=Voigt, wingHW default",
         f"# units: {unit}",
