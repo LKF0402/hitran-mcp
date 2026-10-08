@@ -962,18 +962,21 @@ class HitranLab(tk.Tk):
 
         self.nb = ttk.Notebook(right)
         self.nb.pack(fill=tk.BOTH, expand=True)
-        # 图层管理（曲线列表，可删除单条）
+        # 图层管理（曲线列表：双击隐藏/显示，选中后点删除）
         self.layer_tab = ttk.Frame(self.nb)
         self.nb.add(self.layer_tab, text="图层管理")
         layer_top = ttk.Frame(self.layer_tab)
         layer_top.pack(fill=tk.X, padx=8, pady=(8, 4))
-        ttk.Label(layer_top, text="已绘制曲线（双击或选中后点删除）：").pack(side="left")
-        self.layer_list = tk.Listbox(self.layer_tab, font=("Consolas", 9),
-                                      bg=self._surface, fg=self._text, selectbackground="#6B8FD4",
-                                      selectforeground="#FFFFFF", relief="flat", borderwidth=0,
-                                      activestyle="none")
-        self.layer_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
-        self.layer_list.bind("<Double-Button-1>", lambda e: self._remove_layer())
+        ttk.Label(layer_top, text="已绘制曲线（双击隐藏/显示，选中后点删除）：").pack(side="left")
+        self._make_eye_images()
+        self.layer_tree = ttk.Treeview(self.layer_tab, columns=("name",),
+                                       show="tree headings", height=8)
+        self.layer_tree.heading("#0", text="")
+        self.layer_tree.heading("name", text="曲线")
+        self.layer_tree.column("#0", width=28, minwidth=28, anchor="center", stretch=False)
+        self.layer_tree.column("name", width=360, anchor="w")
+        self.layer_tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
+        self.layer_tree.bind("<Double-Button-1>", self._on_layer_double_click)
         layer_btn = ttk.Frame(self.layer_tab)
         layer_btn.pack(fill=tk.X, padx=8, pady=(0, 8))
         ttk.Button(layer_btn, text="删除选中", command=self._remove_layer).pack(side="left")
@@ -1326,6 +1329,8 @@ class HitranLab(tk.Tk):
             # 遍历所有图层，找到最近的数据点
             parts = []
             for ds in self._overlay_data:
+                if not ds.get("visible", True):
+                    continue        # 隐藏图层不参与悬停提示
                 tag = ds["tag"]
                 res = ds["data"]["res"]
                 nu = res["nu"]
@@ -1394,27 +1399,93 @@ class HitranLab(tk.Tk):
         self._refresh_layers()
         self.status_var.set("画布已清空")
 
+    def _make_eye_images(self):
+        """生成眼睛图标（18×18，纯 tk 像素绘制，零依赖）：
+        可见 = 眼睛；隐藏 = 眼睛 + 红色斜杠。黑色像素置透明以贴合行背景。
+        """
+        self._eye_open_img = tk.PhotoImage(width=18, height=18)
+        self._eye_hidden_img = tk.PhotoImage(width=18, height=18)
+
+        def _draw(img, hidden):
+            blacks = []
+            for x in range(18):
+                for y in range(18):
+                    ex = (x - 9) / 7.0
+                    ey = (y - 9) / 4.0
+                    ix = (x - 9) / 5.4
+                    iy = (y - 9) / 2.8
+                    pupil = (x - 9) ** 2 + (y - 9) ** 2
+                    in_eye = (ex * ex + ey * ey) <= 1.0 and ((ix * ix + iy * iy) > 1.0
+                                                              or pupil <= 2.2 ** 2)
+                    if in_eye:
+                        color = "#4A4A52" if not hidden else "#9AA0AA"
+                    else:
+                        color = "#000000"
+                        blacks.append((x, y))
+                    if hidden and 4 <= x <= 14 and 4 <= y <= 14 and abs((x + y) - 18) <= 1.4:
+                        color = "#D06060"          # 斜杠压眼睛上
+                        if (x, y) in blacks:
+                            blacks.remove((x, y))
+                    img.put(color, (x, y))
+            for (x, y) in blacks:
+                img.transparency_set(x, y, True)
+
+        _draw(self._eye_open_img, hidden=False)
+        _draw(self._eye_hidden_img, hidden=True)
+
     def _refresh_layers(self):
-        """刷新图层管理列表。"""
-        if not hasattr(self, "layer_list"):
+        """刷新图层管理列表（眼睛图标反映可见性）。"""
+        if not hasattr(self, "layer_tree"):
             return
-        self.layer_list.delete(0, tk.END)
+        self.layer_tree.delete(*self.layer_tree.get_children())
         for i, ds in enumerate(self._overlay_data):
-            self.layer_list.insert(tk.END, f"[{i+1}] {ds['tag']}")
+            vis = ds.get("visible", True)
+            img = self._eye_open_img if vis else self._eye_hidden_img
+            self.layer_tree.insert("", "end", iid=str(i), image=img, values=(ds["tag"],))
+
+    def _on_layer_double_click(self, event):
+        """双击图层：隐藏/显示切换（原双击删除改为显式按钮删除，防误删）。"""
+        if not hasattr(self, "layer_tree"):
+            return
+        iid = self.layer_tree.identify_row(event.y)
+        if iid == "":
+            return
+        self._toggle_layer_visibility(int(iid))
+
+    def _toggle_layer_visibility(self, idx):
+        """切换图层可见性：曲线 set_visible + 图例只留可见条目 + 刷新图标。"""
+        if idx < 0 or idx >= len(self._overlay_data):
+            return
+        if not self._in_curve_view():
+            messagebox.showinfo("HitranLab", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
+            return
+        ds = self._overlay_data[idx]
+        ds["visible"] = not ds.get("visible", True)
+        v = ds["visible"]
+        for a in ds.get("lines", []):
+            try:
+                a.set_visible(v)
+            except Exception:
+                pass
+        # 图例联动：matplotlib 重建 legend 不会自动剔除隐藏曲线，须手动过滤
+        self._rebuild_legend()
+        self.canvas.draw()
+        self._refresh_layers()
+        self.status_var.set(f"已{'隐藏' if not v else '显示'}图层 [{idx+1}] {ds['tag']}")
 
     def _remove_layer(self):
-        """删除选中的图层，重新绘制剩余曲线。"""
-        if not hasattr(self, "layer_list"):
+        """删除选中的图层，重新绘制剩余曲线（仅通过「删除选中」按钮触发）。"""
+        if not hasattr(self, "layer_tree"):
             return
         # 仅在 Q(T) / 截面视图下拦截；曲线视图（spectrum / linestrength）一律允许删除。
         if not self._in_curve_view():
             messagebox.showinfo("HitranLab", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
             return
-        sel = self.layer_list.curselection()
+        sel = self.layer_tree.selection()
         if not sel:
             messagebox.showinfo("HitranLab", "请先在图层列表中选择一条曲线")
             return
-        idx = sel[0]
+        idx = int(sel[0])
         if idx >= len(self._overlay_data):
             return
         del self._overlay_data[idx]
@@ -1433,14 +1504,24 @@ class HitranLab(tk.Tk):
             self._refresh_layers()
             self.status_var.set("已删除选中图层")
             return
-        # 逐个重绘剩余图层
+        # 逐个重绘剩余图层（保留各图层原隐藏/显示状态，避免重绘后隐藏层变回可见）
         saved_data = list(self._overlay_data)
         self._overlay_data = []
         for ds in saved_data:
+            was_visible = ds.get("visible", True)
             if ds["data"].get("kind") == "linestrength":
                 self._render_linestrength(ds["data"])
             else:
                 self._render_spectrum(ds["data"])
+            if not was_visible and self._overlay_data:
+                nd = self._overlay_data[-1]
+                nd["visible"] = False
+                for a in nd.get("lines", []):
+                    try:
+                        a.set_visible(False)
+                    except Exception:
+                        pass
+        self._refresh_layers()
         self.status_var.set(f"已删除选中图层，剩余 {len(self._overlay_data)} 条")
 
     def _reset_params(self):
@@ -1657,6 +1738,7 @@ class HitranLab(tk.Tk):
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
             names = [s["name"] for s in specs]
+            iso = specs[0].get("iso") if specs else self._selected_iso()
         except ValueError as e:
             self._show_error(str(e))
             return
@@ -1667,11 +1749,11 @@ class HitranLab(tk.Tk):
                 top_n = 15
         except ValueError:
             top_n = 15
-        self.worker.run(self._job_lines, names, numin, numax, top_n)
+        self.worker.run(self._job_lines, names, numin, numax, top_n, iso)
 
-    def _job_lines(self, names, numin, numax, top_n=15):
+    def _job_lines(self, names, numin, numax, top_n=15, iso=None):
         """取一个或多个分子的窗口内全部线，合并后按线强降序排序。
-        每条线附加 molecule 字段标注来源分子。"""
+        每条线附加 molecule 字段标注来源分子。iso 与谱线计算同口径传递。"""
         if isinstance(names, str):
             names = [names]
         all_lines = []
@@ -1679,7 +1761,7 @@ class HitranLab(tk.Tk):
         warnings = []
         mol_infos = []                       # 每分子溯源信息（导出线表时写头）
         for name in names:
-            data = hm.t_lines(name, numin, numax, top_n=100000)
+            data = hm.t_lines(name, numin, numax, top_n=100000, iso=iso)
             lines = data.get("lines", [])
             for ln in lines:
                 ln["molecule"] = name
@@ -2233,6 +2315,7 @@ class HitranLab(tk.Tk):
         nu, per, total = res["nu"], res["per"], res["total"]
         self._last_fig_data = d
         ax = self.ax
+        artists = []              # 本图层所有 matplotlib 艺术家（隐藏/显示用）
         # 从 Q(T)/截面视图切过来才清空旧图层；已是曲线视图则保留（支持导入谱与计算谱叠加）
         if not self._in_curve_view():
             self._view_mode = "linestrength"
@@ -2253,8 +2336,6 @@ class HitranLab(tk.Tk):
             tag = f"{disp_label} {float(numin):g}-{float(numax):g} T={float(T):g}K P={float(P):g}atm"
         else:
             tag = disp_label
-        self._overlay_data.append({"tag": tag, "data": d})
-
         if first_draw:
             ax.clear()  # 首次绘制清空提示文字
 
@@ -2267,20 +2348,20 @@ class HitranLab(tk.Tk):
         if first_draw:
             # 首次绘制：画各组分 + TOTAL，图例含参数标签
             if show_t:
-                ax.plot(nu, res["trans"], color="#6B8FD4", lw=1.4, label=f"{tag} transmittance")
+                artists += ax.plot(nu, res["trans"], color="#6B8FD4", lw=1.4, label=f"{tag} transmittance")
                 ylab = "Transmittance"
             else:
                 if len(per) > 1:
                     # 多组分：各组分用颜色循环，TOTAL 用白色
                     for i, (lab, c) in enumerate(per.items()):
-                        ax.plot(nu, c, color=OVERLAY_COLORS[i % len(OVERLAY_COLORS)],
-                                lw=0.9, alpha=0.85, label=lab)
-                    ax.plot(nu, total, color="#D8D8DE", lw=1.5, label=f"{tag} TOTAL")
+                        artists += ax.plot(nu, c, color=OVERLAY_COLORS[i % len(OVERLAY_COLORS)],
+                                           lw=0.9, alpha=0.85, label=lab)
+                    artists += ax.plot(nu, total, color="#D8D8DE", lw=1.5, label=f"{tag} TOTAL")
                 else:
                     # 单组分：用颜色循环（与叠加一致）
                     lab = list(per.keys())[0]
                     color = OVERLAY_COLORS[self._overlay_count % len(OVERLAY_COLORS)]
-                    ax.plot(nu, per[lab], color=color, lw=1.5, label=tag)
+                    artists += ax.plot(nu, per[lab], color=color, lw=1.5, label=tag)
                 ylab = unit_lab
             ax.set_xlabel("Wavenumber (cm$^{-1}$)")
             ax.set_ylabel(ylab)
@@ -2289,10 +2370,7 @@ class HitranLab(tk.Tk):
                 ax.grid(alpha=0.4, lw=0.6)
             else:
                 ax.grid(False)
-            if self._show_legend:
-                ax.legend(fontsize=7, framealpha=0.9)
-            elif ax.get_legend():
-                ax.get_legend().remove()
+            self._rebuild_legend()
             if not _ylog and not show_t:
                 ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
         else:
@@ -2304,12 +2382,9 @@ class HitranLab(tk.Tk):
             else:
                 ydata = total if len(per) > 1 else list(per.values())[0]
                 ylab = unit_lab
-            ax.plot(nu, ydata, color=color, lw=1.4, label=tag)
+            artists += ax.plot(nu, ydata, color=color, lw=1.4, label=tag)
             ax.set_ylabel(ylab)
-            if self._show_legend:
-                ax.legend(fontsize=7, framealpha=0.9)
-            elif ax.get_legend():
-                ax.get_legend().remove()
+            self._rebuild_legend()
             ax.set_title(f"叠加对比（{self._overlay_count + 1} 条曲线）", fontsize=11, pad=10)
 
         # 每次绘制都应用一次（叠加层也生效），避免"切换复选框后再叠加不生效"
@@ -2317,6 +2392,8 @@ class HitranLab(tk.Tk):
         self._overlay_count += 1
         self.fig.tight_layout()
         self.canvas.draw()
+        self._overlay_data.append({"tag": tag, "data": d, "visible": True,
+                                   "lines": artists})
         self._refresh_layers()
 
         # 峰统计
@@ -2363,24 +2440,24 @@ class HitranLab(tk.Tk):
             self._overlay_count = 0
             self._overlay_data = []
             self.ax.clear()
-        self._overlay_data.append({"tag": tag, "data": d})
+        artists = []              # 本图层所有 matplotlib 艺术家（隐藏/显示用）
         first_draw = (self._overlay_count == 0)
         if first_draw:
             self.ax.clear()
         color = OVERLAY_COLORS[self._overlay_count % len(OVERLAY_COLORS)]
         # 对数轴无法表示 0，底端用 S.min()/1000 代替
         ymin = float(S.min()) / 1000.0 if len(S) > 0 and S.min() > 0 else 1e-30
-        self.ax.vlines(nu, ymin, S, color=color, lw=0.8, alpha=0.8, label=tag)
+        artists.append(self.ax.vlines(nu, ymin, S, color=color, lw=0.8, alpha=0.8, label=tag))
         # 为前 5 条最强线添加波数标注
         if len(nu) > 0 and len(S) > 0:
             import numpy as np
             S_arr = np.array(S)
             top_idx = np.argsort(S_arr)[-5:][::-1]  # 前 5 强线
             for idx in top_idx:
-                self.ax.annotate(f"{nu[idx]:.2f}", xy=(nu[idx], float(S[idx])),
-                                  xytext=(0, 5), textcoords="offset points",
-                                  fontsize=7, color=color, alpha=0.9,
-                                  ha="center", va="bottom")
+                artists.append(self.ax.annotate(f"{nu[idx]:.2f}", xy=(nu[idx], float(S[idx])),
+                                                xytext=(0, 5), textcoords="offset points",
+                                                fontsize=7, color=color, alpha=0.9,
+                                                ha="center", va="bottom"))
         self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
         self.ax.set_ylabel("Line strength S(296K) (cm/molecule)")
         # 与吸收谱统一口径：尊重「对数坐标」复选框（默认线性，勾选才对数）
@@ -2390,11 +2467,13 @@ class HitranLab(tk.Tk):
         else:
             self.ax.set_yscale("log")
         self.ax.grid(alpha=0.4, lw=0.6)
-        self.ax.legend(fontsize=7, framealpha=0.9)
+        self._rebuild_legend()
         self.ax.set_title("Line Strength S(296K)" if first_draw else f"叠加对比（{self._overlay_count + 1} 条）", fontsize=11, pad=10)
         self._overlay_count += 1
         self.fig.tight_layout()
         self.canvas.draw()
+        self._overlay_data.append({"tag": tag, "data": d, "visible": True,
+                                   "lines": artists})
         self._refresh_layers()
         # 显示警告（线强为 HITRAN 参考温度 296K，非用户设定温度）
         warnings = res.get("warnings", [])
@@ -2561,8 +2640,12 @@ class HitranLab(tk.Tk):
         if not p:
             return
 
-        datasets = self._overlay_data
-        # 用第一个数据集的波数轴作为基准
+        # 隐藏图层不参与导出（所见即所得：图上没画的曲线不进 CSV）
+        datasets = [d for d in self._overlay_data if d.get("visible", True)]
+        if not datasets:
+            messagebox.showinfo("HitranLab", "所有图层均已隐藏，无可见数据可导出")
+            return
+        # 用第一个可见数据集的波数轴作为基准
         first_res = datasets[0]["data"]["res"]
         nu = first_res["nu"]
         first_mode = datasets[0]["data"].get("mode", "alpha")
@@ -2800,12 +2883,9 @@ class HitranLab(tk.Tk):
             color = OVERLAY_COLORS[self._overlay_count % len(OVERLAY_COLORS)]
             if self._overlay_count == 0:
                 self.ax.clear()
-            self.ax.plot(nu, coef, color=color, lw=1.4, label=tag)
+            imported_lines = self.ax.plot(nu, coef, color=color, lw=1.4, label=tag)
             self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
-            if self._show_legend:
-                self.ax.legend(fontsize=7, framealpha=0.9)
-            elif self.ax.get_legend():
-                self.ax.get_legend().remove()
+            self._rebuild_legend()
             if self._show_grid:
                 self.ax.grid(alpha=0.4, lw=0.6)
             else:
@@ -2816,7 +2896,8 @@ class HitranLab(tk.Tk):
             self._overlay_data.append({"tag": tag, "data": {
                 "kind": "imported", "label": tag,
                 "res": {"nu": np.array(nu), "per": {tag: np.array(coef)}, "total": None},
-                "hitran_units": False, "ylog": False}})
+                "hitran_units": False, "ylog": False},
+                "visible": True, "lines": imported_lines})
             self._refresh_layers()
             self.status_var.set(f"已导入 {len(nu)} 个数据点: {Path(p).name}")
         except Exception as e:
@@ -2843,8 +2924,12 @@ class HitranLab(tk.Tk):
             return
         try:
             import numpy as np
+            copied = [d for d in self._overlay_data if d.get("visible", True)]
+            if not copied:
+                self._show_error("所有图层均已隐藏，无可见数据可复制")
+                return
             lines = []
-            for ds in self._overlay_data:
+            for ds in copied:
                 res = ds["data"]["res"]
                 nu = np.asarray(res["nu"])
                 per = res["per"]
@@ -2861,7 +2946,7 @@ class HitranLab(tk.Tk):
                 lines.append("")
             self.clipboard_clear()
             self.clipboard_append("\n".join(lines))
-            self.status_var.set(f"数据已复制到剪贴板（{len(self._overlay_data)} 组）")
+            self.status_var.set(f"数据已复制到剪贴板（{len(copied)} 组可见）")
         except Exception as e:
             self._show_error(f"复制数据失败: {e}")
 
@@ -3011,15 +3096,30 @@ class HitranLab(tk.Tk):
             self.ax.grid(False)
         self.canvas.draw()
 
-    def _toggle_legend(self):
-        self._show_legend = self._var_legend.get()
-        leg = self.ax.get_legend()
-        if self._show_legend:
-            if leg is None:
-                self.ax.legend(fontsize=7, framealpha=0.9)
-        else:
+    def _rebuild_legend(self):
+        """按当前可见性重建图例：只纳入可见曲线，隐藏图层不得随任何图例重建复活。"""
+        if not self._show_legend:
+            leg = self.ax.get_legend()
             if leg is not None:
                 leg.remove()
+            return
+        handles, labels = [], []
+        for a in list(self.ax.lines) + list(self.ax.collections):
+            if a.get_visible():
+                lab = a.get_label() if hasattr(a, "get_label") else ""
+                if lab and not lab.startswith("_"):
+                    handles.append(a)
+                    labels.append(lab)
+        if handles:
+            self.ax.legend(handles, labels, fontsize=7, framealpha=0.9)
+        else:
+            leg = self.ax.get_legend()
+            if leg is not None:
+                leg.remove()
+
+    def _toggle_legend(self):
+        self._show_legend = self._var_legend.get()
+        self._rebuild_legend()
         self.canvas.draw()
 
     def _show_converter(self):
@@ -3109,46 +3209,94 @@ class HitranLab(tk.Tk):
             ttk.Label(row, text=desc, background=self._bg).pack(side="left")
 
     def _show_help(self):
-        """使用说明。"""
-        help_text = """HitranLab 使用说明
+        """使用说明（完整版：基本流程 / 参数 / 模式 / 图层 / 截面 / 导出 / 工具 / 快捷键）。"""
+        help_text = """HitranLab 使用说明（HITRAN2024 · HAPI 引擎 · TIPS-2025）
 
-【基本流程】
-1. 选择分子和波段（波数范围）
-2. 设置温度、压力、步长
-3. 选择输出类型（吸收系数/透过率/截面）
-4. 点击「计算并绘图」
+━━ 一、快速上手 ━━
+1. 选择分子（支持中文名 / 化学式 / 英文名检索，回车确认）
+2. 设置波段窗口 ν（cm⁻¹）与步长（默认 2962–2969 cm⁻¹，步长 0.01）
+3. 设置工况：温度 T (K)、压力 P (atm)、光程 L (cm)
+4. 选择输出模式与线型（默认吸收系数 α + Voigt）
+5. 点击「▶ 计算并绘图」；多次点击自动叠加对比
 
-【叠加绘图】
-- 多次点击「计算并绘图」会自动叠加曲线
-- 在「图层管理」tab 可删除单条曲线
-- 「清空图」重置画布
+━━ 二、参数说明 ━━
+【分子与波段】
+· 分子：HITRAN 全部 49 种分子（含同位素子库，支持“水”“methane”等别名）
+· 同位素：主同位素（默认）/ 全部（按丰度叠加，密集谱区推荐）/ 指定编号
+· 窗口与步长：决定计算点数与分辨率；步长越小越精细，计算越慢
+【工况】
+· T：热力学温度（K），参与配分函数 Q(T) 与线强度温度缩放
+· P：压力（atm），决定碰撞展宽（Voigt/Lorentz 半宽）
+· L：光程（cm），仅“透过率 T”模式使用，按比尔-朗伯定律 T = exp(−αL)
+【计算选项】
+· 输出模式：吸收系数 α (cm⁻¹) / 截面 σ (cm²/molecule) / 线强 S(T) / 透过率 T
+· 线型：voigt（默认，兼顾多普勒+碰撞）/ lorentz / gauss / doppler / ht（Hartmann-Tran）/ sdvoigt
+· 对数坐标：弱吸收区细节更直观；强线列表与 Q(T) 视图同步生效
+· 翼宽 wingHW (cm⁻¹)：线型截断半径，默认 50 cm⁻¹，决定计算效率与远翼精度
+· 强度截断 cutoff (cm/molecule)：低于该线强的谱线直接跳过，空 = 不截断
+【辅助功能参数】
+· 强线数：窗口内最强 N 条谱线列表条数（默认 15）
+· Q(T) 温度范围：配分函数曲线视图的扫描区间（默认 200–400 K，步长 20 K）
 
-【混合气】
-- 在「混合气」区添加多组分
-- 浓度留空表示纯气体
+━━ 三、混合气 ━━
+· 表格中添加多组分分子 + 浓度；浓度单位可选摩尔分数 / ppm / ppb
+· 浓度留空 = 纯气体；各组分总和可 < 1，不可 > 1
+· 计算时输出各组分谱线 + TOTAL 叠加曲线
 
-【截面文件】
-- 支持 HITRAN 原生 .xsc（1 行定宽头 + 每行 10 个 σ）与两列 HOTW/CSV 文本，自动识别
-- 用于 HITRAN 逐线库未收录的重分子（截面子库 600+ 种）
-- 「搜索并下载」：气体名支持中文名 / 化学式 / 英文名（丙烷、C3H8、propane 都行），
-  列出全部 T/p 版本后可勾选下载到 xsc_data/（需 API Key）
+━━ 四、叠加与图层管理 ━━
+· 多次「计算并绘图」自动叠加新曲线（颜色循环区分）
+· 图层管理 tab：
+  · 双击曲线 = 隐藏/显示切换（眼睛图标：可见=眼睛，隐藏=眼睛+斜杠）
+  · 选中后点「删除选中」= 显式删除该图层；「清空全部」= 清空画布
+· 隐藏图层不参与鼠标悬停数值提示、CSV 导出与剪贴板复制（所见即所得）
+· 「清空图」重置画布并清空叠加；「重置参数」恢复默认工况
 
-【导出】
-- CSV：导出所有叠加曲线数据
-- PNG：导出当前图像
+━━ 五、辅助计算 ━━
+· 强线列表：窗口内最强 N 条谱线（分子 / 波数 / S / γ_air / E″），可导出
+· 配分函数：当前分子 Q(T) 数值查询
+· Q(T) 曲线：Q(T) 随温度变化曲线（切换视图后需「清空图」返回谱线视图）
 
-【快捷键】
-- Ctrl+S：保存项目
-- Alt+F4：退出
+━━ 六、截面文件（逐线库未覆盖的重分子）━━
+· 支持 HITRAN 原生 .xsc（定宽头 + 每行 10 个 σ）与两列 HOTW/CSV 文本，自动识别
+· 「搜索并下载」：按中文名 / 化学式 / 英文名检索 HITRAN 截面子库（600+ 种），
+  列出全部 T/p 版本后勾选下载到 xsc_data/（需在「工具 → 配置 API key」填入 HAPI key）
+
+━━ 七、数据导出 ━━
+· CSV：合并导出全部可见叠加曲线（波数轴需一致，不同窗口/步长无法合并）
+· PNG：导出当前画布图像；编辑菜单可“复制图像 / 复制数据到剪贴板”
+· 项目文件：Ctrl+S 保存参数 + 混合气配置（JSON），Ctrl+O 恢复（谱线需重新计算）
+
+━━ 八、菜单与工具 ━━
+· 视图：网格 / 图例开关，浅色 / 深色主题
+· 工具：波长 ↔ 波数换算器；HITRAN 分子表查询；API key 配置；线表缓存清理
+· 编辑：首选项（默认参数 / 主题等）
+· 帮助：检查更新（自动下载升级）/ 关于
+
+━━ 九、快捷键 ━━
+Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
+左键拖拽 平移视图 · 右键拖拽 缩放视图 · 滚轮 缩放（matplotlib 工具栏）
+鼠标悬停谱图：状态栏实时显示 ν 与 α / σ / T
+
+━━ 十、数据纪律 ━━
+· 计算基于 HITRAN2024 逐线库（HAPI 引擎）；线强 S 默认参考温度 296 K，
+  与用户设定温度 T 无关时请以“线强 S(T)”模式为准
+· 外部导入谱单位未知时如实标注，不伪装成吸收系数
+· 首次取数需联网下载线表（本地缓存，之后离线可用）；API key 仅截面下载需要
+· 计算为理论仿真，用于方案设计与结果对照，勿直接冒充实验数据
 """
         win = tk.Toplevel(self)
         win.title("使用说明")
-        win.geometry("480x520")
+        win.geometry("620x700")
         win.configure(bg=self._bg)
         win.transient(self)
-        txt = tk.Text(win, font=("Microsoft YaHei", 9), bg=self._surface, fg=self._text,
+        help_frame = ttk.Frame(win)
+        help_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        txt = tk.Text(help_frame, font=("Microsoft YaHei", 9), bg=self._surface, fg=self._text,
                       wrap="word", padx=12, pady=10, relief="flat")
-        txt.pack(fill="both", expand=True, padx=10, pady=10)
+        vsb = ttk.Scrollbar(help_frame, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=vsb.set)
+        txt.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
         txt.insert("1.0", help_text)
         txt.configure(state="disabled")
 
@@ -3698,8 +3846,8 @@ class HitranLab(tk.Tk):
             stop_hover = c["SURFACE2"] if self._theme == "dark" else c["SURFACE3"]
             self.btn_stop.configure(bg=stop_bg, hover_bg=stop_hover,
                                      disabled_bg=stop_bg)
-        # 更新 Listbox/Text 等直接设置颜色的控件
-        for attr in ['layer_list', 'peak_text', 'xsc_text', 'stat_text']:
+        # 更新 Listbox/Text 等直接设置颜色的控件（图层管理已换 Treeview，由 ttk style 统一管理）
+        for attr in ['peak_text', 'xsc_text', 'stat_text']:
             widget = getattr(self, attr, None)
             if widget is not None:
                 try:

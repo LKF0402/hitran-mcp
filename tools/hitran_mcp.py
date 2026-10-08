@@ -34,7 +34,7 @@ if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.5.4"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.6.0"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -1057,22 +1057,40 @@ def t_fetch(name, numin, numax, iso=None, force=False):
 
     关键：窗口未被缓存表覆盖时自动重抓，并如实报告"是否覆盖请求窗口"，
     避免历史上"fetch 返回 194 条线（其实是旧表行数）"的误导。
+    同位素口径与谱计算一致：iso='all' 时逐入选同位素确认并披露 per_iso 摘要；
+    主字段仍为主同位素表（与旧调用兼容）。
     """
     ht = _hitran()
     formula, M = _resolve_M(name)
-    I = _isotopologues(M, iso)[0][0]
-    table, cov, refetched = _ensure_table_for(M, I, float(numin), float(numax), bool(force))
+    isos = _isotopologues(M, iso)
+    all_all = (isinstance(iso, str) and iso.strip().lower() in ("all", "全部", "full"))
     np = _np()
     import hapi
-    nu = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
-    n_in = int(((nu >= float(numin)) & (nu <= float(numax))).sum())
-    out = {"molecule": formula, "M": M, "iso": I,
-           "table": table, "n_lines_table": int(cov[2]), "n_lines_in_window": n_in,
-           "coverage_cm-1": [round(cov[0], 3), round(cov[1], 3)],
+    per_iso, covers = [], True
+    for I, ab in isos:
+        table, cov, refetched = _ensure_table_for(M, I, float(numin), float(numax), bool(force))
+        nu = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
+        n_in = int(((nu >= float(numin)) & (nu <= float(numax))).sum())
+        per_iso.append({"I": I, "abundance": float(ab), "table": table,
+                        "n_lines_table": int(cov[2]),
+                        "n_lines_in_window": n_in,
+                        "coverage_cm-1": [round(cov[0], 3), round(cov[1], 3)],
+                        "covers_request": bool(cov[0] <= numin and cov[1] >= numax),
+                        "refetched": refetched})
+        covers = covers and per_iso[-1]["covers_request"]
+    I0 = per_iso[0]["I"]
+    out = {"molecule": formula, "M": M, "iso": "all" if all_all else I0,
+           "table": per_iso[0]["table"],
+           "n_lines_table": int(per_iso[0]["n_lines_table"]),
+           "n_lines_in_window": int(per_iso[0]["n_lines_in_window"]),
+           "coverage_cm-1": per_iso[0]["coverage_cm-1"],
            "requested_window_cm-1": [float(numin), float(numax)],
-           "covers_request": bool(cov[0] <= numin and cov[1] >= numax),
-           "refetched": refetched, "cache_dir": str(ht.CACHE_ROOT)}
-    if n_in == 0:
+           "covers_request": covers,
+           "n_iso_merged": len(per_iso),
+           "isotopologues": per_iso if all_all else [],
+           "refetched": any(p["refetched"] for p in per_iso),
+           "cache_dir": str(ht.CACHE_ROOT)}
+    if out["n_lines_in_window"] == 0:
         out["warning"] = (f"{name} 在 {numin}-{numax} cm-1 内 0 条收录线；"
                           f"严禁据此判定'无干扰'，请确认分子/同位素/窗口。")
     return out
@@ -1081,36 +1099,61 @@ def t_fetch(name, numin, numax, iso=None, force=False):
 def t_lines(name, numin, numax, iso=None, top_n=10, min_intensity=None, force=False):
     """窗口内最强 N 条线（选线/干扰分析用）：位置、线强、空气展宽、低态能量。
 
+    同位素口径与谱计算 _absorption 严格一致：
+      iso=None   → 主同位素线；
+      iso='all'  → 全部入选同位素线合并（每条标注 I 与自然丰度），按线强降序取前 N；
+      iso=int    → 指定同位素线。
     线表按窗口自动校正（见 _ensure_table）；窗口内 0 条线时给出显式 warning。
     """
     ht, np = _hitran(), _np()
     import hapi
     numin, numax = float(numin), float(numax)
     formula, M = _resolve_M(name)
-    I = _isotopologues(M, iso)[0][0]
-    table, cov, refetched = _ensure_table_for(M, I, numin, numax, bool(force))
-    nu = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
-    sw = np.asarray(hapi.getColumn(table, "sw"), dtype=float)
-    try:
-        ga = np.asarray(hapi.getColumn(table, "gamma_air"), dtype=float)
-        el = np.asarray(hapi.getColumn(table, "elower"), dtype=float)
-    except Exception:                       # 老表可能缺列，降级为只给位置/强度
-        ga = np.zeros_like(nu); el = np.zeros_like(nu)
-    m = (nu >= numin) & (nu <= numax)
-    if min_intensity is not None:
-        m &= sw >= float(min_intensity)
-    idx = np.where(m)[0]
-    idx = idx[np.argsort(sw[idx])[::-1]][: int(top_n)]
-    out = {"molecule": formula, "M": M, "iso": I,
-           "table": table, "coverage_cm-1": [round(cov[0], 3), round(cov[1], 3)],
-           "n_lines_table": int(cov[2]), "n_in_window": int(m.sum()),
-           "refetched": refetched,
-           "lines": [{"nu_cm-1": float(nu[i]), "S_cm_per_molecule": float(sw[i]),
-                      "gamma_air": float(ga[i]), "E_lower_cm-1": float(el[i])}
-                     for i in idx]}
-    if int(m.sum()) == 0:
+    isos = _isotopologues(M, iso)
+    rows, skipped = [], []
+    n_in_total = 0
+    n_table_total = 0
+    refetched_any = False
+    cov_lo = cov_hi = None
+    for I, ab in isos:
+        try:
+            table, cov, refetched = _ensure_table_for(M, I, numin, numax, bool(force))
+        except Exception as e:               # 稀有同位素抓不到 → 跳过并报告，不拖垮整体
+            skipped.append({"I": I, "abundance": ab, "reason": str(e)[:160]})
+            continue
+        refetched_any = refetched_any or refetched
+        if cov:
+            cov_lo = float(cov[0]) if cov_lo is None else min(cov_lo, float(cov[0]))
+            cov_hi = float(cov[1]) if cov_hi is None else max(cov_hi, float(cov[1]))
+        n_table_total += int(cov[2]) if cov else 0
+        nu = np.asarray(hapi.getColumn(table, "nu"), dtype=float)
+        sw = np.asarray(hapi.getColumn(table, "sw"), dtype=float)
+        try:
+            ga = np.asarray(hapi.getColumn(table, "gamma_air"), dtype=float)
+            el = np.asarray(hapi.getColumn(table, "elower"), dtype=float)
+        except Exception:                    # 老表可能缺列，降级为只给位置/强度
+            ga = np.zeros_like(nu); el = np.zeros_like(nu)
+        m = (nu >= numin) & (nu <= numax)
+        if min_intensity is not None:
+            m &= sw >= float(min_intensity)
+        idx = np.where(m)[0]
+        n_in_total += int(m.sum())
+        for i in idx:
+            rows.append({"I": int(I), "abundance": float(ab),
+                         "nu_cm-1": float(nu[i]), "S_cm_per_molecule": float(sw[i]),
+                         "gamma_air": float(ga[i]), "E_lower_cm-1": float(el[i])})
+    rows.sort(key=lambda r: r["S_cm_per_molecule"], reverse=True)
+    rows = rows[: int(top_n)]
+    out = {"molecule": formula, "M": M,
+           "iso": "all" if (isinstance(iso, str) and iso.strip().lower() in ("all", "全部", "full")) else int(isos[0][0]),
+           "n_iso_merged": len(isos), "iso_skipped": skipped,
+           "coverage_cm-1": [round(cov_lo, 3), round(cov_hi, 3)] if cov_lo is not None else None,
+           "n_lines_table": n_table_total, "n_in_window": n_in_total,
+           "refetched": refetched_any,
+           "lines": rows}
+    if n_in_total == 0:
         out["warning"] = (f"{name} 在 {numin}-{numax} cm-1 内 0 条收录线"
-                          f"（线表覆盖 {round(cov[0],2)}–{round(cov[1],2)} cm-1），"
+                          f"（线表覆盖 {round(cov_lo or numin,2)}–{round(cov_hi or numax,2)} cm-1），"
                           f"严禁据此判定'无干扰'。")
     return out
 
@@ -1119,7 +1162,8 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
                numin=None, numax=None,
                T=None, P=None, step=None, wingHW=None, mode=None,
                path_length_cm=None, hitran_units=False, save=True, force=False,
-               strict=False, min_abundance=1e-4, profile="voigt", diluent=None):
+               strict=False, min_abundance=1e-4, profile="voigt", diluent=None,
+               intensity_cutoff=None):
     """吸收/透过率谱（支持混合气），返回 CSV 路径 + 峰值/积分 + 线表信息 + 告警。
 
     未给出的参数会用默认值，但**如实列在 assumed_defaults 里**，调用方应据此向用户确认
@@ -1144,7 +1188,8 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
         assumed.append("path_length_cm=1 (默认光程)")
 
     res = _compute(sp_list, numin, numax, T, P, step, wingHW, mode,
-                   path_length_cm, hitran_units, profile, diluent, min_abundance)
+                   path_length_cm, hitran_units, profile, diluent, min_abundance,
+                   intensity_cutoff=intensity_cutoff)
     warnings = list(res["warnings"])
     if len(sp_list) > 1 and any(not s.get("mole_frac_given") for s in sp_list):
         warnings.append(
@@ -1176,7 +1221,8 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
            T=None, P=None, step=None, wingHW=None, mode=None,
            path_length_cm=None, hitran_units=False, title=None, ylog=False,
            dpi=160, save_csv=True, force=False, strict=False,
-           profile="voigt", diluent=None, min_abundance=1e-4):
+           profile="voigt", diluent=None, min_abundance=1e-4,
+           intensity_cutoff=None):
     """绘制谱图 PNG（多物种叠加 + 总谱），返回 PNG/CSV 路径。参数口径同 hitran_spectrum。"""
     if specs_csv is not None:
         if specs or name:
@@ -1194,7 +1240,8 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
         if not s.get("mole_frac_given"):
             assumed.append(f"{s['name']}.mole_frac=1 (纯气体)")
     res = _compute(sp_list, numin, numax, T, P, step, wingHW, mode,
-                   path_length_cm, hitran_units, profile, diluent, min_abundance)
+                   path_length_cm, hitran_units, profile, diluent, min_abundance,
+                   intensity_cutoff=intensity_cutoff)
     warnings = list(res["warnings"])
     if len(sp_list) > 1 and any(not s.get("mole_frac_given") for s in sp_list):
         warnings.append(
@@ -2448,15 +2495,23 @@ def main():
 
 
 def selftest():
-    """冒烟自测（直接函数调用，不走协议）。"""
-    print("— species:", t_species("CO")["M"])
-    print("— lines  :", t_lines("CO", 2109, 2112, top_n=3)["lines"][0])
-    print("— spec   :", {k: v for k, v in t_spectrum(name="CO", numin=2140, numax=2146,
-                                                     T=296, P=1.0, step=0.01).items()
-                         if k != "peaks"})
+    """冒烟自测（直接函数调用，不走协议）。
+
+    分两段：离线核心段（谱线/截面/缓存统计，必跑，有本地缓存即可）+
+    在线可选段（截面子库探测、HAPI2 在线初始化，断网自动跳过）。
+    """
+    online = _check_network(timeout=3)
+    _opt = "ONLINE" if online else "OFFLINE"
+    print(f"— [env] 网络探测: {_opt}（可选在线段将{'运行' if online else '跳过'}）")
+    # ===== 离线核心段（必跑）=====
+    print("— [core] species:", t_species("CO")["M"])
+    print("— [core] lines  :", t_lines("CO", 2109, 2112, top_n=3)["lines"][0])
+    print("— [core] spec   :", {k: v for k, v in t_spectrum(name="CO", numin=2140, numax=2146,
+                                                            T=296, P=1.0, step=0.01).items()
+                                if k != "peaks"})
     mix = t_plot(specs=[{"name": "CO", "mole_frac": 100e-6}, {"name": "H2O", "mole_frac": 0.02}],
                  numin=2140, numax=2146, T=296, P=1.0, step=0.01)
-    print("— plot   :", mix["png"])
+    print("— [core] plot   :", mix["png"])
     # 截面链路自测：合成 HOTW 截面文件（两列 ν–σ，高斯峰模拟截面谱）
     import numpy as _np2
     nu_s = _np2.linspace(2800, 3100, 1501)
@@ -2469,26 +2524,29 @@ def selftest():
             f.write(f"{a:.4f} {b:.6e}\n")
     xs = t_cross_section(file_path=str(demo), source_label="demo xsc",
                          numin=2900, numax=3000)
-    print("— xsc    :", {k: xs[k] for k in ("n_points_file", "n_points_in_window", "peak")},
+    print("— [core] xsc    :", {k: xs[k] for k in ("n_points_file", "n_points_in_window", "peak")},
           "png:", xs["png"])
     # specs_csv 多物种叠加（复用缓存）
     mix2 = t_plot(specs_csv="CO:0.0001,H2O:0.02", numin=2140, numax=2146,
                   T=296, P=1.0, step=0.01)
-    print("— mix2   :", mix2["png"], "| per:", list(mix2["peaks"].keys()))
+    print("— [core] mix2   :", mix2["png"], "| per:", list(mix2["peaks"].keys()))
     # 截面目录列出（个人数据目录，可能为空）
     lst = t_cross_section()
-    print("— xscdir :", len(lst["available_files"]), "files ->", lst["hint"][:60])
-    # 在线探测截面子库（真实网络）
-    try:
-        sr = t_xsc_search("Propane")
-        print("— xsearch:", "found" if sr["found"] else "NOT FOUND",
-              "| id:", sr.get("molecule_id"), "| n_files:", sr.get("n_files"))
-    except Exception as e:
-        print("— xsearch: ERR", str(e)[:100])
-    # 运行状态
-    st = t_apikey_status(probe=True)
-    print("— status :", {k: st[k] for k in ("api_key_configured", "line_cache_files",
-                                            "xsc_data_files", "output_files")})
+    print("— [core] xscdir :", len(lst["available_files"]), "files ->", lst["hint"][:60])
+    # ===== 在线可选段（断网跳过，不影响核心结论）=====
+    if online:
+        try:
+            sr = t_xsc_search("Propane")
+            print("— [opt]  xsearch:", "found" if sr["found"] else "NOT FOUND",
+                  "| id:", sr.get("molecule_id"), "| n_files:", sr.get("n_files"))
+        except Exception as e:
+            print("— [opt]  xsearch: ERR", str(e)[:100])
+    else:
+        print("— [opt]  xsearch: SKIP（离线，可选在线项）")
+    # 运行状态：probe 仅在在线时开启（避免离线强制 HAPI2 bootstrap + 拖慢内存）
+    st = t_apikey_status(probe=online)
+    print("— [core] status :", {k: st[k] for k in ("api_key_configured", "line_cache_files",
+                                                    "xsc_data_files", "output_files")})
 
 
 if __name__ == "__main__":
