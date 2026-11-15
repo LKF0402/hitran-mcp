@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""HitranLab 自动更新安全原语（纯标准库，便于离线单测）。
+"""HitranLink 自动更新安全原语（纯标准库，便于离线单测）。
 
 设计目标：
 - 更新包 URL 只能指向本仓库的 GitHub Release，拒绝任意 https 主机；
@@ -19,11 +19,11 @@ from urllib.parse import urlsplit
 
 REPO = "LKF0402/hitran-mcp"
 UPDATE_HOST = "github.com"
-UPDATE_ASSET = "HitranLab-windows-x64.zip"
+UPDATE_ASSET = "HitranLink-windows-x64.zip"
 MAX_UPDATE_BYTES = 300 * 1024 * 1024          # 单包上限 300 MB
 MAX_EXTRACT_BYTES = 700 * 1024 * 1024         # 解压总量上限 700 MB
 MAX_ENTRIES = 20_000
-EXE_NAME = "HitranLab.exe"
+EXE_NAME = "HitranLink.exe"
 ALLOWED_TOP_LEVEL = {EXE_NAME, "_internal"}
 
 

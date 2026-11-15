@@ -172,7 +172,7 @@ def check_release(issues, key):
             with zipfile.ZipFile(z) as zf:
                 names = zf.namelist()
                 tops = {Path(n).parts[0] for n in names if n and not n.startswith("/")}
-                allowed = {"HitranLab.exe", "_internal"}
+                allowed = {"HitranLink.exe", "_internal"}
                 if not tops.issubset(allowed):
                     fail(issues, f"release:{z.name}", "unexpected_top_level", str(sorted(tops - allowed)))
                 for n in names:

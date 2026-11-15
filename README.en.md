@@ -2,7 +2,7 @@
 
 <h1>hitran-mcp</h1>
 
-<p><b>An AI toolchain for the HITRAN spectroscopic database: MCP server + HitranLab desktop workstation</b><br>
+<p><b>An AI toolchain for the HITRAN spectroscopic database: MCP server + HitranLink desktop workstation</b><br>
 Retrieval · spectral calculation · plotting · provenance in one pipeline. Data is fetched live from HITRANonline via the official HAPI; the repository ships no data files.</p>
 
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
@@ -25,7 +25,7 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 
 **Option 1: desktop GUI (recommended for beginners)** — no programming required.
 
-Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/releases) → extract → double-click `HitranLab.exe` → pick molecules and parameters → click「Compute & Plot」.
+Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/releases) → extract → double-click `HitranLink.exe` → pick molecules and parameters → click「Compute & Plot」.
 
 **Option 2: hook it into an AI assistant (recommended for research)** — natural language driven.
 
@@ -39,9 +39,9 @@ Then just describe the computation:
 
 ## Preview
 
-**HitranLab desktop workstation** — CH4 + H2O mixture absorption spectrum (CH4 2000 ppm, H2O 1%, 296 K, 1 atm):
+**HitranLink desktop workstation** — CH4 + H2O mixture absorption spectrum (CH4 2000 ppm, H2O 1%, 296 K, 1 atm):
 
-![HitranLab main window](docs/images/hitranlab.png)
+![HitranLink main window](docs/images/hitranlink.png)
 
 **Cross-section online search & one-click download** — fuzzy match by name, tick the T/P cases, download in batch:
 
@@ -54,7 +54,7 @@ Then just describe the computation:
 - [Overview](#overview)
 - [Features](#features)
 - [Repository Layout](#repository-layout)
-- [HitranLab Desktop Workstation](#hitranlab-desktop-workstation)
+- [HitranLink Desktop Workstation](#hitranlink-desktop-workstation)
   - [Download & Run](#download--run)
   - [Features](#features-1)
   - [Build from Source / Release](#build-from-source--release)
@@ -78,7 +78,7 @@ Then just describe the computation:
 `hitran-mcp` is a complete toolchain for the HITRAN spectroscopic database, featuring two frontends:
 
 1. **MCP Server** (`tools/hitran_mcp.py`): stdio JSON-RPC implementation, exposing 12 tools for AI clients to perform retrieval, spectral computation, plotting, and cross-section file discovery/download.
-2. **HitranLab Desktop Workstation** (`app/hitran_app.py`): Tkinter + matplotlib GUI for multi-component absorption spectrum computation, overlay plotting, strong-line analysis, partition sum queries, CSV/PNG export, and more — no programming required.
+2. **HitranLink Desktop Workstation** (`app/hitran_app.py`): Tkinter + matplotlib GUI for multi-component absorption spectrum computation, overlay plotting, strong-line analysis, partition sum queries, CSV/PNG export, and more — no programming required.
 
 Both frontends share the same physical computation engine (`tools/hitran.py`), ensuring fully consistent results.
 
@@ -87,7 +87,7 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 - **Coverage**: MCP server has 12 tools spanning both HITRAN2024 databases (line-by-line + cross-section); desktop workstation covers the full daily spectral analysis workflow.
 - **Repository boundary**: code and documentation only. Line-table caches (`Hitran_Data/`), outputs (`tmp/`), user-downloaded cross-section data (`xsc_data/`), build artifacts (`dist/`/`build/`) and API keys are all runtime artifacts under `.gitignore` — never committed.
 
-**Independence and naming**: this project is an independently developed open-source tool. It is not affiliated with, endorsed by, or sponsored by `HitranLab` for macOS or its developer, nor by the HITRAN database or its team at CfA. The desktop name is a generic "HITRAN" + "Lab" combination used only to describe "a tool for HITRAN computations".
+**Independence and naming**: this project is an independently developed open-source tool. It is not affiliated with, endorsed by, or sponsored by `HitranLab` for macOS or its developer, nor by the HITRAN database or its team at CfA. The desktop name HitranLink is a "HITRAN" + "Link" combination meaning "a tool that links HITRAN data to local computation".
 
 ## Features
 
@@ -98,7 +98,7 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 | Physical safeguards | Mixtures computed as `α_i = x_i · α_pure_i(T, P, bath)`; windows not covered are auto-refetched; zero-line/failure raise explicit errors instead of silently returning a flat spectrum |
 | Full provenance | Every CSV/PNG carries HITRAN2024 + HAPI + TIPS version watermarks, traceable to the original references |
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
-| Desktop GUI | HitranLab workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
+| Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
 | Quality gates | 13 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
@@ -117,15 +117,15 @@ hitran-mcp/
 ├─ LICENSE                   # GPLv3 License
 ├─ requirements.txt          # Python dependencies (pinned versions)
 ├─ mcp.config.example.json   # MCP client registration snippet (adjust paths)
-├─ HitranLab.spec            # PyInstaller spec
+├─ HitranLink.spec            # PyInstaller spec
 ├─ .github/
 │  ├─ workflows/ci.yml       # CI: three-version matrix + unit/contract/security jobs
 │  └─ dependabot.yml         # Weekly pip and Actions dependency updates
 ├─ app/
-│  ├─ hitran_app.py          # HitranLab desktop workstation (Tkinter + matplotlib GUI)
+│  ├─ hitran_app.py          # HitranLink desktop workstation (Tkinter + matplotlib GUI)
 │  ├─ updater.py             # Update security primitives (URL allow-list / SHA-256 / safe unzip)
 │  ├─ __init__.py
-│  └─ hitranlab.ico          # Application icon
+│  └─ hitranlink.ico          # Application icon
 ├─ tests/
 │  ├─ test_updater.py        # Update pipeline unit tests
 │  └─ test_core.py           # Redaction, filename escape prevention, status fields
@@ -146,23 +146,23 @@ Generated at runtime (safe to delete; regenerated by the tools):
 - `xsc_data/` — cross-section files downloaded on demand (personal data, not committed)
 - `dist/` / `build/` — PyInstaller build artifacts (not committed)
 
-## HitranLab Desktop Workstation
+## HitranLink Desktop Workstation
 
-HitranLab is a no-programming-required desktop application for spectral analysis, suitable for daily research use.
+HitranLink is a no-programming-required desktop application for spectral analysis, suitable for daily research use.
 
 ### Download & Run
 
 **Option 1: Download pre-built release (recommended)**
 
-1. Go to [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) and download the latest `HitranLab-windows-x64.zip`
+1. Go to [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) and download the latest `HitranLink-windows-x64.zip`
 2. Extract to any directory (paths without Chinese characters or spaces are recommended)
-3. Double-click `HitranLab.exe` to run
+3. Double-click `HitranLink.exe` to run
 
 > On first run, a `Hitran_Data/` cache directory is automatically created in the same folder as the executable. Computed line tables are cached automatically — no need to re-download next time.
 >
 > To share one cache/API-key directory between the packaged GUI and the source MCP server, set `HITRAN_DATA_DIR` to the same data folder. The Status tab shows the effective cache root and proxy.
 >
-> Upgrading: Help → Check for updates downloads and replaces the build in place. The download URL is constructed by the app itself from the fixed repository and fixed asset name; the file is extracted only after the GitHub-provided SHA-256 and size both match, and the archive must have exactly `HitranLab.exe` + `_internal` at the top level. Releases without a digest are refused and the app asks you to download manually (see [Security & Privacy](#security--privacy)).
+> Upgrading: Help → Check for updates downloads and replaces the build in place. The download URL is constructed by the app itself from the fixed repository and fixed asset name; the file is extracted only after the GitHub-provided SHA-256 and size both match, and the archive must have exactly `HitranLink.exe` + `_internal` at the top level. Releases without a digest are refused and the app asks you to download manually (see [Security & Privacy](#security--privacy)).
 
 **Option 2: Run from source**
 
@@ -207,11 +207,11 @@ python tools/build_release.py
 
 The script performs, in order:
 
-1. Build the exe from `HitranLab.spec` (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing included);
-2. Replace `dist/HitranLab/` (keeping the exe-side line-table cache and `hitran_api_key.txt` — for the **publisher's local use only**; never share the `dist/` directory directly);
+1. Build the exe from `HitranLink.spec` (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing included);
+2. Replace `dist/HitranLink/` (keeping the exe-side line-table cache and `hitran_api_key.txt` — for the **publisher's local use only**; never share the `dist/` directory directly);
 3. Run a headless self-test on the packaged build (molecule count / spectrum points / peak / download engine);
-4. Generate the GitHub release asset `dist/HitranLab-windows-x64.zip` (**allow-list only**: just `HitranLab.exe` + `_internal/`; API key / cache / logs never enter the zip);
-5. **Verify that the exe inside the zip matches `dist/HitranLab/HitranLab.exe` in size and CRC32**
+4. Generate the GitHub release asset `dist/HitranLink-windows-x64.zip` (**allow-list only**: just `HitranLink.exe` + `_internal/`; API key / cache / logs never enter the zip);
+5. **Verify that the exe inside the zip matches `dist/HitranLink/HitranLink.exe` in size and CRC32**
    — mismatches abort with an error, so "stale zip with a new exe" can no longer happen.
 
 Optional flags:
@@ -223,9 +223,9 @@ python tools/build_release.py --no-selftest   # skip the post-build self-test
 
 The build directory is ~245 MB (one-dir mode, HAPI2 / numba / llvmlite included); the compressed zip is ~100 MB. Upload the zip from step 4 as the release asset.
 
-> Close all running HitranLab windows before building, otherwise file locking will fail the build (the script reports this clearly).
+> Close all running HitranLink windows before building, otherwise file locking will fail the build (the script reports this clearly).
 >
-> **Do not hand-write `pyinstaller` commands**: `HitranLab.spec` includes required dependencies
+> **Do not hand-write `pyinstaller` commands**: `HitranLink.spec` includes required dependencies
 > (HAPI2 / sqlalchemy / numba / llvmlite / pyparsing) that hand-written flags easily miss,
 > breaking HAPI2 in the packaged build.
 
@@ -335,9 +335,9 @@ HITRAN2024 uses a **dual-database distribution architecture** — the two data c
 
 **Auto-update**:
 
-- The download URL is built by the app from `LKF0402/hitran-mcp` plus the fixed asset name `HitranLab-windows-x64.zip` — any URL returned by the API is ignored. Only the `https://github.com/...` prefix is accepted; http, foreign hosts and query strings are rejected.
+- The download URL is built by the app from `LKF0402/hitran-mcp` plus the fixed asset name `HitranLink-windows-x64.zip` — any URL returned by the API is ignored. Only the `https://github.com/...` prefix is accepted; http, foreign hosts and query strings are rejected.
 - The SHA-256 is computed while streaming and compared against the GitHub-provided `digest` together with the declared `size`; any mismatch deletes the partial file and aborts.
-- Extraction rejects absolute paths, drive letters, `..`, symlinks and encrypted entries entry by entry, caps entry count (20,000) and total uncompressed size (700 MB), and allows only `HitranLab.exe` and `_internal` at the top level.
+- Extraction rejects absolute paths, drive letters, `..`, symlinks and encrypted entries entry by entry, caps entry count (20,000) and total uncompressed size (700 MB), and allows only `HitranLink.exe` and `_internal` at the top level.
 - Releases without a `digest` are refused for auto-update and reported as "download manually" — a deliberate security downgrade.
 
 **Release gate**: `tools/build_release.py` invokes `tools/security_check.py` before packaging; it scans tracked files, Git history, the worktree and the release ZIP for credentials, personal paths and dangerous calls, and refuses to ship on any blocking finding. CI re-runs the same gate in a dedicated job.

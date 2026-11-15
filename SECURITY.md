@@ -35,7 +35,7 @@ If you discover a security vulnerability, please **do NOT open a public issue**.
 - **Local-only MCP**: the MCP server uses stdio, with no HTTP listener, public tunnel or bearer token.
 - **Credential redaction**: HITRAN API keys are redacted from MCP responses, GUI messages and error logs before they leave the process.
 - **Credential storage**: the API key is stored in the runtime data directory (`Hitran_Data/hitran_api_key.txt`), which is gitignored; release archives never include it.
-- **Release whitelist**: release ZIP files contain only `HitranLab.exe` and `_internal`; `Hitran_Data`, `config.json`, `*.log`, `_update` and local databases are excluded.
+- **Release whitelist**: release ZIP files contain only `HitranLink.exe` and `_internal`; `Hitran_Data`, `config.json`, `*.log`, `_update` and local databases are excluded.
 - **Build privacy scrub**: numba `.nbc` caches (which can contain the builder's absolute paths) are removed before packaging, and the payload is re-scanned for builder paths.
 - **Update integrity**: automatic updates use a fixed GitHub Release URL, require a SHA-256 digest from the GitHub API, and reject `http`, foreign hosts, size overruns, zip traversal, symlinks and non-whitelisted entries.
 - **Dependency pinning**: direct runtime dependencies are pinned in `requirements.txt`; Dependabot monitors pip and GitHub Actions updates.

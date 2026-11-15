@@ -3,7 +3,7 @@
 <h1>hitran-mcp</h1>
 
 <p><b>HITRAN 光谱数据库的 AI 工具链</b><br>
-MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
+MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
@@ -27,7 +27,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 无需编程，直接使用。
 
-前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLab.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
+前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
 
 ---
 
@@ -49,9 +49,9 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ## 效果预览
 
-**HitranLab 桌面工作站** —— CH₄ + H₂O 混合气吸收谱（CH₄ 2000 ppm、H₂O 1%，296 K、1 atm）：
+**HitranLink 桌面工作站** —— CH₄ + H₂O 混合气吸收谱（CH₄ 2000 ppm、H₂O 1%，296 K、1 atm）：
 
-![HitranLab 主界面](docs/images/hitranlab.png)
+![HitranLink 主界面](docs/images/hitranlink.png)
 
 **截面库在线检索与一键下载** —— 按中文名模糊匹配分子、勾选 T/P 工况后批量下载：
 
@@ -64,7 +64,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 - [项目概览](#项目概览)
 - [功能特性](#功能特性)
 - [仓库结构](#仓库结构)
-- [HitranLab 桌面工作站](#hitranlab-桌面工作站)
+- [HitranLink 桌面工作站](#hitranlink-桌面工作站)
   - [下载与运行](#下载与运行)
   - [功能说明](#功能说明)
   - [从源码打包 / 发版](#从源码打包--发版)
@@ -88,7 +88,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 `hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，包含两套前端：
 
 1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用多个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
-2. **HitranLab 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
+2. **HitranLink 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
 
 两套前端共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
 
@@ -97,7 +97,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 - **覆盖范围**：MCP 服务器 12 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路；桌面工作站覆盖日常光谱分析全流程。
 - **仓库边界**：仅含代码与文档；线表缓存（`Hitran_Data/`）、产物（`tmp/`）、按需下载的截面数据（`xsc_data/`）、打包产物（`dist/`/`build/`）与 API key 均属运行期数据，位于 `.gitignore` 区，不入库。
 
-**项目独立性与命名**：本项目为个人独立开发的开源工具，与 macOS 应用 `HitranLab` 及其开发者无关联，亦未获其授权或背书；与 HITRAN 官方数据库及其团队（CfA）亦无隶属关系。桌面端名称由 "HITRAN"（公共数据库缩写）与 "Lab"（通用词）组合而成，仅用于描述"做 HITRAN 计算的工具"。
+**项目独立性与命名**：本项目为个人独立开发的开源工具，与 macOS 应用 `HitranLab` 及其开发者无关联，亦未获其授权或背书；与 HITRAN 官方数据库及其团队（CfA）亦无隶属关系。桌面端名称 HitranLink 由 "HITRAN"（公共数据库缩写）与 "Link"（连接）组合而成，表示"连接 HITRAN 数据与本地计算"的工具。
 
 ## 功能特性
 
@@ -108,7 +108,7 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 | 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
 | 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 + HAPI + TIPS 版本水印，可追溯到原始文献 |
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
-| 桌面 GUI | HitranLab 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
+| 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
 | 质量门禁 | 13 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
@@ -127,15 +127,15 @@ hitran-mcp/
 ├─ LICENSE                   # GPLv3 协议
 ├─ requirements.txt          # Python 依赖（精确锁定版本）
 ├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
-├─ HitranLab.spec            # PyInstaller 打包规格
+├─ HitranLink.spec            # PyInstaller 打包规格
 ├─ .github/
 │  ├─ workflows/ci.yml       # CI：三版本矩阵 + 单元/契约/安全 job
 │  └─ dependabot.yml         # pip 与 Actions 依赖周检
 ├─ app/
-│  ├─ hitran_app.py          # HitranLab 桌面工作站（Tkinter + matplotlib GUI）
+│  ├─ hitran_app.py          # HitranLink 桌面工作站（Tkinter + matplotlib GUI）
 │  ├─ updater.py             # 自动更新安全原语（URL 白名单/SHA-256/安全解压）
 │  ├─ __init__.py
-│  └─ hitranlab.ico          # 应用图标
+│  └─ hitranlink.ico          # 应用图标
 ├─ tests/
 │  ├─ test_updater.py        # 更新链路单元测试
 │  └─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
@@ -156,23 +156,23 @@ hitran-mcp/
 - `xsc_data/` — 用户按需下载的截面文件（个人数据，不入库）
 - `dist/` / `build/` — PyInstaller 打包产物（不入库）
 
-## HitranLab 桌面工作站
+## HitranLink 桌面工作站
 
-HitranLab 是无需编程的光谱分析桌面应用，适合日常科研使用。
+HitranLink 是无需编程的光谱分析桌面应用，适合日常科研使用。
 
 ### 下载与运行
 
 **方式一：下载预编译版本（推荐）**
 
-1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLab-windows-x64.zip`
+1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLink-windows-x64.zip`
 2. 解压到任意目录（路径建议不含中文和空格）
-3. 双击 `HitranLab.exe` 即可运行
+3. 双击 `HitranLink.exe` 即可运行
 
 > 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
 >
 > 若要让打包 GUI 与源码模式 MCP 共用同一份缓存和 API key，设置环境变量 `HITRAN_DATA_DIR` 指向同一个数据目录即可；「运行状态」页会显示实际缓存根与当前代理。
 >
-> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLab.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见[安全与隐私](#安全与隐私)）。
+> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLink.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见[安全与隐私](#安全与隐私)）。
 
 **方式二：从源码运行**
 
@@ -217,11 +217,11 @@ python tools/build_release.py
 
 脚本按顺序完成：
 
-1. 依据 `HitranLab.spec` 打包 exe；
-2. 替换 `dist/HitranLab/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
+1. 依据 `HitranLink.spec` 打包 exe；
+2. 替换 `dist/HitranLink/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
 3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
-4. 生成 GitHub release 资产 `dist/HitranLab-windows-x64.zip`（**白名单式**：只含 `HitranLab.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
-5. **校验 zip 内的 exe 与 `dist/HitranLab/HitranLab.exe` 的大小与 CRC32 完全一致**
+4. 生成 GitHub release 资产 `dist/HitranLink-windows-x64.zip`（**白名单式**：只含 `HitranLink.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
+5. **校验 zip 内的 exe 与 `dist/HitranLink/HitranLink.exe` 的大小与 CRC32 完全一致**
    —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
 
 可选参数：
@@ -233,9 +233,9 @@ python tools/build_release.py --no-selftest   # 跳过打包后的自检
 
 打包目录约 245 MB（one-dir 模式，含 HAPI2 / sqlalchemy / numba / llvmlite），压缩后 zip 约 100 MB。发布时上传第 4 步生成的 zip 作为 release 资产即可。
 
-> 打包前请关闭所有正在运行的 HitranLab 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
+> 打包前请关闭所有正在运行的 HitranLink 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
 >
-> **不要手写 `pyinstaller` 命令**：`HitranLab.spec` 中包含 HAPI2 / sqlalchemy / numba /
+> **不要手写 `pyinstaller` 命令**：`HitranLink.spec` 中包含 HAPI2 / sqlalchemy / numba /
 > llvmlite / pyparsing 等必需依赖，手写参数极易漏掉，导致打包版 HAPI2 不可用。
 
 ## 快速开始（MCP 服务器）
@@ -256,7 +256,7 @@ pip install -r hitran-mcp/requirements.txt
 
 ### API Key（可选）
 
-**桌面 GUI**：HitranLab → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
+**桌面 GUI**：HitranLink → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
 
 **命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
 
@@ -346,9 +346,9 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 
 **自动更新**：
 
-- 下载地址由程序按 `LKF0402/hitran-mcp` + 固定资产名 `HitranLab-windows-x64.zip` 构造，不信任 API 返回的任意链接；只接受 `https://github.com/...` 前缀，拒绝 http、异域主机与查询串。
+- 下载地址由程序按 `LKF0402/hitran-mcp` + 固定资产名 `HitranLink-windows-x64.zip` 构造，不信任 API 返回的任意链接；只接受 `https://github.com/...` 前缀，拒绝 http、异域主机与查询串。
 - 下载时边写边算 SHA-256，同时校验 GitHub 提供的 `digest` 与 `size`；任一不符即删除半截文件并中止。
-- 解压逐条拒绝绝对路径、盘符、`..`、符号链接与加密条目，限制条目数（20000）与解压总量（700 MB）；顶层只允许 `HitranLab.exe` 与 `_internal`。
+- 解压逐条拒绝绝对路径、盘符、`..`、符号链接与加密条目，限制条目数（20000）与解压总量（700 MB）；顶层只允许 `HitranLink.exe` 与 `_internal`。
 - 旧版本资产若没有 `digest`，程序拒绝自动升级并提示手动下载——这是有意的安全降级。
 
 **发布闸门**：`tools/build_release.py` 在出包前调用 `tools/security_check.py`，扫描跟踪文件、Git 历史、工作区与发布 ZIP 中的凭据/个人路径/危险调用，出现阻断项直接拒绝出包；CI 另设独立 security job 复查。

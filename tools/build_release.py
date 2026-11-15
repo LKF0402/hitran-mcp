@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 """一键构建发布产物：打包 exe → 发布到 dist → 生成 zip → 校验一致性。
 
-**为什么需要它**：发布时要交付两样东西 —— `dist/HitranLab/`（绿色目录）与
-GitHub release 资产 `dist/HitranLab-windows-x64.zip`。这两步分开做时，zip 极易被
+**为什么需要它**：发布时要交付两样东西 —— `dist/HitranLink/`（绿色目录）与
+GitHub release 资产 `dist/HitranLink-windows-x64.zip`。这两步分开做时，zip 极易被
 遗漏，导致"用户下载到的仍是旧版本"（本项目真实发生过：zip 停留在旧 exe）。
-本脚本把两步绑定为原子操作，并在最后**校验 zip 内的 HitranLab.exe 与 dist 下的
+本脚本把两步绑定为原子操作，并在最后**校验 zip 内的 HitranLink.exe 与 dist 下的
 exe 大小 + CRC32 完全一致**，不一致直接以非 0 退出 —— 从结构上消除"忘记重建 zip"。
 
 **构建环境（重要：直接决定发布包体积）**：请用**干净环境**构建，不要用 anaconda。
@@ -55,9 +55,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-APP_DIR = DIST / "HitranLab"
-EXE = APP_DIR / "HitranLab.exe"
-ZIP = DIST / "HitranLab-windows-x64.zip"
+APP_DIR = DIST / "HitranLink"
+EXE = APP_DIR / "HitranLink.exe"
+ZIP = DIST / "HitranLink-windows-x64.zip"
 DIST_NEW = ROOT / "dist_new"
 BUILD_NEW = ROOT / "build_new"
 CACHE_BAK = ROOT / "tmp" / "_release_cache_bak"
@@ -132,20 +132,20 @@ def build_exe() -> None:
     log("PyInstaller 打包中（约 40 秒）…")
     code = subprocess.run(
         [sys.executable, "-m", "PyInstaller", "--noconfirm",
-         "--distpath", "dist_new", "--workpath", "build_new", "HitranLab.spec"],
+         "--distpath", "dist_new", "--workpath", "build_new", "HitranLink.spec"],
         cwd=str(ROOT)).returncode
     if code != 0:
         die("PyInstaller 打包失败")
-    if not (DIST_NEW / "HitranLab" / "HitranLab.exe").exists():
-        die("打包产物缺失：dist_new/HitranLab/HitranLab.exe")
+    if not (DIST_NEW / "HitranLink" / "HitranLink.exe").exists():
+        die("打包产物缺失：dist_new/HitranLink/HitranLink.exe")
 
 
 def publish() -> None:
-    """用重命名方式原子替换 dist/HitranLab，并保留 exe 侧缓存与 API key。
+    """用重命名方式原子替换 dist/HitranLink，并保留 exe 侧缓存与 API key。
 
     注意：这里的"保留 key"仅服务于**发布者本机**的 dist 目录（再次运行 exe 免重配）。
     dist/ 已在 .gitignore，且对外发布经 make_zip() 白名单（key/缓存/日志永不进 zip），
-    因此不构成泄露。但**切勿直接把 dist/HitranLab 整个目录分享给他人**。
+    因此不构成泄露。但**切勿直接把 dist/HitranLink 整个目录分享给他人**。
     """
     # 首次构建（干净仓库）时 dist/ 尚不存在：os.rename 的目标父目录必须已存在，
     # 否则 Windows 直接 FileNotFoundError(WinError 3) 中断发布。先建好目录。
@@ -163,9 +163,9 @@ def publish() -> None:
         try:
             APP_DIR.rename(old)
         except OSError as e:
-            die(f"无法替换 dist\\HitranLab —— 多半是 HitranLab 正在运行占用了文件：{e}\n"
-                f"          请关闭所有 HitranLab 窗口后重试。")
-    (DIST_NEW / "HitranLab").rename(APP_DIR)
+            die(f"无法替换 dist\\HitranLink —— 多半是 HitranLink 正在运行占用了文件：{e}\n"
+                f"          请关闭所有 HitranLink 窗口后重试。")
+    (DIST_NEW / "HitranLink").rename(APP_DIR)
 
     if CACHE_BAK.exists():
         (APP_DIR / "Hitran_Data").mkdir(parents=True, exist_ok=True)
@@ -183,7 +183,7 @@ def publish() -> None:
     shutil.rmtree(CACHE_BAK, ignore_errors=True)
     shutil.rmtree(DIST_NEW, ignore_errors=True)
     shutil.rmtree(BUILD_NEW, ignore_errors=True)
-    log("已发布到 dist/HitranLab（缓存与 key 已恢复）")
+    log("已发布到 dist/HitranLink（缓存与 key 已恢复）")
 
 
 def selftest(timeout: int = 150) -> None:
@@ -226,7 +226,7 @@ def selftest(timeout: int = 150) -> None:
 # 其余运行时/敏感产物（Hitran_Data/ 线表缓存、config.json 含 key、*.log、
 # .provenance/、local/、~tmp/、_update/）一律排除 —— 防止发布者本机的
 # API key / 日志 / 缓存被打进公开发布包（历史事故：key 曾随 zip 泄露）。
-RELEASE_ALLOW = {"HitranLab.exe", "_internal"}
+RELEASE_ALLOW = {"HitranLink.exe", "_internal"}
 
 
 # ───────────────────────── 隐私擦除（打 zip 前）─────────────────────────
@@ -299,17 +299,17 @@ def scrub_privacy() -> None:
 
 
 def make_zip() -> None:
-    """把 dist/HitranLab 打成 zip（白名单式，条目以该目录为根）。
+    """把 dist/HitranLink 打成 zip（白名单式，条目以该目录为根）。
 
     只打包 exe 与 PyInstaller 依赖目录 _internal/，其它一律不进 zip。
     """
     if not EXE.exists():
-        die("dist/HitranLab/HitranLab.exe 不存在，无法打包 zip")
+        die("dist/HitranLink/HitranLink.exe 不存在，无法打包 zip")
     if not (APP_DIR / "_internal").is_dir():
-        die("dist/HitranLab/_internal 不存在，PyInstaller 产物结构异常")
+        die("dist/HitranLink/_internal 不存在，PyInstaller 产物结构异常")
     # 兜底复检（--zip-only 也走这里）：产物里必须真的有 hapi2，否则拒绝打包。
     if not _ALLOW_NO_HAPI2 and not (APP_DIR / "_internal" / "hapi2").is_dir():
-        die("dist/HitranLab/_internal/hapi2 不存在 —— 这份产物丢了 HAPI2 功能，拒绝打 zip。\n"
+        die("dist/HitranLink/_internal/hapi2 不存在 —— 这份产物丢了 HAPI2 功能，拒绝打 zip。\n"
             "          请在装了 hapi2 的环境重跑本脚本；确要临时验证可加 --allow-no-hapi2")
     tmp = ZIP.with_name(ZIP.name + ".tmp")
     tmp.unlink(missing_ok=True)
@@ -343,9 +343,9 @@ def verify_zip() -> None:
 
     with zipfile.ZipFile(ZIP) as z:
         try:
-            info = z.getinfo("HitranLab.exe")
+            info = z.getinfo("HitranLink.exe")
         except KeyError:
-            die("zip 内找不到 HitranLab.exe，资产结构异常")
+            die("zip 内找不到 HitranLink.exe，资产结构异常")
         if info.file_size != disk.st_size or (info.CRC & 0xFFFFFFFF) != crc_disk:
             die(f"zip 内的 exe 与 dist 下的不一致！"
                 f"（zip {info.file_size} B / CRC {info.CRC & 0xFFFFFFFF:08x}，"
@@ -389,7 +389,7 @@ def main() -> int:
         if not args.no_selftest:
             selftest()
     else:
-        log("--zip-only：沿用现有 dist/HitranLab")
+        log("--zip-only：沿用现有 dist/HitranLink")
 
     scrub_privacy()        # 隐私闸门：清 numba 缓存里的构建机路径，回扫确认
     make_zip()

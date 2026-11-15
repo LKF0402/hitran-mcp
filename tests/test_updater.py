@@ -22,7 +22,7 @@ class UpdateUrlTests(unittest.TestCase):
         url = release_asset_url("v1.6.1")
         self.assertEqual(
             url, "https://github.com/LKF0402/hitran-mcp/releases/download/v1.6.1/"
-                 "HitranLab-windows-x64.zip")
+                 "HitranLink-windows-x64.zip")
         self.assertTrue(validate_update_url(url))
 
     def test_rejects_non_https_or_foreign_host(self):
@@ -46,8 +46,8 @@ class DigestTests(unittest.TestCase):
     def test_sha256_and_verify(self):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "a.bin"
-            p.write_bytes(b"hitranlab")
-            digest = hashlib.sha256(b"hitranlab").hexdigest()
+            p.write_bytes(b"hitranlink")
+            digest = hashlib.sha256(b"hitranlink").hexdigest()
             self.assertEqual(sha256_file(p), digest)
             self.assertEqual(verify_sha256(p, digest), digest)
             self.assertEqual(verify_sha256(p, "sha256:" + digest), digest)
@@ -67,22 +67,22 @@ class SafeZipTests(unittest.TestCase):
 
     def test_extracts_whitelisted_layout(self):
         with tempfile.TemporaryDirectory() as td:
-            z = self._zip(td, [("HitranLab.exe", b"exe"), ("_internal/a.txt", b"a")])
+            z = self._zip(td, [("HitranLink.exe", b"exe"), ("_internal/a.txt", b"a")])
             out = Path(td) / "out"
             self.assertEqual(safe_extract_zip(z, out), 2)
-            self.assertTrue((out / "HitranLab.exe").is_file())
+            self.assertTrue((out / "HitranLink.exe").is_file())
             self.assertEqual(validate_update_layout(out), out)
 
     def test_rejects_traversal_and_absolute_paths(self):
         for name in ("../evil.txt", "..\\evil.txt", "/evil.txt", "C:/evil.txt"):
             with tempfile.TemporaryDirectory() as td:
-                z = self._zip(td, [("HitranLab.exe", b"exe"), (name, b"x")])
+                z = self._zip(td, [("HitranLink.exe", b"exe"), (name, b"x")])
                 with self.assertRaises(ValueError):
                     safe_extract_zip(z, Path(td) / "out")
 
     def test_rejects_size_bomb(self):
         with tempfile.TemporaryDirectory() as td:
-            z = self._zip(td, [("HitranLab.exe", b"x" * 32)])
+            z = self._zip(td, [("HitranLink.exe", b"x" * 32)])
             with self.assertRaises(ValueError):
                 safe_extract_zip(z, Path(td) / "out", max_total=8)
 
@@ -99,11 +99,11 @@ class SafeZipTests(unittest.TestCase):
     def test_validate_layout_rejects_extra_top_level(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "HitranLab.exe").write_bytes(b"exe")
+            (root / "HitranLink.exe").write_bytes(b"exe")
             (root / "extra.txt").write_text("x", encoding="utf-8")
             with self.assertRaises(ValueError):
                 validate_update_layout(root)
-            self.assertEqual(ALLOWED_TOP_LEVEL, {"HitranLab.exe", "_internal"})
+            self.assertEqual(ALLOWED_TOP_LEVEL, {"HitranLink.exe", "_internal"})
 
 
 if __name__ == "__main__":

@@ -2,12 +2,12 @@
 
 ## 结论速览
 
-- 评估对象：`D:\software\skills\hitran-mcp`（HitranLab GUI + HITRAN MCP）。
+- 评估对象：`D:\software\skills\hitran-mcp`（HitranLink GUI + HITRAN MCP）。
 - 评估时间：2026-11-15。
 - 评估口径：9 个维度独立打分，0–100；每个维度必须 ≥95；综合分按权重加权。
 - 结果：**9/9 维度达到 95 分以上，综合 95.7 分**。
 - 敏感性检测：跟踪文件、Git 历史、工作区缓存、发布 ZIP 均未检出 API key、第三方 Token、私钥或真实用户路径；本机运行期敏感文件全部在 `.gitignore` 覆盖范围内，未进入发布 ZIP。
-- 发布产物：`dist/HitranLab-windows-x64.zip`，大小 99,977,984 B，SHA-256 `fe96c5db8f600c0c49baceb55756e4d67899b95ccaa68f0d6dfa23da76813705`。
+- 发布产物：`dist/HitranLink-windows-x64.zip`（v1.6.3），大小 99,976,778 B，SHA-256 `5a7a0501888abfa1f93d47117646a9b5dd4987cc9203839a5f11c4bd0a8872cb`。
 
 ## 分维度评分
 
@@ -53,7 +53,7 @@
 | Git 历史中的 API key 明文 | 0 命中 |
 | 工作区 key 扩散（除 key 文件） | 0 命中 |
 | 发布 ZIP 中的 key | 0 命中 |
-| 发布 ZIP 顶层结构 | 仅 `HitranLab.exe`、`_internal` |
+| 发布 ZIP 顶层结构 | 仅 `HitranLink.exe`、`_internal` |
 | 发布 ZIP 中的构建机路径 | 0 命中 |
 | 跟踪文件中的真实用户路径/邮箱 | 0 命中；仅 README `C:/Users/你`、`build_release.py` 的 `<本机用户名>/<构建者>` 占位符 |
 | 危险调用 | 0 命中（`compile` 仅出现在 `re.compile`，已按 AST 节点类型排除） |

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""HitranLab —— HITRAN 光谱分析桌面工作站（Windows）。
+"""HitranLink —— HITRAN 光谱分析桌面工作站（Windows）。
 
 复用 tools/hitran_mcp.py 的取数/计算引擎（同一套物理纪律与防呆），
 提供本地 GUI：多组分吸收谱 / 透过率 / 截面谱计算与绘图、强线列表、
@@ -51,7 +51,7 @@ from app.updater import (                   # 自动更新安全原语（可离�
 )
 APP_VERSION = hm.VERSION  # 单一版本号源，引用 tools/hitran_mcp.py:VERSION
 
-APP_TITLE = "HitranLab · HITRAN 光谱分析工作站"
+APP_TITLE = "HitranLink · HITRAN 光谱分析工作站"
 PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 
 # 叠加模式的颜色循环（柔和配色，不刺眼）
@@ -376,7 +376,7 @@ def _log_error(title, message):
 
 
 def _show_fatal(root, message):
-    """启动失败兜底弹窗：**模块级**实现，不依赖 HitranLab 实例。
+    """启动失败兜底弹窗：**模块级**实现，不依赖 HitranLink 实例。
 
     main() 是模块级函数、没有 self —— 原先此处写作 self.show_error(...)，
     一旦启动失败就会抛 NameError，用户连错误都看不到（窗口一闪而过）。
@@ -385,9 +385,9 @@ def _show_fatal(root, message):
 
     _log_error("启动失败", message)
     win = tk.Toplevel(root)
-    win.title("HitranLab 启动失败")
+    win.title("HitranLink 启动失败")
     win.geometry("640x420")
-    tk.Label(win, text="HitranLab 启动失败",
+    tk.Label(win, text="HitranLink 启动失败",
              font=("Segoe UI", 12, "bold")).pack(fill="x", padx=10, pady=(10, 5))
     txt = scrolledtext.ScrolledText(win, wrap="word", font=("Consolas", 10))
     txt.pack(fill="both", expand=True, padx=10, pady=5)
@@ -407,7 +407,7 @@ def _show_fatal(root, message):
     root.wait_window(win)
 
 
-class HitranLab(tk.Tk):
+class HitranLink(tk.Tk):
     def show_error_dialog(self, title, message):
         """可复制的错误对话框（与状态栏提示 `_show_error` 区分），同时写日志。"""
         from tkinter import scrolledtext
@@ -769,7 +769,7 @@ class HitranLab(tk.Tk):
         m_help.add_command(label="使用说明", command=self._show_help)
         m_help.add_command(label="检查更新", command=self._check_update)
         m_help.add_separator()
-        m_help.add_command(label="关于 HitranLab", command=self._show_about)
+        m_help.add_command(label="关于 HitranLink", command=self._show_about)
         menubar.add_cascade(label="帮助", menu=m_help)
         self.config(menu=menubar)
         # 快捷键
@@ -1289,12 +1289,12 @@ class HitranLab(tk.Tk):
     def _add_mix(self):
         name = self.mol_var.get().strip().upper()
         if not name:
-            messagebox.showwarning("HitranLab", "请先选择分子")
+            messagebox.showwarning("HitranLink", "请先选择分子")
             return
         x = self.frac_var.get().strip()
         xf, err = self._display_to_frac(x)
         if err:
-            messagebox.showwarning("HitranLab", f"{err}，或留空（纯气体）")
+            messagebox.showwarning("HitranLink", f"{err}，或留空（纯气体）")
             return
         # 总和校验：添加后总和不可 > 1
         current_total = 0.0
@@ -1306,7 +1306,7 @@ class HitranLab(tk.Tk):
                 if x and 0 < x <= 1:
                     current_total += x
         if xf is not None and current_total + xf > 1.0 + 1e-9:
-            messagebox.showwarning("HitranLab",
+            messagebox.showwarning("HitranLink",
                 f"添加后摩尔分数总和将为 {current_total + xf:.4g}（>1），物理上不可能。\n"
                 f"当前总和: {current_total:.4g}，待添加: {xf:.4g}\n"
                 f"请减少各组分浓度，或删除部分组分。")
@@ -1466,7 +1466,7 @@ class HitranLab(tk.Tk):
         if idx < 0 or idx >= len(self._overlay_data):
             return
         if not self._in_curve_view():
-            messagebox.showinfo("HitranLab", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
+            messagebox.showinfo("HitranLink", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
             return
         ds = self._overlay_data[idx]
         ds["visible"] = not ds.get("visible", True)
@@ -1488,11 +1488,11 @@ class HitranLab(tk.Tk):
             return
         # 仅在 Q(T) / 截面视图下拦截；曲线视图（spectrum / linestrength）一律允许删除。
         if not self._in_curve_view():
-            messagebox.showinfo("HitranLab", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
+            messagebox.showinfo("HitranLink", "当前为 Q(T) / 截面视图，请先「计算并绘图」或「清空图」返回谱线视图")
             return
         sel = self.layer_tree.selection()
         if not sel:
-            messagebox.showinfo("HitranLab", "请先在图层列表中选择一条曲线")
+            messagebox.showinfo("HitranLink", "请先在图层列表中选择一条曲线")
             return
         idx = int(sel[0])
         if idx >= len(self._overlay_data):
@@ -1661,7 +1661,7 @@ class HitranLab(tk.Tk):
 
     def _compute_and_plot(self):
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候或点击「停止计算」")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候或点击「停止计算」")
             return
         # 停止计算后 cancel_event 可能仍为 set 状态，run() 会自动 clear，这里无需拦截
         try:
@@ -1742,7 +1742,7 @@ class HitranLab(tk.Tk):
 
     def _lines(self):
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候")
             return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
@@ -1794,7 +1794,7 @@ class HitranLab(tk.Tk):
 
     def _partition(self):
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候")
             return
         # 配分函数只需要 name 和 T，不需要 step/wingHW/窗口验证
         name = self.mol_var.get().strip().upper()
@@ -1816,7 +1816,7 @@ class HitranLab(tk.Tk):
 
     def _qcurve(self):
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候")
             return
         try:
             specs, numin, numax, T, P, step, mode, profile, L, ylog, hunits, _w, _c = self._params()
@@ -2101,7 +2101,7 @@ class HitranLab(tk.Tk):
         def do_search():
             nm = name_var.get().strip()
             if not nm:
-                messagebox.showwarning("HitranLab", "请输入气体名称（中文名 / 化学式 / 英文名）",
+                messagebox.showwarning("HitranLink", "请输入气体名称（中文名 / 化学式 / 英文名）",
                                        parent=win)
                 return
             seq = state["search_seq"] = state["search_seq"] + 1
@@ -2155,7 +2155,7 @@ class HitranLab(tk.Tk):
                 msg += "\n\n第一个文件已填入「截面文件」输入框，可直接点「导入并绘图」。"
             stat_var.set(f"完成：下载 {res.get('n_downloaded', 0)} 个，跳过 "
                          f"{len(res.get('skipped') or [])} 个，失败 {len(res.get('failed') or [])} 个")
-            messagebox.showinfo("HitranLab", msg, parent=win)
+            messagebox.showinfo("HitranLink", msg, parent=win)
             if paths:
                 do_search()          # 刷新"已下载"标记
             elif res.get("skipped"):
@@ -2166,7 +2166,7 @@ class HitranLab(tk.Tk):
             nm = name_var.get().strip()      # Tk 变量只能在主线程读，后台线程读会抛 RuntimeError
             if not files:
                 messagebox.showinfo(
-                    "HitranLab",
+                    "HitranLink",
                     ("该分子在截面库里没有可下载的文件，换个分子试试"
                      if state.get("files_result") else "文件清单还没加载好，请稍候再试"),
                     parent=win)
@@ -2174,14 +2174,14 @@ class HitranLab(tk.Tk):
             idx = sel_rows()                 # 只认勾选列，与 Treeview 选中态解耦
             if not idx:
                 messagebox.showinfo(
-                    "HitranLab",
+                    "HitranLink",
                     "请先勾选要下载的文件：单击列表行左侧的 ☐ 即可勾选，或直接点「全选」。",
                     parent=win)
                 return
             sel = [files[i] for i in idx]
             est = sum((it.get("est_size_mb") or 0) for it in sel)
             if not messagebox.askyesno(
-                    "HitranLab",
+                    "HitranLink",
                     f"将下载 {len(sel)} 个文件，预计 {est:.1f} MB，保存到：\n"
                     f"{hm.XSC_DIR}\n\n继续？", parent=win):
                 return
@@ -2218,11 +2218,11 @@ class HitranLab(tk.Tk):
 
     def _import_xsc(self):
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候")
             return
         p = self.xsc_var.get().strip()
         if not p or not Path(p).exists():
-            messagebox.showwarning("HitranLab", "请先选择截面文件")
+            messagebox.showwarning("HitranLink", "请先选择截面文件")
             return
         self._set_busy(True, "读入截面文件…")
         self.worker.run(self._job_xsc, p)
@@ -2514,7 +2514,7 @@ class HitranLab(tk.Tk):
         w = data.get("warning")
         if w:
             self.status_var.set("强线完成：窗口内 0 条？见提示")
-            messagebox.showinfo("HitranLab", w)
+            messagebox.showinfo("HitranLink", w)
         else:
             mol_str = "+".join(molecules) if molecules else "未知"
             self.status_var.set(f"强线完成：{len(molecules)} 个分子（{mol_str}），窗口内共 {data.get('n_in_window', 0)} 条，显示最强 {len(display)} 条（完整数据可导出）")
@@ -2613,12 +2613,12 @@ class HitranLab(tk.Tk):
     # ───────────────────────── 导出 ─────────────────────────
     def _export_lines(self):
         if not getattr(self, "_last_lines_data", None):
-            messagebox.showinfo("HitranLab", "请先点击「强线列表」获取线表")
+            messagebox.showinfo("HitranLink", "请先点击「强线列表」获取线表")
             return
         data = self._last_lines_data
         lines = data.get("lines", [])
         if not lines:
-            messagebox.showinfo("HitranLab", "窗口内无谱线")
+            messagebox.showinfo("HitranLink", "窗口内无谱线")
             return
         molecules = data.get("molecules", [])
         mol_str = "+".join(molecules) if molecules else "lines"
@@ -2628,7 +2628,7 @@ class HitranLab(tk.Tk):
         if not p:
             return
         with open(p, "w", encoding="utf-8", newline="") as f:
-            f.write(f"# HitranLab line list · molecules: {mol_str}\n")
+            f.write(f"# HitranLink line list · molecules: {mol_str}\n")
             win = data.get("window_cm-1")
             if win:
                 f.write(f"# requested window: {win[0]:g}-{win[1]:g} cm-1\n")
@@ -2641,11 +2641,11 @@ class HitranLab(tk.Tk):
                 f.write(f"{ln.get('molecule','?')},{ln['nu_cm-1']:.6f},{ln['S_cm_per_molecule']:.6e},"
                         f"{ln['gamma_air']:.6f},{ln['E_lower_cm-1']:.4f}\n")
         self.status_var.set(f"线表已导出 ({len(lines)} 条, {len(molecules)} 个分子): {p}")
-        messagebox.showinfo("HitranLab", f"完整线表已导出 ({len(lines)} 条, {len(molecules)} 个分子):\n{p}")
+        messagebox.showinfo("HitranLink", f"完整线表已导出 ({len(lines)} 条, {len(molecules)} 个分子):\n{p}")
 
     def _export_csv(self):
         if not self._overlay_data:
-            messagebox.showinfo("HitranLab", "请先「计算并绘图」")
+            messagebox.showinfo("HitranLink", "请先「计算并绘图」")
             return
         p = filedialog.asksaveasfilename(defaultextension=".csv",
                                          filetypes=[("CSV", "*.csv")],
@@ -2656,14 +2656,14 @@ class HitranLab(tk.Tk):
         # 隐藏图层不参与导出（所见即所得：图上没画的曲线不进 CSV）
         datasets = [d for d in self._overlay_data if d.get("visible", True)]
         if not datasets:
-            messagebox.showinfo("HitranLab", "所有图层均已隐藏，无可见数据可导出")
+            messagebox.showinfo("HitranLink", "所有图层均已隐藏，无可见数据可导出")
             return
         # 用第一个可见数据集的波数轴作为基准
         first_res = datasets[0]["data"]["res"]
         nu = first_res["nu"]
         first_mode = datasets[0]["data"].get("mode", "alpha")
 
-        header = "# HitranLab export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n"
+        header = "# HitranLink export · HITRAN2024 via HAPI 1.3.0.0 · TIPS-2025\n"
         header += f"# {len(datasets)} dataset(s) overlaid\n"
         if datasets[0]["data"].get("kind") == "imported":
             header += "# units: unknown (imported external data)\n"   # 外部导入：单位未知，不谎标 α
@@ -2707,7 +2707,7 @@ class HitranLab(tk.Tk):
                 continue
             nu_i = res_i["nu"]
             if len(nu_i) != ref_len:
-                self.show_error_dialog("HitranLab",
+                self.show_error_dialog("HitranLink",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数点数 {len(nu_i)} "
                     f"与第一组 {ref_len} 不一致。\n\n"
                     f"可能原因：不同波数窗口 / 不同步长 step / 线强模式与吸收谱模式混用。\n"
@@ -2717,7 +2717,7 @@ class HitranLab(tk.Tk):
             start_i = float(nu_i[0])
             end_i = float(nu_i[-1])
             if abs(start_i - ref_start) > 1e-6 or abs(end_i - ref_end) > 1e-6:
-                self.show_error_dialog("HitranLab",
+                self.show_error_dialog("HitranLink",
                     f"无法合并导出：第 {i+1} 组数据（{ds['tag']}）波数窗口 "
                     f"[{start_i:.4f}, {end_i:.4f}] 与第一组 [{ref_start:.4f}, {ref_end:.4f}] 不同。\n\n"
                     f"点数相同但窗口不同会导致数据静默错位。\n"
@@ -2727,7 +2727,7 @@ class HitranLab(tk.Tk):
         try:
             out = np.column_stack([nu] + data_cols)
         except ValueError as e:
-            self.show_error_dialog("HitranLab", f"CSV 导出失败（数组维度不一致）：{e}")
+            self.show_error_dialog("HitranLink", f"CSV 导出失败（数组维度不一致）：{e}")
             return
         with open(p, "w", encoding="utf-8", newline="") as f:
             f.write(header)
@@ -2743,7 +2743,7 @@ class HitranLab(tk.Tk):
             return
         self.fig.savefig(p, dpi=200)
         self.status_var.set(f"PNG 已导出: {p}")
-        messagebox.showinfo("HitranLab", f"PNG 已导出:\n{p}")
+        messagebox.showinfo("HitranLink", f"PNG 已导出:\n{p}")
 
     def _stop_compute(self):
         """请求停止当前任务。按钮文字已根据任务类型动态变化（停止计算/取消下载/取消解压）。"""
@@ -2813,7 +2813,7 @@ class HitranLab(tk.Tk):
         try:
             Path(p).write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
             self.status_var.set(f"项目已保存: {p}")
-            messagebox.showinfo("HitranLab", f"项目已保存:\n{p}")
+            messagebox.showinfo("HitranLink", f"项目已保存:\n{p}")
         except Exception as e:
             self._show_error(f"保存失败: {e}")
 
@@ -3222,7 +3222,7 @@ class HitranLab(tk.Tk):
 
     def _show_help(self):
         """使用说明（完整版：基本流程 / 参数 / 模式 / 图层 / 截面 / 导出 / 工具 / 快捷键）。"""
-        help_text = """HitranLab 使用说明（HITRAN2024 · HAPI 引擎 · TIPS-2025）
+        help_text = """HitranLink 使用说明（HITRAN2024 · HAPI 引擎 · TIPS-2025）
 
 ━━ 一、快速上手 ━━
 1. 选择分子（支持中文名 / 化学式 / 英文名检索，回车确认）
@@ -3360,7 +3360,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         if not dst.name:
             raise RuntimeError("更新包文件名为空，已拒绝下载")
         cb = self._prog_cb()
-        req = urllib.request.Request(url, headers={"User-Agent": "HitranLab"})
+        req = urllib.request.Request(url, headers={"User-Agent": "HitranLink"})
         h = hashlib.sha256()
         got = 0
         try:
@@ -3419,14 +3419,14 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         newdir.mkdir(parents=True, exist_ok=True)
         # 防 zip slip / zip bomb：逐条校验路径、大小、符号链接与加密条目
         safe_extract_zip(zip_path, newdir)
-        # 定位策略：先判解压根是否有 HitranLab.exe（扁平 zip），
+        # 定位策略：先判解压根是否有 HitranLink.exe（扁平 zip），
         # 再退回唯一子目录（带一层目录的 zip），避免扁平 zip 被误判为 _internal
-        if (newdir / "HitranLab.exe").exists():
+        if (newdir / "HitranLink.exe").exists():
             src = newdir
         else:
             subs = [p for p in newdir.iterdir() if p.is_dir()]
             src = subs[0] if len(subs) == 1 else newdir
-        # 只允许发布白名单：HitranLab.exe + _internal；防止更新包夹带任意文件
+        # 只允许发布白名单：HitranLink.exe + _internal；防止更新包夹带任意文件
         validate_update_layout(src)
         return {"kind": "update_prepared", "src": str(src), "zip": str(zip_path)}
 
@@ -3474,7 +3474,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         def q(p):
             """命令行的路径参数：加引号 + 把 % 转义为 %%。
 
-            批处理里 % 会被当作变量展开，安装路径若含 %（如 C:\\100%disk\\HitranLab），
+            批处理里 % 会被当作变量展开，安装路径若含 %（如 C:\\100%disk\\HitranLink），
             直接拼接会让 robocopy/start/rmdir 拿到错误路径 —— 早前只在 echo 文本里转义了 %，
             命令实参漏了。这里统一处理。
             """
@@ -3491,9 +3491,9 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
                 "@echo off",
                 # 本脚本按 UTF-8 保存，这里先切到 UTF-8 代码页，保证中文不乱码
                 "chcp 65001 >nul",
-                "title HitranLab 自动更新",
+                "title HitranLink 自动更新",
                 "echo ============================================================",
-                "echo   HitranLab 正在更新，请勿关闭本窗口",
+                "echo   HitranLink 正在更新，请勿关闭本窗口",
                 "echo ------------------------------------------------------------",
                 "echo   窗口会显示进度，完成后自动关闭并启动新版本。",
                 "echo ============================================================",
@@ -3558,7 +3558,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
                 "echo ------------------------------------------------------------",
                 "echo   常见原因：旧版本进程未完全退出，或程序目录被其它程序占用。",
                 "echo   处理办法：",
-                "echo     1) 关闭所有 HitranLab 窗口后，重新执行「检查更新」；",
+                "echo     1) 关闭所有 HitranLink 窗口后，重新执行「检查更新」；",
                 f"echo     2) 或手动解压更新包，覆盖到程序目录：{esc(appdir)}",
                 f"echo     3) 更新包位置：{esc(zip_path)}",
                 f"echo     4) 详细日志：{esc(log)}",
@@ -3584,7 +3584,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
     def _check_update(self):
         """通过 GitHub API 检查最新版本（后台线程，不阻塞 UI）。"""
         if self.worker.busy:
-            messagebox.showinfo("HitranLab", "计算进行中，请稍候再检查更新")
+            messagebox.showinfo("HitranLink", "计算进行中，请稍候再检查更新")
             return
         self.status_var.set("正在检查更新…")
         if not self.worker.run(self._job_check_update):
@@ -3596,7 +3596,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         import json
         try:
             url = "https://api.github.com/repos/LKF0402/hitran-mcp/releases/latest"
-            req = urllib.request.Request(url, headers={"User-Agent": "HitranLab"})
+            req = urllib.request.Request(url, headers={"User-Agent": "HitranLink"})
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             latest = data.get("tag_name", "").lstrip("v")
@@ -3914,11 +3914,11 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
     def _show_about(self):
         """关于对话框。"""
         win = tk.Toplevel(self)
-        win.title("关于 HitranLab")
+        win.title("关于 HitranLink")
         win.geometry("400x340")
         win.configure(bg=self._bg)
         self._modal(win)
-        ttk.Label(win, text="HitranLab", font=("Microsoft YaHei", 18, "bold"),
+        ttk.Label(win, text="HitranLink", font=("Microsoft YaHei", 18, "bold"),
                   foreground=self._accent, background=self._bg).pack(pady=(24, 4))
         ttk.Label(win, text=f"版本 v{APP_VERSION}", background=self._bg, foreground=self._text_dim).pack()
         ttk.Label(win, text="HITRAN 光谱分析桌面工作站", background=self._bg).pack(pady=(8, 0))
@@ -4037,14 +4037,14 @@ def main():
         _selftest(out_json)
         return
     try:
-        app = HitranLab()
+        app = HitranLink()
         app.protocol("WM_DELETE_WINDOW", app._on_exit)
         app.mainloop()
     except Exception:
         tb = traceback.format_exc()
         try:
             root = tk.Tk(); root.withdraw()
-            _show_fatal(root, tb)      # 模块级函数，不依赖 HitranLab 实例
+            _show_fatal(root, tb)      # 模块级函数，不依赖 HitranLink 实例
         except Exception:
             print(tb)                  # 兜底中的兜底：连窗口都起不来时至少留下痕迹
 
