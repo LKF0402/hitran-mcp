@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """HITRAN MCP Server —— 把 tools/hitran.py 的取数与绘图能力暴露成 AI 可直接调用的工具。
 
@@ -6,8 +6,8 @@
   · 纯标准库实现的 stdio JSON-RPC（MCP 2024-11-05），零新增依赖；
     HAPI / matplotlib 惰性加载，空闲时不占用内存。
   · 所有 print 被捕获为 log 字段返回，绝不污染 stdout 协议流。
-  · 9 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
-    / 谱图绘制 / 配分函数 / 截面文件（HOTW）读入分析 / 截面子库在线探测 / 运行状态。
+  · 12 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
+    / 谱图绘制 / 配分函数 / 截面文件（HOTW）读入分析 / 截面子库在线检索·列目录·批量下载 / 运行状态。
   · 产物统一落 tmp/mcp_out/（gitignore 区），CSV 自带 HITRAN 溯源水印。
   · 物理纪律沿用 tools/hitran.py：输入护栏 + 结果轮询 + 混合气 α = x·α_pure(T,P,空气浴)。
 
@@ -21,7 +21,6 @@ import os
 import re
 import sys
 import threading
-import traceback
 from pathlib import Path
 
 if getattr(sys, "frozen", False):
@@ -566,7 +565,7 @@ def _tupleize(obj):
 
 def _load_persistent_cache():
     """启动时从磁盘加载缓存到内存。损坏的条目自动跳过。"""
-    global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
+    global _ABS_CACHE_HITS
     if not _PERSIST_INDEX_FILE.exists():
         return
     try:
@@ -729,7 +728,8 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     单同位素时权重必须是 1.0（纯气体），不可误传自然丰度，否则 α 会凭空少 1%~2%。
     """
     global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
-    ht, np = _hitran(), _np()
+    _hitran()          # 惰性加载库并触发 db_begin（副作用必需，返回值不用）
+    np = _np()
     import hapi
     import copy
 
@@ -1105,7 +1105,8 @@ def t_lines(name, numin, numax, iso=None, top_n=10, min_intensity=None, force=Fa
       iso=int    → 指定同位素线。
     线表按窗口自动校正（见 _ensure_table）；窗口内 0 条线时给出显式 warning。
     """
-    ht, np = _hitran(), _np()
+    _hitran()          # 惰性加载库并触发 db_begin（副作用必需，返回值不用）
+    np = _np()
     import hapi
     numin, numax = float(numin), float(numax)
     formula, M = _resolve_M(name)
@@ -2176,7 +2177,7 @@ def t_apikey_status(probe=False):
 
 def t_partition_sum(name=None, M=None, I=None, T=296.0, tips_version=None):
     """配分函数 Q(T)，走官方 TIPS（2025/2021/2017/2011 可选，默认 HAPI 内置 2025）。"""
-    ht = _hitran()
+    _hitran()          # 惰性加载库并触发 db_begin（副作用必需，返回值不用）
     import hapi
     if name:
         formula, M = _resolve_M(name)

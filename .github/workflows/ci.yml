@@ -24,10 +24,19 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install hitran-api numpy matplotlib
+        pip install hitran-api numpy matplotlib pyflakes
 
     - name: Syntax check
       run: |
         python -m py_compile tools/hitran.py
         python -m py_compile tools/hitran_mcp.py
+        python -m py_compile tools/contract_check.py
         python -m py_compile app/hitran_app.py
+
+    - name: Static check
+      run: |
+        python -m pyflakes tools/hitran.py tools/hitran_mcp.py tools/contract_check.py app/hitran_app.py
+
+    - name: Contract check
+      run: |
+        python tools/contract_check.py

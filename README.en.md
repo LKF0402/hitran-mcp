@@ -295,6 +295,14 @@ python tools/hitran_mcp.py --selftest
 
 Runs a real network fetch of a small CO window and plots, plus cross-section pipeline (synthetic file), online probe and status check.
 
+**Offline contract check** (run by CI on every push; no network, no cache writes):
+
+```bash
+python tools/contract_check.py
+```
+
+Verifies the 12-tool `TOOLS`/`DISPATCH` consistency, schema required fields, `initialize`/`tools/list`/`ping` protocol responses, and that the two main files contain no UTF-8 BOM. The real `--selftest` depends on the network and is not part of CI.
+
 **Desktop workstation self-test**:
 
 ```bash

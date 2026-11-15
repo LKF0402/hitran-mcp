@@ -325,6 +325,14 @@ python tools/hitran_mcp.py --selftest
 
 走真实网络抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查。
 
+**离线契约检查**（CI 每次运行，不联网、不写缓存）：
+
+```bash
+python tools/contract_check.py
+```
+
+校验 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填字段、`initialize`/`tools/list`/`ping` 协议返回，以及两个主文件不带 UTF-8 BOM。真实 `--selftest` 依赖网络，未纳入 CI。
+
 **桌面工作站自测**：
 
 ```bash

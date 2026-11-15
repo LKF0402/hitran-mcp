@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """HitranLab —— HITRAN 光谱分析桌面工作站（Windows）。
 
@@ -439,7 +439,7 @@ class HitranLab(tk.Tk):
         btn_frame = tk.Frame(dlg, bg=bg)
         btn_frame.pack(fill="x", padx=10, pady=(0, 10))
 
-        tk.Label(btn_frame, text=f"错误已记录到: Hitran_Data/error.log",
+        tk.Label(btn_frame, text="错误已记录到: Hitran_Data/error.log",
                  font=("Segoe UI", 9), fg=fg2, bg=bg).pack(side="left")
 
         RoundedButton(btn_frame, "关闭", lambda: dlg.destroy(),
@@ -583,7 +583,7 @@ class HitranLab(tk.Tk):
         # 根据当前主题获取配色
         c = self._get_colors(self._theme)
         BG, SURFACE, SURFACE2, SURFACE3 = c["BG"], c["SURFACE"], c["SURFACE2"], c["SURFACE3"]
-        ACCENT, ACCENT_H, ACCENT_P, GREEN = c["ACCENT"], c["ACCENT_H"], c["ACCENT_P"], c["GREEN"]
+        ACCENT, ACCENT_H, ACCENT_P = c["ACCENT"], c["ACCENT_H"], c["ACCENT_P"]
         TEXT, TEXT_DIM, BORDER = c["TEXT"], c["TEXT_DIM"], c["BORDER"]
 
         self._bg, self._surface, self._accent = BG, SURFACE, ACCENT
@@ -1156,7 +1156,7 @@ class HitranLab(tk.Tk):
                 self._iso_map[label] = iso["I"]
             self.iso_cb["values"] = labels
             self.iso_var.set("所有同位素（自然丰度）")  # 默认所有同位素
-        except Exception as e:
+        except Exception:
             self.iso_cb["values"] = []
             self.iso_var.set("")
 
@@ -1796,7 +1796,7 @@ class HitranLab(tk.Tk):
             T = float(self.T_var.get())
             if T <= 0:
                 raise ValueError("温度 T 必须 > 0 K")
-        except ValueError as e:
+        except ValueError:
             self._show_error(f"温度 T 非法: {self.T_var.get()!r}")
             return
         self._set_busy(True, "计算配分函数…")
@@ -3008,7 +3008,6 @@ class HitranLab(tk.Tk):
     def _save_all_prefs(self):
         """保存所有当前设置到首选项文件（退出时自动调用）。"""
         try:
-            import json
             d = {}
             # 基本参数
             for key, attr in (("molecule", "mol_var"), ("iso", "iso_var"),
@@ -3724,7 +3723,6 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
 
     def _clear_line_cache(self):
         """清理线表缓存：删除 Hitran_Data/ 下的 .data/.header 文件，清空内存计算缓存。"""
-        import shutil
         cache_dir = ROOT / "Hitran_Data"
         if not cache_dir.exists():
             messagebox.showinfo("清理缓存", "线表缓存目录不存在，无需清理。")
