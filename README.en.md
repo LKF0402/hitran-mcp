@@ -77,7 +77,7 @@ Then just talk: **"Compute the CH4 absorption spectrum around 2968 cm⁻¹ and p
 | Quality gates | 23 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
-## 🧭 Which path?
+## 🧭 Three ways to use it
 
 | You are | Use | Entry point |
 |---|---|---|
