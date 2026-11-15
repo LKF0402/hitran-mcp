@@ -23,19 +23,30 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 
 ## Quick Start
 
-**Option 1: desktop GUI (recommended for beginners)** — no programming required.
+**Option 1: hook it into an AI assistant (recommended)** — the stdio MCP server is the core of this project. Once connected, you describe the computation in one sentence instead of memorising parameters or clicking through a GUI.
+
+1. Clone and install dependencies (Python ≥ 3.10):
+
+```bash
+git clone https://github.com/LKF0402/hitran-mcp.git
+pip install -r hitran-mcp/requirements.txt
+```
+
+2. Paste the config block from [MCP Client Setup](#mcp-client-setup) into your client (any MCP-capable client works, e.g. Claude Desktop, Cursor, Cherry Studio) and point the path at your local checkout.
+
+3. Ask in plain language, for example:
+
+> Fetch the CH4 line list within ±0.5 cm⁻¹ around 2968 cm⁻¹ and list the 5 strongest lines
+
+> Compute the absorption spectrum for 2000 ppm CH4 + 1% H2O at 296 K, 1 atm, 10 cm path length, and plot it
+
+> Export the previous result to CSV with data source and TIPS version annotated
+
+You can also just hand the repository URL to your AI assistant and let it do the configuration.
+
+**Option 2: desktop GUI (no Python environment needed)**
 
 Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/releases) → extract → double-click `HitranLink.exe` → pick molecules and parameters → click「Compute & Plot」.
-
-**Option 2: hook it into an AI assistant (recommended for research)** — natural language driven.
-
-Send this to any MCP-compatible client:
-
-> "Please configure the HITRAN MCP server: https://github.com/LKF0402/hitran-mcp"
-
-Then just describe the computation:
-
-> "Compute the CH4 absorption spectrum between 2950 and 3100 cm⁻¹ at 296 K and 1 atm"
 
 ## Preview
 
@@ -72,6 +83,7 @@ Then just describe the computation:
 - [Security & Privacy](#security--privacy)
 - [Testing & Quality Gates](#testing--quality-gates)
 - [FAQ](#faq)
+- [Related projects](#related-projects)
 
 ## Overview
 
@@ -370,6 +382,10 @@ The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDI
 - **exe flagged by antivirus**: PyInstaller-packaged Python programs occasionally trigger false positives — add to trust list or run from source.
 - **Listing cross-sections fails with HTTP 500 / "query failed"**: this is a server-side failure of the official `/api/v2/` endpoints (measured: these endpoints return 500 for **both invalid and valid keys**, so a 500 does not indicate a bad key; the login-free online probe `hitran_xsc_search` usually still works). Retry later, or download the cross-section files manually from [hitran.org/xsc](https://hitran.org/xsc) into `xsc_data/` and read them with `hitran_cross_section`.
 
+
+## Related projects
+
+- **[SpectroLink](https://github.com/LKF0402/spectrolink)**: an entry-point MCP for multi-technique spectral sensing simulation, covering TDLAS-DA/WMS, LITES, CRDS, NDIR, FTIR and DOAS. Independent repository and maintenance, and no overlap with this project — this project covers HITRAN retrieval plus line-by-line/cross-section computation; when you need end-to-end simulation of a specific sensing technique (modulation index m, harmonics, detection limit, ring-down time and so on), connect it there.
 
 ## Disclaimer
 

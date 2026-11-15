@@ -23,24 +23,34 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ## 快速开始
 
-### 方式一：桌面 GUI（新手推荐）
+### 方式一：接入 AI 助手（推荐，适合新用户）
 
-无需编程，直接使用。
+本项目的主体是 stdio MCP 服务器，接入后无需记参数、无需点界面，用一句话就能完成取数、算谱和导出。
 
-前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
+1. 克隆仓库并安装依赖（Python ≥ 3.10）：
+
+```bash
+git clone https://github.com/LKF0402/hitran-mcp.git
+pip install -r hitran-mcp/requirements.txt
+```
+
+2. 把下方「[接入 AI 客户端](#接入-ai-客户端)」中的配置片段贴进你的客户端（Claude Desktop、Cursor、Cherry Studio 等支持 MCP 的客户端均可），把路径改成你本机的实际路径。
+
+3. 直接用自然语言提需求，例如：
+
+> 取 CH₄ 在 2968 cm⁻¹ 附近 ±0.5 cm⁻¹ 的线表，按线强排序给出前 5 条
+
+> 算 2000 ppm CH₄ + 1% H₂O、296 K、1 atm、10 cm 光程的吸收谱并绘图
+
+> 把上一步结果导出 CSV，标注数据来源与 TIPS 版本
+
+也可以直接把仓库地址发给你的 AI 助手，让它代为完成配置。
 
 ---
 
-### 方式二：接入 AI 助手（科研推荐）
+### 方式二：桌面 GUI（无需 Python 环境）
 
-自然语言驱动，AI 直接调用。
-
-将以下内容发送给您的 AI 助手（支持 MCP 协议的客户端均可）：
-
-> "请帮我配置 HITRAN MCP 服务器，仓库地址：https://github.com/LKF0402/hitran-mcp"
-
-配置完成后，您可以直接用自然语言描述计算需求：
-> "帮我计算 CH₄ 在 2950-3100 cm⁻¹、296 K、1 atm 条件下的吸收谱"
+前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
 
 
 ---
@@ -82,6 +92,7 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 - [安全与隐私](#安全与隐私)
 - [测试与质量门禁](#测试与质量门禁)
 - [常见问题](#常见问题)
+- [相关项目](#相关项目)
 
 ## 项目概览
 
@@ -381,6 +392,9 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三�
 - **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
 - **列截面清单报 HTTP 500 / "查询失败"**：这是官方 `/api/v2/` 接口的服务端故障（实测该接口对**无效 key 与正常 key 都返回 500**，所以 500 不能说明你的 key 有问题；免登录的在线探测 `hitran_xsc_search` 通常仍可用）。请稍后重试，或到 [hitran.org/xsc](https://hitran.org/xsc) 登录后手动下载截面文件放进 `xsc_data/`，再用 `hitran_cross_section` 读入。
 
+## 相关项目
+
+- **[SpectroLink](https://github.com/LKF0402/spectrolink)**：多技术光谱传感仿真 MCP 总入口，覆盖 TDLAS-DA/WMS、LITES、CRDS、NDIR、FTIR、DOAS 六类技术。独立仓库、独立维护；与本项目不重叠——本项目负责 HITRAN 取数与逐线/截面计算，需要某类传感技术的端到端仿真（调制系数 m、谐波、检测限、腔衰荡时间等）时可直接接入。
 
 ## 免责声明
 
