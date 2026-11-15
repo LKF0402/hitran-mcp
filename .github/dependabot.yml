@@ -7,6 +7,13 @@ updates:
     open-pull-requests-limit: 5
     allow:
       - dependency-type: "direct"
+    # numpy 2.1+ / matplotlib 3.10+ 要求 Python >= 3.12，会打破 CI 的 3.10 矩阵；
+    # 只接受补丁级更新，跨小版本需手动评估解释器下限后再升。
+    ignore:
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "matplotlib"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
