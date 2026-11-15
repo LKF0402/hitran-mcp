@@ -355,6 +355,16 @@ def verify_zip() -> None:
     log(f"OK 校验通过：zip 内 exe == dist 下 exe（{info.file_size} B，打包于 {zt}）")
 
 
+def check_security_gate() -> None:
+    """发布前跑安全/敏感性闸门；有阻断项直接拒绝出包。"""
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "security_check.py")],
+                       cwd=str(ROOT), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        die("安全/敏感性检查未通过，拒绝发布：\n" + (r.stdout or r.stderr)[:4000])
+    log("安全/敏感性闸门通过")
+
+
 # ───────────────────────── 主流程 ─────────────────────────
 
 def main() -> int:
@@ -384,12 +394,13 @@ def main() -> int:
     scrub_privacy()        # 隐私闸门：清 numba 缓存里的构建机路径，回扫确认
     make_zip()
     verify_zip()
+    check_security_gate()
 
     log("")
     log(f"完成。发布资产：{ZIP.relative_to(ROOT)}")
     log("发布前请确认：")
     log(f"  1) tag 与 VERSION 一致（当前 VERSION = {ver}）")
-    log(f"  2) git tag 后把上面这个 zip 上传为 release 资产")
+    log("  2) git tag 后把上面这个 zip 上传为 release 资产")
     return 0
 
 

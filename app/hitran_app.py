@@ -45,6 +45,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from tools import hitran_mcp as hm          # 复用服务器引擎（含 HAPI 惰性加载）
+from app.updater import (                   # 自动更新安全原语（可离线单测）
+    MAX_UPDATE_BYTES, UPDATE_ASSET, release_asset_url, safe_extract_zip,
+    validate_update_layout, validate_update_url, verify_sha256,
+)
 APP_VERSION = hm.VERSION  # 单一版本号源，引用 tools/hitran_mcp.py:VERSION
 
 APP_TITLE = "HitranLab · HITRAN 光谱分析工作站"
@@ -166,7 +170,6 @@ MODES = {"吸收系数 α (cm⁻¹)": "alpha",
 DEFAULT_W = 1280
 DEFAULT_H = 880
 PREFS_PATH = ROOT / "hitran_prefs.json"      # 首选项落盘（运行期文件，位于 .gitignore 区）
-UPDATE_ASSET = "HitranLab-windows-x64.zip"   # Release 中的免安装包名
 UPDATE_DIR = ROOT / "_update"                # 更新包下载/解压目录（gitignore 区）
 
 
@@ -3337,35 +3340,57 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
             self.status_var.set(f"已有新版本 v{d['latest']}，可到 {d['url']} 下载")
             return
         self._set_busy(True, "下载更新包…")
-        self.worker.run(self._job_download_update, d["asset_url"], UPDATE_ASSET)
+        self.worker.run(self._job_download_update, d["asset_url"], UPDATE_ASSET,
+                        d.get("asset_size") or 0, d.get("asset_digest") or "")
 
-    def _job_download_update(self, url, name):
-        """后台下载新版免安装包到 _update/（复用进度通道，按字节上报）。"""
+    def _job_download_update(self, url, name, expected_size=0, expected_digest=""):
+        """后台下载新版免安装包到 _update/，校验大小与 SHA-256 后再交付解压。"""
+        import hashlib
         import urllib.request
-        # 安全加固：url / name 均来自 GitHub API 响应 —— 万一响应被篡改，也不能让我们
-        # 去 http 明文站点下载，或把文件写到 _update/ 目录之外（故只取 basename）。
-        if not str(url).lower().startswith("https://"):
-            raise RuntimeError(f"更新包地址不是 https，已拒绝下载：{url}")
+        # 安全加固：URL 只允许本仓库 Release；文件名只取 basename；
+        # 内容必须匹配 GitHub API 的 size + sha256 digest，防篡改/半截包。
+        validate_update_url(url)
+        if not expected_digest:
+            raise RuntimeError("该发布未提供 SHA-256 摘要，已拒绝自动升级；请到 Release 页手动下载")
+        expected_size = int(expected_size or 0)
+        if expected_size > MAX_UPDATE_BYTES:
+            raise RuntimeError(f"更新包声明大小超限: {expected_size} 字节")
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
         dst = UPDATE_DIR / Path(str(name or UPDATE_ASSET)).name
         if not dst.name:
             raise RuntimeError("更新包文件名为空，已拒绝下载")
         cb = self._prog_cb()
         req = urllib.request.Request(url, headers={"User-Agent": "HitranLab"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            total = int(r.headers.get("Content-Length") or 0)
-            got = 0
-            with open(dst, "wb") as f:
-                while True:
-                    chunk = r.read(262144)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    got += len(chunk)
-                    if total:
-                        cb(got, total, "下载更新包")
-        if dst.stat().st_size < 1_000_000:
-            raise RuntimeError(f"下载的更新包异常（仅 {dst.stat().st_size} 字节），已放弃")
+        h = hashlib.sha256()
+        got = 0
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                total = int(r.headers.get("Content-Length") or expected_size or 0)
+                if total > MAX_UPDATE_BYTES:
+                    raise RuntimeError(f"更新包响应大小超限: {total} 字节")
+                with open(dst, "wb") as f:
+                    while True:
+                        chunk = r.read(262144)
+                        if not chunk:
+                            break
+                        got += len(chunk)
+                        if got > MAX_UPDATE_BYTES:
+                            raise RuntimeError(f"更新包超过上限 {MAX_UPDATE_BYTES} 字节")
+                        h.update(chunk)
+                        f.write(chunk)
+                        if total:
+                            cb(got, total, "下载更新包")
+            if expected_size and got != expected_size:
+                raise RuntimeError(f"更新包大小不符：期望 {expected_size}，实际 {got}")
+            if dst.stat().st_size < 1_000_000:
+                raise RuntimeError(f"下载的更新包异常（仅 {dst.stat().st_size} 字节），已放弃")
+            verify_sha256(dst, expected_digest)
+        except Exception:
+            try:
+                dst.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
         return {"kind": "update_ready", "zip": str(dst), "dir": str(UPDATE_DIR)}
 
     def _render_update_ready(self, d):
@@ -3385,16 +3410,15 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
             self._set_busy(False, "启动解压失败")
 
     def _job_prepare_update(self, zip_path, update_dir):
-        """后台解压更新包，返回解压后的源目录路径。"""
-        import zipfile
+        """后台安全解压更新包，返回解压后的源目录路径。"""
         import shutil
         zip_path = Path(zip_path)
         newdir = Path(update_dir) / "new"
         if newdir.exists():
             shutil.rmtree(newdir)
         newdir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(zip_path) as z:
-            z.extractall(newdir)
+        # 防 zip slip / zip bomb：逐条校验路径、大小、符号链接与加密条目
+        safe_extract_zip(zip_path, newdir)
         # 定位策略：先判解压根是否有 HitranLab.exe（扁平 zip），
         # 再退回唯一子目录（带一层目录的 zip），避免扁平 zip 被误判为 _internal
         if (newdir / "HitranLab.exe").exists():
@@ -3402,8 +3426,8 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         else:
             subs = [p for p in newdir.iterdir() if p.is_dir()]
             src = subs[0] if len(subs) == 1 else newdir
-        if not (src / "HitranLab.exe").exists():
-            raise RuntimeError(f"更新包结构不符合预期（未找到 HitranLab.exe）：{src}")
+        # 只允许发布白名单：HitranLab.exe + _internal；防止更新包夹带任意文件
+        validate_update_layout(src)
         return {"kind": "update_prepared", "src": str(src), "zip": str(zip_path)}
 
     def _render_update_prepared(self, d):
@@ -3578,13 +3602,19 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
             latest = data.get("tag_name", "").lstrip("v")
             current = APP_VERSION.lstrip("v")
             has_update = bool(latest) and self._vkey(latest) > self._vkey(current)
-            assets = {a.get("name"): a.get("browser_download_url")
-                      for a in (data.get("assets") or [])}
+            assets = {a.get("name"): a for a in (data.get("assets") or [])}
+            asset = assets.get(UPDATE_ASSET) or {}
+            # 不直接信任 API 里的 browser_download_url：按固定仓库/资产名重新构造，
+            # 再配合 size + sha256 digest 校验，防止响应被篡改后指向任意主机。
+            asset_url = (release_asset_url(data.get("tag_name") or f"v{latest}", UPDATE_ASSET)
+                         if asset else None)
             return {"kind": "check_update", "has_update": has_update,
                     "latest": latest, "current": current,
                     "body": data.get("body", "无")[:200],
                     "url": data.get("html_url", APP_REPO),
-                    "asset_url": assets.get(UPDATE_ASSET)}
+                    "asset_url": asset_url,
+                    "asset_size": int(asset.get("size") or 0),
+                    "asset_digest": str(asset.get("digest") or "")}
         except Exception as e:
             return {"kind": "check_update", "error": str(e)}
 
