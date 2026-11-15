@@ -23,9 +23,29 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ## 快速开始
 
-### 方式一：接入 AI 助手（推荐，适合新用户）
+### 方式一：把下面这段贴给 AI，让它自己装好（推荐，零操作）
 
-本项目的主体是 stdio MCP 服务器，接入后无需记参数、无需点界面，用一句话就能完成取数、算谱和导出。
+前提只有一个：你的 AI 助手能在本机执行命令（Claude Code、Cursor、Codex、Cherry Studio 本地模式等）。把方框里整段复制进对话框即可，它会依次完成安装、自检、接入和验证，最后告诉你以后怎么用。
+
+```text
+我在这台电脑上用 hitran-mcp（HITRAN 光谱工具），请帮我装好并跑通，按顺序执行：
+1. 检查 Python 是否 ≥ 3.10；如果不是，告诉我该装哪个版本，不要改动系统里其他组件
+2. 克隆 https://github.com/LKF0402/hitran-mcp 到固定目录（已存在则更新），在该目录执行 pip install -r requirements.txt
+3. 运行 python tools/hitran_mcp.py --selftest，把结果原样贴给我
+4. 如果你的环境支持 MCP 客户端配置，按仓库 README「接入 AI 客户端」把它注册为 MCP 服务器；不支持就跳过，改用命令行入口 python tools/hitran_cli.py
+5. 用命令行跑一个例子验证：python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
+6. 最后用三句话告诉我：以后我能直接用自然语言问什么、数据缓存在哪里、出错时该看哪条信息
+```
+
+装好之后，你只需要说人话："算一下 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并画图"。
+
+**不装 MCP 也能用**：只要客户端能执行本地命令，AI 直接调 `python tools/hitran_cli.py <工具名> --参数 值` 即可，不需要注册 MCP 服务器；依赖已装好时，两边算的是同一套引擎，结果一致。纯网页对话（无法访问你本机文件）则必须走 MCP。
+
+---
+
+### 方式二：手动接入 AI 客户端（MCP）
+
+本项目主体是 stdio MCP 服务器，接入后无需记参数、无需点界面。
 
 1. 克隆仓库并安装依赖（Python ≥ 3.10）：
 
@@ -34,7 +54,7 @@ git clone https://github.com/LKF0402/hitran-mcp.git
 pip install -r hitran-mcp/requirements.txt
 ```
 
-2. 把下方「[接入 AI 客户端](#接入-ai-客户端)」中的配置片段贴进你的客户端（Claude Desktop、Cursor、Cherry Studio 等支持 MCP 的客户端均可），把路径改成你本机的实际路径。
+2. 把「[接入 AI 客户端](#接入-ai-客户端)」中的配置片段贴进你的客户端，路径改成你本机的实际路径。
 
 3. 直接用自然语言提需求，例如：
 
@@ -44,11 +64,8 @@ pip install -r hitran-mcp/requirements.txt
 
 > 把上一步结果导出 CSV，标注数据来源与 TIPS 版本
 
-也可以直接把仓库地址发给你的 AI 助手，让它代为完成配置。
-
 ---
 
-### 方式二：桌面 GUI（无需 Python 环境）
 
 前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
 
@@ -83,6 +100,7 @@ pip install -r hitran-mcp/requirements.txt
   - [安装](#安装)
   - [API Key（可选）](#api-key可选)
 - [接入 AI 客户端](#接入-ai-客户端)
+- [命令行入口（不装 MCP 也能用）](#命令行入口不装-mcp-也能用)
 - [工具参考](#工具参考)
 - [数据架构与分子覆盖](#数据架构与分子覆盖)
   - [逐线库（LBL）](#逐线库lbl)
@@ -96,12 +114,13 @@ pip install -r hitran-mcp/requirements.txt
 
 ## 项目概览
 
-`hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，包含两套前端：
+`hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，同一套引擎带三种用法：
 
 1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用多个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
-2. **HitranLink 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
+2. **命令行入口**（`tools/hitran_cli.py`）：把同一批工具函数暴露成 `命令 + 参数`，无需注册 MCP，任何能执行本地命令的 AI 或脚本都能直接调用。
+3. **HitranLink 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
 
-两套前端共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
+三种用法共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
 
 - **传输层**：MCP 服务器用 stdio JSON-RPC（协议 2024-11-05），纯 Python 标准库实现，无框架依赖。
 - **数据源**：实时取自 HITRANonline。计算层用官方 HAPI 1.3.0.0；下载优先走官方 v2 API（HAPI2，URL 携带 API key），不可用时自动回退 HAPI 1.x 旧接口。物种表与同位素丰度直接读取 HAPI 官方 ISO 表，无硬编码白名单。
@@ -152,6 +171,7 @@ hitran-mcp/
 │  └─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
 └─ tools/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
+   ├─ hitran_cli.py          # 命令行入口（不装 MCP 也能调用同一批工具函数）
    ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印 + 计算缓存）
    ├─ contract_check.py      # 离线契约检查（12 工具 / 协议 / BOM）
    ├─ security_check.py      # 安全与敏感性扫描（发布前闸门）
@@ -291,6 +311,34 @@ pip install -r hitran-mcp/requirements.txt
 > 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/<用户名>/AppData/Local/Programs/Python/Python310/python.exe`）。
 
 保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
+
+## 命令行入口（不装 MCP 也能用）
+
+`tools/hitran_cli.py` 把同一批工具函数暴露成命令行，不需要注册 MCP 服务器。任何能执行本地命令的 AI 助手（Claude Code、Cursor、Codex 等）或脚本都可以直接调用，算出的结果与 MCP 通道完全一致。
+
+```bash
+# 列出全部工具（名称、用途）
+python tools/hitran_cli.py --list
+
+# 查分子/同位素表
+python tools/hitran_cli.py t_species --name CH4
+
+# 取窗口内最强 5 条线（选线/干扰分析）
+python tools/hitran_cli.py t_lines --name CH4 --numin 2960 --numax 2975 --top_n 5
+
+# 算吸收谱（CH4 2000 ppm，2950-3100 cm⁻¹，296 K，1 atm）
+python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 \
+    --numin 2950 --numax 3100 --T 296 --P 1.01325
+
+# 配分函数 Q(T)
+python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
+```
+
+- 工具名可写 `hitran_spectrum`（与 MCP 一致）或 `t_spectrum`（函数名）。
+- 参数写法 `--键 值`，键名即函数参数名；数字、`true/false`、JSON 数组会自动识别。
+- 结果以 JSON 打到 stdout（库日志走 stderr，不污染输出），加 `--out 结果.json` 可落盘。
+- 改用 MCP 前无需任何迁移：两者调用的是同一套函数。
+
 
 ## 工具参考
 

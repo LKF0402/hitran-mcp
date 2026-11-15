@@ -23,7 +23,25 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 
 ## Quick Start
 
-**Option 1: hook it into an AI assistant (recommended)** — the stdio MCP server is the core of this project. Once connected, you describe the computation in one sentence instead of memorising parameters or clicking through a GUI.
+**Option 1: paste this prompt into an AI assistant and let it do the setup (recommended, zero manual steps)**
+
+The only requirement is that your assistant can execute commands on your machine (Claude Code, Cursor, Codex, Cherry Studio local mode, and so on). Copy the whole block below into the chat window — it will install, self-test, connect, and verify, then tell you how to use it.
+
+```text
+I want to use hitran-mcp (a HITRAN spectroscopy toolkit) on this machine. Please set it up and verify it, in this order:
+1. Check whether Python is >= 3.10; if not, tell me which version to install and do not modify anything else on the system
+2. Clone https://github.com/LKF0402/hitran-mcp into a fixed directory (update it if it already exists), then run pip install -r requirements.txt there
+3. Run python tools/hitran_mcp.py --selftest and paste the result back to me
+4. If your environment supports MCP client configuration, register it as an MCP server as described in the repository README section "MCP Client Setup"; if not, skip it and use the CLI entry point python tools/hitran_cli.py
+5. Verify with one CLI run: python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
+6. Finish with three sentences: what I can ask in plain language from now on, where the data cache lives, and what to check when something fails
+```
+
+After that you just talk: "Compute the CH4 absorption spectrum around 2968 cm⁻¹ and plot it."
+
+**MCP is optional.** As long as the client can run local commands, the AI can call `python tools/hitran_cli.py <tool> --param value` directly, with no MCP server registered; both paths run the same engine and produce identical results. A pure web chat (no access to your local files) does need MCP.
+
+**Option 2: manual MCP setup**
 
 1. Clone and install dependencies (Python ≥ 3.10):
 
@@ -32,7 +50,7 @@ git clone https://github.com/LKF0402/hitran-mcp.git
 pip install -r hitran-mcp/requirements.txt
 ```
 
-2. Paste the config block from [MCP Client Setup](#mcp-client-setup) into your client (any MCP-capable client works, e.g. Claude Desktop, Cursor, Cherry Studio) and point the path at your local checkout.
+2. Paste the config block from [MCP Client Setup](#mcp-client-setup) into your client and point the path at your local checkout.
 
 3. Ask in plain language, for example:
 
@@ -42,9 +60,7 @@ pip install -r hitran-mcp/requirements.txt
 
 > Export the previous result to CSV with data source and TIPS version annotated
 
-You can also just hand the repository URL to your AI assistant and let it do the configuration.
-
-**Option 2: desktop GUI (no Python environment needed)**
+**Option 3: desktop GUI (no Python environment needed)**
 
 Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/releases) → extract → double-click `HitranLink.exe` → pick molecules and parameters → click「Compute & Plot」.
 
@@ -74,6 +90,7 @@ Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/
   - [Installation](#installation)
   - [API Key (Optional)](#api-key-optional)
 - [MCP Client Setup](#mcp-client-setup)
+- [CLI entry point (no MCP needed)](#cli-entry-point-no-mcp-needed)
 - [Tool Reference](#tool-reference)
 - [Data Architecture & Molecular Coverage](#data-architecture--molecular-coverage)
   - [Line-By-Line (LBL) Database](#line-by-line-lbl-database)
@@ -87,12 +104,13 @@ Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/
 
 ## Overview
 
-`hitran-mcp` is a complete toolchain for the HITRAN spectroscopic database, featuring two frontends:
+`hitran-mcp` is a complete toolchain for the HITRAN spectroscopic database. One engine, three ways to use it:
 
 1. **MCP Server** (`tools/hitran_mcp.py`): stdio JSON-RPC implementation, exposing 12 tools for AI clients to perform retrieval, spectral computation, plotting, and cross-section file discovery/download.
-2. **HitranLink Desktop Workstation** (`app/hitran_app.py`): Tkinter + matplotlib GUI for multi-component absorption spectrum computation, overlay plotting, strong-line analysis, partition sum queries, CSV/PNG export, and more — no programming required.
+2. **CLI entry point** (`tools/hitran_cli.py`): exposes the same tool functions as `command + parameters`, no MCP registration needed — any AI assistant or script that can run local commands can call it.
+3. **HitranLink Desktop Workstation** (`app/hitran_app.py`): Tkinter + matplotlib GUI for multi-component absorption spectrum computation, overlay plotting, strong-line analysis, partition sum queries, CSV/PNG export, and more — no programming required.
 
-Both frontends share the same physical computation engine (`tools/hitran.py`), ensuring fully consistent results.
+All three share the same physical computation engine (`tools/hitran.py`), so results are identical across channels.
 
 - **Transport**: MCP server uses stdio JSON-RPC (protocol 2024-11-05), pure Python standard library, no framework dependency.
 - **Data source**: fetched live from HITRANonline. The computation layer uses the official HAPI 1.3.0.0; downloads go through the official v2 API first (HAPI2, API key in URL) and fall back to the HAPI 1.x legacy endpoint automatically. The species table and isotope abundances are read from the HAPI official ISO table — no hard-coded whitelist.
@@ -143,6 +161,7 @@ hitran-mcp/
 │  └─ test_core.py           # Redaction, filename escape prevention, status fields
 └─ tools/
    ├─ hitran_mcp.py          # MCP server (stdio JSON-RPC, pure stdlib)
+   ├─ hitran_cli.py          # CLI entry point (same tool functions, no MCP needed)
    ├─ hitran.py              # Thin wrapper over official HAPI (guards + provenance + cache)
    ├─ contract_check.py      # Offline contract check (12 tools / protocol / BOM)
    ├─ security_check.py      # Secret & sensitivity scan (pre-release gate)
@@ -280,6 +299,34 @@ Any MCP-compatible client works. Merge the contents of `mcp.config.example.json`
 > On Windows, if `python` is not in PATH, use the full path to the interpreter (forward slashes or double backslashes both work).
 
 Save and restart the client. You should see the `hitran` server with 12 tools — that means it's connected.
+
+## CLI entry point (no MCP needed)
+
+`tools/hitran_cli.py` exposes the same tool functions as a command line, with no MCP server registered. Any AI assistant that can run local commands (Claude Code, Cursor, Codex, …) or any script can call it, and the numbers are identical to the MCP channel.
+
+```bash
+# List all tools (name and purpose)
+python tools/hitran_cli.py --list
+
+# Species / isotope table
+python tools/hitran_cli.py t_species --name CH4
+
+# 5 strongest lines in a window (line selection / interference analysis)
+python tools/hitran_cli.py t_lines --name CH4 --numin 2960 --numax 2975 --top_n 5
+
+# Absorption spectrum (CH4 2000 ppm, 2950-3100 cm⁻¹, 296 K, 1 atm)
+python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 \
+    --numin 2950 --numax 3100 --T 296 --P 1.01325
+
+# Partition sum Q(T)
+python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
+```
+
+- Tool names accept either the MCP form (`hitran_spectrum`) or the function form (`t_spectrum`).
+- Arguments are `--key value`; keys match the function parameter names, and numbers, `true/false`, and JSON arrays are parsed automatically.
+- Results go to stdout as JSON while library logs go to stderr, so output stays machine-readable; add `--out result.json` to write it to a file.
+- Switching to MCP later needs no migration — both call the same functions.
+
 
 
 ## Tool Reference
