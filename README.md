@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <h1>hitran-mcp</h1>
 
@@ -21,60 +21,38 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ---
 
-## 快速开始
+## 🚀 三秒上手
 
-### 方式一：把下面这段贴给 AI，让它自己装好（推荐，零操作）
+**两条路，选一条即可，都是开箱即用。**
 
-前提只有一个：你的 AI 助手能在本机执行命令（Claude Code、Cursor、Codex、Cherry Studio 本地模式等）。把方框里整段复制进对话框即可，它会依次完成安装、自检、接入和验证，最后告诉你以后怎么用。
+| 方式 | 你要准备什么 | 花多久 |
+|---|---|---|
+| 🤖 **让 AI 装**（推荐） | 一个能执行本地命令的 AI 客户端 | 一句话 |
+| 🖥️ **下载桌面版** | Windows x64，不用装 Python | 双击即用 |
+
+### 🤖 A · 把这段话贴给 AI
+
+> 前提：你的 AI 助手能在本机执行命令（Claude Code / Cursor / Codex / Cherry Studio 本地模式等）。
 
 ```text
 我在这台电脑上用 hitran-mcp（HITRAN 光谱工具），请帮我装好并跑通，按顺序执行：
 1. 检查 Python 是否 ≥ 3.10；如果不是，告诉我该装哪个版本，不要改动系统里其他组件
 2. 克隆 https://github.com/LKF0402/hitran-mcp 到固定目录（已存在则更新），在该目录执行 pip install -r requirements.txt
 3. 运行 python tools/hitran_mcp.py --selftest，把结果原样贴给我
-4. 如果你的环境支持 MCP 客户端配置，按仓库 README「接入 AI 客户端」把它注册为 MCP 服务器；不支持就跳过，改用命令行入口 python tools/hitran_cli.py
+4. 如果你的环境支持 MCP 客户端配置，按仓库 README「接入 MCP 客户端」把它注册为 MCP 服务器；不支持就跳过，改用命令行入口 python tools/hitran_cli.py
 5. 用命令行跑一个例子验证：python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
 6. 最后用三句话告诉我：以后我能直接用自然语言问什么、数据缓存在哪里、出错时该看哪条信息
 ```
 
-装好之后，你只需要说人话："算一下 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并画图"。
+装完你就可以说人话：**「算一下 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并画图」**
 
-**不装 MCP 也能用**：只要客户端能执行本地命令，AI 直接调 `python tools/hitran_cli.py <工具名> --参数 值` 即可，不需要注册 MCP 服务器；依赖已装好时，两边算的是同一套引擎，结果一致。纯网页对话（无法访问你本机文件）则必须走 MCP。
+### 🖥️ B · 下载即用（无需 Python）
 
----
+[**⬇️ 下载最新版**](https://github.com/LKF0402/hitran-mcp/releases/latest) → 解压 → 双击 `HitranLink.exe` → 选分子和参数 → 点「计算并绘图」。
 
-### 方式二：手动接入 AI 客户端（MCP）
+> 💡 **不装 MCP 也能用**：客户端能执行本地命令时，AI 直接调 `python tools/hitran_cli.py ...`，同一套引擎、同样结果；纯网页对话才必须走 MCP。
 
-本项目主体是 stdio MCP 服务器，接入后无需记参数、无需点界面。
-
-1. 克隆仓库并安装依赖（Python ≥ 3.10）：
-
-```bash
-git clone https://github.com/LKF0402/hitran-mcp.git
-pip install -r hitran-mcp/requirements.txt
-```
-
-2. 把「[接入 AI 客户端](#接入-ai-客户端)」中的配置片段贴进你的客户端，路径改成你本机的实际路径。
-
-3. 直接用自然语言提需求，例如：
-
-> 取 CH₄ 在 2968 cm⁻¹ 附近 ±0.5 cm⁻¹ 的线表，按线强排序给出前 5 条
-
-> 算 2000 ppm CH₄ + 1% H₂O、296 K、1 atm、10 cm 光程的吸收谱并绘图
-
-> 把上一步结果导出 CSV，标注数据来源与 TIPS 版本
-
----
-
-
-前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
-
-
----
-
-*以下为详细技术文档，供深入使用时参考。*
-
-## 效果预览
+## 📸 效果预览
 
 **HitranLink 桌面工作站** —— CH₄ + H₂O 混合气吸收谱（CH₄ 2000 ppm、H₂O 1%，296 K、1 atm）：
 
@@ -84,52 +62,7 @@ pip install -r hitran-mcp/requirements.txt
 
 ![截面库下载窗口](docs/images/xsc-download.png)
 
-## 目录
-
-- [快速开始](#快速开始)
-- [效果预览](#效果预览)
-- [项目概览](#项目概览)
-- [功能特性](#功能特性)
-- [仓库结构](#仓库结构)
-- [HitranLink 桌面工作站](#hitranlink-桌面工作站)
-  - [下载与运行](#下载与运行)
-  - [功能说明](#功能说明)
-  - [从源码打包 / 发版](#从源码打包--发版)
-- [快速开始（MCP 服务器）](#快速开始mcp-服务器)
-  - [环境要求](#环境要求)
-  - [安装](#安装)
-  - [API Key（可选）](#api-key可选)
-- [接入 AI 客户端](#接入-ai-客户端)
-- [命令行入口（不装 MCP 也能用）](#命令行入口不装-mcp-也能用)
-- [工具参考](#工具参考)
-- [数据架构与分子覆盖](#数据架构与分子覆盖)
-  - [逐线库（LBL）](#逐线库lbl)
-  - [截面库（XSC）](#截面库xsc)
-  - [双库桥接](#双库桥接)
-- [使用规范](#使用规范)
-- [安全与隐私](#安全与隐私)
-- [测试与质量门禁](#测试与质量门禁)
-- [常见问题](#常见问题)
-- [相关项目](#相关项目)
-
-## 项目概览
-
-`hitran-mcp` 是 HITRAN 光谱数据库的完整工具链，同一套引擎带三种用法：
-
-1. **MCP 服务器**（`tools/hitran_mcp.py`）：stdio JSON-RPC 实现，AI 客户端可直接调用多个工具完成取数、谱计算、绘图与截面文件在线检索/下载。
-2. **命令行入口**（`tools/hitran_cli.py`）：把同一批工具函数暴露成 `命令 + 参数`，无需注册 MCP，任何能执行本地命令的 AI 或脚本都能直接调用。
-3. **HitranLink 桌面工作站**（`app/hitran_app.py`）：Tkinter + matplotlib 图形界面，支持多组分吸收谱计算、叠加绘图、强线分析、配分函数查询、CSV/PNG 导出等，无需编程即可使用。
-
-三种用法共用同一套物理计算引擎（`tools/hitran.py`），计算口径完全一致。
-
-- **传输层**：MCP 服务器用 stdio JSON-RPC（协议 2024-11-05），纯 Python 标准库实现，无框架依赖。
-- **数据源**：实时取自 HITRANonline。计算层用官方 HAPI 1.3.0.0；下载优先走官方 v2 API（HAPI2，URL 携带 API key），不可用时自动回退 HAPI 1.x 旧接口。物种表与同位素丰度直接读取 HAPI 官方 ISO 表，无硬编码白名单。
-- **覆盖范围**：MCP 服务器 12 个工具覆盖 HITRAN2024 双库（逐线库 + 截面库）全链路；桌面工作站覆盖日常光谱分析全流程。
-- **仓库边界**：仅含代码与文档；线表缓存（`Hitran_Data/`）、产物（`tmp/`）、按需下载的截面数据（`xsc_data/`）、打包产物（`dist/`/`build/`）与 API key 均属运行期数据，位于 `.gitignore` 区，不入库。
-
-**项目独立性与命名**：本项目为个人独立开发的开源工具，与 macOS 应用 `HitranLab` 及其开发者无关联，亦未获其授权或背书；与 HITRAN 官方数据库及其团队（CfA）亦无隶属关系。桌面端名称 HitranLink 由 "HITRAN"（公共数据库缩写）与 "Link"（连接）组合而成，表示"连接 HITRAN 数据与本地计算"的工具。
-
-## 功能特性
+## ✨ 功能特性
 
 | 特性 | 说明 |
 |---|---|
@@ -140,10 +73,187 @@ pip install -r hitran-mcp/requirements.txt
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 13 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 23 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
-## 仓库结构
+## 🧭 三条路怎么选
+
+| 你是 | 用哪条 | 入口 |
+|---|---|---|
+| 只想算谱看图 | 桌面版 | `HitranLink.exe` |
+| 用 AI 对话做计算 | MCP 服务器 | 下面折叠块「接入 MCP 客户端」 |
+| AI 能跑命令、但不想配 MCP | 命令行 | `python tools/hitran_cli.py --list` |
+
+三者共用同一套引擎（`tools/hitran.py`），结果一致。
+
+## 📖 项目概览
+
+一套物理引擎（`tools/hitran.py`，官方 HAPI 1.3.0.0）支撑三种用法：MCP 服务器、命令行入口、桌面工作站——同一组参数，同一份结果。
+
+数据实时取自 HITRANonline 双库（逐线 + 截面）；缓存、产物、截面文件、打包产物全部走 `.gitignore`，仓库只留代码与文档。
+
+<details>
+<summary><b>🤖 接入 AI（MCP / 命令行）</b></summary>
+
+#### ⚙️ 从源码装（MCP）
+
+##### 环境要求
+
+- Python ≥ 3.10
+- 依赖：`hitran-api`（官方 HAPI）、`numpy`、`matplotlib`（仅绘图/计算时惰性加载）
+
+##### 安装
+
+```bash
+git clone https://github.com/LKF0402/hitran-mcp.git
+pip install -r hitran-mcp/requirements.txt
+```
+
+或将仓库置于任意固定路径（下文以 `D:\hitran-mcp\` 为例）。
+
+##### API Key（可选）
+
+**桌面 GUI**：HitranLink → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
+
+**命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
+
+> 说明：配置 key 后，线表下载走 HITRAN 官方 v2 API（URL 携带 key），截面文件清单（`/api/v2/<key>/cross-sections`）与下载也需要它；未配置时自动回退 HAPI 1.x 旧接口（该接口不校验 key）。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。
+
+#### 🤖 接入 MCP 客户端
+
+任意支持 MCP 协议的客户端均可。将 `mcp.config.example.json` 的内容合入客户端配置（通常位于设置中的 MCP/工具管理），并**替换为你的实际路径**：
+
+```json
+"hitran": {
+  "command": "python",
+  "args": ["D:/hitran-mcp/tools/hitran_mcp.py"],
+  "type": "stdio",
+  "timeout": 600000,
+  "disabled": false
+}
+```
+
+**Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
+> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/<用户名>/AppData/Local/Programs/Python/Python310/python.exe`）。
+
+保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
+
+#### ⌨️ 命令行入口（不装 MCP）
+
+`tools/hitran_cli.py` 把同一批工具函数暴露成命令行，不需要注册 MCP 服务器。任何能执行本地命令的 AI 助手（Claude Code、Cursor、Codex 等）或脚本都可以直接调用，算出的结果与 MCP 通道完全一致。
+
+```bash
+# 列出全部工具（名称、用途）
+python tools/hitran_cli.py --list
+
+# 查分子/同位素表
+python tools/hitran_cli.py t_species --name CH4
+
+# 取窗口内最强 5 条线（选线/干扰分析）
+python tools/hitran_cli.py t_lines --name CH4 --numin 2960 --numax 2975 --top_n 5
+
+# 算吸收谱（CH4 2000 ppm，2950-3100 cm⁻¹，296 K，1 atm）
+python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 \
+    --numin 2950 --numax 3100 --T 296 --P 1.01325
+
+# 配分函数 Q(T)
+python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
+```
+
+- 工具名可写 `hitran_spectrum`（与 MCP 一致）或 `t_spectrum`（函数名）。
+- 参数写法 `--键 值`，键名即函数参数名；数字、`true/false`、JSON 数组会自动识别。
+- 结果以 JSON 打到 stdout（库日志走 stderr，不污染输出），加 `--out 结果.json` 可落盘。
+- 改用 MCP 前无需任何迁移：两者调用的是同一套函数。
+
+</details>
+
+<details>
+<summary><b>🖥️ 桌面工作站</b></summary>
+
+HitranLink 是无需编程的光谱分析桌面应用，适合日常科研使用。
+
+#### 下载与运行
+
+**方式一：下载预编译版本（推荐）**
+
+1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLink-windows-x64.zip`
+2. 解压到任意目录（路径建议不含中文和空格）
+3. 双击 `HitranLink.exe` 即可运行
+
+> 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
+>
+> 若要让打包 GUI 与源码模式 MCP 共用同一份缓存和 API key，设置环境变量 `HITRAN_DATA_DIR` 指向同一个数据目录即可；「运行状态」页会显示实际缓存根与当前代理。
+>
+> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLink.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见[安全与隐私](#security)）。
+
+**方式二：从源码运行**
+
+```bash
+git clone https://github.com/LKF0402/hitran-mcp.git
+cd hitran-mcp
+pip install -r requirements.txt
+python app/hitran_app.py
+```
+
+#### 功能说明
+
+| 功能模块 | 说明 |
+|---|---|
+| 谱计算 | 支持吸收系数 α、截面 σ、线强 S(296K)、透过率 T 四种输出模式 |
+| 多组分叠加 | 默认叠加绘图，可叠加多个分子/不同工况的谱线，图层可单独删除 |
+| 强线列表 | 显示窗口内最强 N 条谱线（ν、S、γ_air、E″），多分子合并时标注每条线来源分子 |
+| Q(T) 曲线 | 配分函数随温度变化曲线，用于评估温度对线强的影响 |
+| 配分函数 | 查询指定温度下的 Q(T) 值（TIPS-2025） |
+| 截面文件 | 在线按中文名/化学式检索截面分子并一键下载（免 Portal 登录），读入原生 .xsc / 两列 .txt，绘图并导出溯源 CSV |
+| 换算工具 | 波长 ↔ 波数实时换算器 |
+| 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
+| 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
+| 计算缓存 | 相同参数计算结果自动缓存，重复计算瞬时返回 |
+| 自动更新 | 「帮助 → 检查更新」：固定仓库 URL、SHA-256 + 大小双校验、安全解压与顶层白名单 |
+
+**操作流程**：
+1. 选择分子（可多选混合气）、波数窗口、温度、压力、步长
+2. 选择输出模式（吸收系数/截面/线强/透过率）
+3. 点击「计算并绘图」
+4. 可继续调整参数再次计算，谱线会自动叠加到同一画布
+5. 点击「清空图」重置画布，点击「导出 CSV/PNG」保存结果
+
+#### 从源码打包 / 发版
+
+**推荐使用一键发布脚本** —— 它把"打包 exe"与"生成 zip 资产"绑成一步，并自动校验一致性：
+
+```bash
+pip install pyinstaller
+python tools/build_release.py
+```
+
+脚本按顺序完成：
+
+1. 依据 `HitranLink.spec` 打包 exe；
+2. 替换 `dist/HitranLink/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
+3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
+4. 生成 GitHub release 资产 `dist/HitranLink-windows-x64.zip`（**白名单式**：只含 `HitranLink.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
+5. **校验 zip 内的 exe 与 `dist/HitranLink/HitranLink.exe` 的大小与 CRC32 完全一致**
+   —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
+
+可选参数：
+
+```bash
+python tools/build_release.py --zip-only      # 只重建 zip（沿用现有 dist）
+python tools/build_release.py --no-selftest   # 跳过打包后的自检
+```
+
+打包目录约 245 MB（one-dir 模式，含 HAPI2 / sqlalchemy / numba / llvmlite），压缩后 zip 约 100 MB。发布时上传第 4 步生成的 zip 作为 release 资产即可。
+
+> 打包前请关闭所有正在运行的 HitranLink 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
+>
+> **不要手写 `pyinstaller` 命令**：`HitranLink.spec` 中包含 HAPI2 / sqlalchemy / numba /
+> llvmlite / pyparsing 等必需依赖，手写参数极易漏掉，导致打包版 HAPI2 不可用。
+
+</details>
+
+<details>
+<summary><b>🗂️ 仓库结构与打包</b></summary>
 
 ```
 hitran-mcp/
@@ -187,160 +297,38 @@ hitran-mcp/
 - `xsc_data/` — 用户按需下载的截面文件（个人数据，不入库）
 - `dist/` / `build/` — PyInstaller 打包产物（不入库）
 
-## HitranLink 桌面工作站
+</details>
 
-HitranLink 是无需编程的光谱分析桌面应用，适合日常科研使用。
+<details>
+<summary><b>🧱 数据架构</b></summary>
 
-### 下载与运行
+HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不同——这也是"某物种在逐线工具中查不到"的根因。
 
-**方式一：下载预编译版本（推荐）**
+#### 逐线库（LBL）
 
-1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLink-windows-x64.zip`
-2. 解压到任意目录（路径建议不含中文和空格）
-3. 双击 `HitranLink.exe` 即可运行
+- 覆盖 **61 种分子**（H₂O / CO₂ / CH₄ / C₂H₆ / N₂O…）及 130+ 同位素体，数据为**逐跃迁线参数**（ν, S, γ_air, E″…）。
+- 存储于 HITRANonline 关系型数据库，经官方 **HAPI**（HITRAN Application Programming Interface，Kochanov et al., JQSRT 177, 15–30, 2016）**在线 API** 提供——对应本 MCP 的 `hitran_fetch / lines / spectrum / plot` 通道：实时取数、本地缓存、可复现。
 
-> 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
->
-> 若要让打包 GUI 与源码模式 MCP 共用同一份缓存和 API key，设置环境变量 `HITRAN_DATA_DIR` 指向同一个数据目录即可；「运行状态」页会显示实际缓存根与当前代理。
->
-> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLink.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见[安全与隐私](#安全与隐私)）。
+#### 截面库（XSC）
 
-**方式二：从源码运行**
+- 覆盖 **600+ 重分子**（烷烃、VOC、制冷剂等）：多为稠密振动带结构、缺乏逐线验证参数，以**测量光谱文件**收录——原生 `.xsc`（1 行定宽头 + σ 序列，单位 cm²/molecule）或两列 ν–σ 文本（单位 cm⁻¹ / cm²·molecule⁻¹）。
+- 访问机制：官方 v2 API（`/api/v2/<key>/cross-sections`）提供**文件清单**，公开数据路径 `/data/xsec/` 提供**文件本体**，二者均可直接访问、**无需登录 Web Portal**（需本机配置 HITRAN API key）。HAPI 1.x 侧仅提供 `read_hotw()` 本地读文件接口。
 
-```bash
-git clone https://github.com/LKF0402/hitran-mcp.git
-cd hitran-mcp
-pip install -r requirements.txt
-python app/hitran_app.py
-```
+#### 双库桥接
 
-### 功能说明
+- 逐线通道（逐跃迁参数）与截面通道（测量光谱）是两套数据结构，HITRAN 官方分开分发；本工具把它们统一到同一条产物链路。
+- **一键下载（推荐，免 Portal 登录）**：
+  1. `hitran_xsc_molecules(query="丙烷")` 检索分子并拿到 `id`（支持中文名/化学式/英文名/俗名）；
+  2. `hitran_xsc_files(molecule_id=<id>)` 列出可直接下载的文件（T/P/波数范围/点数/体积）；
+  3. `hitran_xsc_download(name=..., filenames=[...])` 下载到 `xsc_data/`（gitignore，不入库；默认上限 300 MB）；
+  4. `hitran_cross_section(file_path=...)` 读入，完成截窗、绘图、溯源 CSV 导出，与逐线谱共用 `tmp/mcp_out/` 产物链路。
+- **手动下载（无 API key 时）**：`hitran_xsc_search(name=...)` 免登录探测清单 → 至 hitran.org/xsc 下载文件放入 `xsc_data/` → `hitran_cross_section` 读入。
+- 逐线工具遇到截面库收录的分子时，报错信息会显式提示该架构差异与正确路径。
 
-| 功能模块 | 说明 |
-|---|---|
-| 谱计算 | 支持吸收系数 α、截面 σ、线强 S(296K)、透过率 T 四种输出模式 |
-| 多组分叠加 | 默认叠加绘图，可叠加多个分子/不同工况的谱线，图层可单独删除 |
-| 强线列表 | 显示窗口内最强 N 条谱线（ν、S、γ_air、E″），多分子合并时标注每条线来源分子 |
-| Q(T) 曲线 | 配分函数随温度变化曲线，用于评估温度对线强的影响 |
-| 配分函数 | 查询指定温度下的 Q(T) 值（TIPS-2025） |
-| 截面文件 | 在线按中文名/化学式检索截面分子并一键下载（免 Portal 登录），读入原生 .xsc / 两列 .txt，绘图并导出溯源 CSV |
-| 换算工具 | 波长 ↔ 波数实时换算器 |
-| 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
-| 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
-| 计算缓存 | 相同参数计算结果自动缓存，重复计算瞬时返回 |
-| 自动更新 | 「帮助 → 检查更新」：固定仓库 URL、SHA-256 + 大小双校验、安全解压与顶层白名单 |
+</details>
 
-**操作流程**：
-1. 选择分子（可多选混合气）、波数窗口、温度、压力、步长
-2. 选择输出模式（吸收系数/截面/线强/透过率）
-3. 点击「计算并绘图」
-4. 可继续调整参数再次计算，谱线会自动叠加到同一画布
-5. 点击「清空图」重置画布，点击「导出 CSV/PNG」保存结果
-
-### 从源码打包 / 发版
-
-**推荐使用一键发布脚本** —— 它把"打包 exe"与"生成 zip 资产"绑成一步，并自动校验一致性：
-
-```bash
-pip install pyinstaller
-python tools/build_release.py
-```
-
-脚本按顺序完成：
-
-1. 依据 `HitranLink.spec` 打包 exe；
-2. 替换 `dist/HitranLink/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
-3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
-4. 生成 GitHub release 资产 `dist/HitranLink-windows-x64.zip`（**白名单式**：只含 `HitranLink.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
-5. **校验 zip 内的 exe 与 `dist/HitranLink/HitranLink.exe` 的大小与 CRC32 完全一致**
-   —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
-
-可选参数：
-
-```bash
-python tools/build_release.py --zip-only      # 只重建 zip（沿用现有 dist）
-python tools/build_release.py --no-selftest   # 跳过打包后的自检
-```
-
-打包目录约 245 MB（one-dir 模式，含 HAPI2 / sqlalchemy / numba / llvmlite），压缩后 zip 约 100 MB。发布时上传第 4 步生成的 zip 作为 release 资产即可。
-
-> 打包前请关闭所有正在运行的 HitranLink 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
->
-> **不要手写 `pyinstaller` 命令**：`HitranLink.spec` 中包含 HAPI2 / sqlalchemy / numba /
-> llvmlite / pyparsing 等必需依赖，手写参数极易漏掉，导致打包版 HAPI2 不可用。
-
-## 快速开始（MCP 服务器）
-
-### 环境要求
-
-- Python ≥ 3.10
-- 依赖：`hitran-api`（官方 HAPI）、`numpy`、`matplotlib`（仅绘图/计算时惰性加载）
-
-### 安装
-
-```bash
-git clone https://github.com/LKF0402/hitran-mcp.git
-pip install -r hitran-mcp/requirements.txt
-```
-
-或将仓库置于任意固定路径（下文以 `D:\hitran-mcp\` 为例）。
-
-### API Key（可选）
-
-**桌面 GUI**：HitranLink → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
-
-**命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
-
-> 说明：配置 key 后，线表下载走 HITRAN 官方 v2 API（URL 携带 key），截面文件清单（`/api/v2/<key>/cross-sections`）与下载也需要它；未配置时自动回退 HAPI 1.x 旧接口（该接口不校验 key）。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。
-
-## 接入 AI 客户端
-
-任意支持 MCP 协议的客户端均可。将 `mcp.config.example.json` 的内容合入客户端配置（通常位于设置中的 MCP/工具管理），并**替换为你的实际路径**：
-
-```json
-"hitran": {
-  "command": "python",
-  "args": ["D:/hitran-mcp/tools/hitran_mcp.py"],
-  "type": "stdio",
-  "timeout": 600000,
-  "disabled": false
-}
-```
-
-**Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
-> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/<用户名>/AppData/Local/Programs/Python/Python310/python.exe`）。
-
-保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
-
-## 命令行入口（不装 MCP 也能用）
-
-`tools/hitran_cli.py` 把同一批工具函数暴露成命令行，不需要注册 MCP 服务器。任何能执行本地命令的 AI 助手（Claude Code、Cursor、Codex 等）或脚本都可以直接调用，算出的结果与 MCP 通道完全一致。
-
-```bash
-# 列出全部工具（名称、用途）
-python tools/hitran_cli.py --list
-
-# 查分子/同位素表
-python tools/hitran_cli.py t_species --name CH4
-
-# 取窗口内最强 5 条线（选线/干扰分析）
-python tools/hitran_cli.py t_lines --name CH4 --numin 2960 --numax 2975 --top_n 5
-
-# 算吸收谱（CH4 2000 ppm，2950-3100 cm⁻¹，296 K，1 atm）
-python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 \
-    --numin 2950 --numax 3100 --T 296 --P 1.01325
-
-# 配分函数 Q(T)
-python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
-```
-
-- 工具名可写 `hitran_spectrum`（与 MCP 一致）或 `t_spectrum`（函数名）。
-- 参数写法 `--键 值`，键名即函数参数名；数字、`true/false`、JSON 数组会自动识别。
-- 结果以 JSON 打到 stdout（库日志走 stderr，不污染输出），加 `--out 结果.json` 可落盘。
-- 改用 MCP 前无需任何迁移：两者调用的是同一套函数。
-
-
-## 工具参考
+<details>
+<summary><b>📋 工具参考（12 个）</b></summary>
 
 | 工具 | 用途 | 关键输入 |
 |---|---|---|
@@ -363,32 +351,12 @@ python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
 hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P=1.0)
 ```
 
-## 数据架构与分子覆盖
+</details>
 
-HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不同——这也是"某物种在逐线工具中查不到"的根因。
+<details>
+<summary><b>📏 使用规范与安全</b></summary>
 
-### 逐线库（LBL）
-
-- 覆盖 **61 种分子**（H₂O / CO₂ / CH₄ / C₂H₆ / N₂O…）及 130+ 同位素体，数据为**逐跃迁线参数**（ν, S, γ_air, E″…）。
-- 存储于 HITRANonline 关系型数据库，经官方 **HAPI**（HITRAN Application Programming Interface，Kochanov et al., JQSRT 177, 15–30, 2016）**在线 API** 提供——对应本 MCP 的 `hitran_fetch / lines / spectrum / plot` 通道：实时取数、本地缓存、可复现。
-
-### 截面库（XSC）
-
-- 覆盖 **600+ 重分子**（烷烃、VOC、制冷剂等）：多为稠密振动带结构、缺乏逐线验证参数，以**测量光谱文件**收录——原生 `.xsc`（1 行定宽头 + σ 序列，单位 cm²/molecule）或两列 ν–σ 文本（单位 cm⁻¹ / cm²·molecule⁻¹）。
-- 访问机制：官方 v2 API（`/api/v2/<key>/cross-sections`）提供**文件清单**，公开数据路径 `/data/xsec/` 提供**文件本体**，二者均可直接访问、**无需登录 Web Portal**（需本机配置 HITRAN API key）。HAPI 1.x 侧仅提供 `read_hotw()` 本地读文件接口。
-
-### 双库桥接
-
-- 逐线通道（逐跃迁参数）与截面通道（测量光谱）是两套数据结构，HITRAN 官方分开分发；本工具把它们统一到同一条产物链路。
-- **一键下载（推荐，免 Portal 登录）**：
-  1. `hitran_xsc_molecules(query="丙烷")` 检索分子并拿到 `id`（支持中文名/化学式/英文名/俗名）；
-  2. `hitran_xsc_files(molecule_id=<id>)` 列出可直接下载的文件（T/P/波数范围/点数/体积）；
-  3. `hitran_xsc_download(name=..., filenames=[...])` 下载到 `xsc_data/`（gitignore，不入库；默认上限 300 MB）；
-  4. `hitran_cross_section(file_path=...)` 读入，完成截窗、绘图、溯源 CSV 导出，与逐线谱共用 `tmp/mcp_out/` 产物链路。
-- **手动下载（无 API key 时）**：`hitran_xsc_search(name=...)` 免登录探测清单 → 至 hitran.org/xsc 下载文件放入 `xsc_data/` → `hitran_cross_section` 读入。
-- 逐线工具遇到截面库收录的分子时，报错信息会显式提示该架构差异与正确路径。
-
-## 使用规范
+#### 📏 使用规范
 
 1. **单位**：默认返回吸收系数 α（cm⁻¹）；`hitran_units=true` 返回截面 σ（cm²/molecule，不按摩尔分数缩放）。
 2. **混合气**：按 `α_i = x_i · α_pure_i(T, P, 浴气)` 计算，不使用 `x·P` 作为分压；未提供浓度时按纯气体计算并提示确认。
@@ -397,7 +365,9 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。
 6. **同位素口径**：默认主同位素（纯气体权重 1.0）；`iso="all"` 按官方自然丰度加权。
 
-## 安全与隐私
+<a id="security"></a>
+
+#### 🔒 安全与隐私
 
 **数据面**：本项目只做 HITRAN 取数与本地光谱计算，不采集遥测、不上报使用数据；唯一的凭据是 HITRAN API key。
 
@@ -416,11 +386,14 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 
 漏洞报告方式见 [SECURITY.md](SECURITY.md)。
 
-## 测试与质量门禁
+</details>
+
+<details>
+<summary><b>✅ 测试与质量门禁</b></summary>
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v` | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 13/13 通过 |
+| 单元测试 | `python -m unittest discover -s tests -v` | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 23/23 通过 |
 | MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.2"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
@@ -430,7 +403,10 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三�
 
 分维度评分与敏感性检测明细见 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)。
 
-## 常见问题
+</details>
+
+<details>
+<summary><b>❓ 常见问题</b></summary>
 
 - **抓取失败 "daily limit"**：官方每日配额超限，次日重试；缓存未删时大部分窗口无需重新抓取。
 - **报错 "Cannot connect to http://hitran.org" 或"无法抓取"，但该分子在此窗口明明有吸收**：这是**联网失败**，与"该窗口无收录线"无关。最常见原因是环境变量 `HTTP_PROXY` / `HTTPS_PROXY` 指向的代理不可用（例如 VPN 关闭时的 `127.0.0.1:7892`）——开启代理/VPN，或清空该环境变量走直连后重试即可（联网恢复后会自动重抓）；已缓存过的分子/窗口可离线计算。
@@ -440,11 +416,13 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三�
 - **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
 - **列截面清单报 HTTP 500 / "查询失败"**：这是官方 `/api/v2/` 接口的服务端故障（实测该接口对**无效 key 与正常 key 都返回 500**，所以 500 不能说明你的 key 有问题；免登录的在线探测 `hitran_xsc_search` 通常仍可用）。请稍后重试，或到 [hitran.org/xsc](https://hitran.org/xsc) 登录后手动下载截面文件放进 `xsc_data/`，再用 `hitran_cross_section` 读入。
 
-## 相关项目
+</details>
+
+## 🔗 相关项目
 
 - **[SpectroLink](https://github.com/LKF0402/spectrolink)**：多技术光谱传感仿真 MCP 总入口，覆盖 TDLAS-DA/WMS、LITES、CRDS、NDIR、FTIR、DOAS 六类技术。独立仓库、独立维护；与本项目不重叠——本项目负责 HITRAN 取数与逐线/截面计算，需要某类传感技术的端到端仿真（调制系数 m、谐波、检测限、腔衰荡时间等）时可直接接入。
 
-## 免责声明
+## ⚖️ 免责声明
 
 本软件按"现状"（AS IS）提供，作者不对使用本软件产生的任何直接或间接损失承担责任。
 
@@ -455,11 +433,11 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三�
 - 作者不保证软件无缺陷、不中断或满足特定需求。
 - 使用本软件即表示您同意自行承担使用风险。
 
-## 许可证
+## 📄 许可证
 
 本项目采用 **GPLv3** 许可证，详见 [LICENSE](LICENSE)。
 
-## References
+## 📚 References
 
 - https://github.com/hitranonline/hapi
 - https://github.com/hitranonline/hapi2
