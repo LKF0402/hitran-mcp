@@ -18,7 +18,7 @@
 | 可靠性与异常处理 | 15 | 95 | 更新下载边下边校验 SHA-256/大小；半截包自动删除；解压失败不覆盖现有安装；线程世代校验保留 | 无真实弱网/断网的长时回归 |
 | 安全性 | 15 | 96 | 固定 Release URL；拒绝 http/异域主机/查询串；ZIP 逐条拒绝绝对路径、盘符、`..`、符号链接、加密条目、超限；顶层白名单 | 未做 Windows 代码签名，SmartScreen 仍可能提示 |
 | 隐私与敏感性 | 10 | 96 | API key 只在运行期数据目录；工作区 key 扩散扫描 0 命中；Git 历史与发布 ZIP 无 key；构建机路径回扫通过 | 本机 `local`/日志仍可能存在，但已 gitignore 且不入包 |
-| 测试与 CI | 10 | 95 | 13 个离线单元测试通过；CI 三版本矩阵 + 安全 job + 契约检查；依赖精确锁定 | 无 GUI 事件级自动化 |
+| 测试与 CI | 10 | 95 | 23 个离线单元测试通过；CI 三版本矩阵 + 安全 job + 契约检查；依赖精确锁定 | 无 GUI 事件级自动化 |
 | 文档与可复现性 | 8 | 96 | README 中英双版、SECURITY、CHANGELOG、本报告；构建/发布/回滚路径明确 | 历史 v1.6.0 日志未重写 |
 | 发布工程 | 7 | 96 | 打包/发布/自检/ZIP/CRC 校验原子化；发布前安全闸门；资产哈希可复核 | 资产上传仍依赖手动 GitHub Release 流程 |
 | 可维护性 | 5 | 95 | 更新安全原语拆到 `app/updater.py`；安全扫描独立为 `tools/security_check.py`；测试独立目录 | `app/hitran_app.py` 仍约 4000 行，未彻底拆分 |
@@ -29,8 +29,8 @@
 
 ### 检查范围
 
-1. Git 跟踪文件（当前 27 个，含新增安全/测试/文档文件）。
-2. Git 全历史（118 个提交）中的敏感文件名。
+1. Git 跟踪文件（当前 29 个，含安全/测试/文档文件）。
+2. Git 全历史（132 个提交）中的敏感文件名。
 3. 当前 HITRAN API key 在跟踪文件、历史提交、工作区、发布 ZIP 中的扩散。
 4. 工作区运行期文件：`config.json`、`Hitran_Data/`、`hitran_prefs.json`、`local`、`error.log`。
 5. 发布 ZIP 的 1995 个条目：顶层结构、敏感条目、key 内容、构建机路径。
@@ -78,14 +78,14 @@ py -3.10 tools\contract_check.py
 py -3.10 app\hitran_app.py --selftest tmp\gui_selftest_after.json
 ```
 
-期望：安全脚本 `"ok": true`、`issues: []`；单元测试 13/13 通过；契约 `{"ok": true, "tools": 12, "version": "1.6.2"}`；GUI 自检 `warnings: []`。
+期望：安全脚本 `"ok": true`、`issues: []`；单元测试 23/23 通过；契约 `{"ok": true, "tools": 12, "version": "1.6.3"}`；GUI 自检 `warnings: []`。
 
 ## 本轮改动清单
 
 - 新增 `app/updater.py`、`app/__init__.py`：固定 Release URL、SHA-256 校验、安全解压、顶层白名单。
 - 修改 `app/hitran_app.py`：检查更新不信任 API 返回的下载 URL；下载时要求 size/digest；解压改用安全原语。
 - 新增 `tools/security_check.py`：跟踪文件/历史/工作区/发布 ZIP/代码 AST 的发布前安全闸门。
-- 新增 `tests/test_updater.py`、`tests/test_core.py`：13 个离线测试。
+- 新增 `tests/test_updater.py`、`tests/test_core.py`：当时 13 个离线测试，后续补测至 23 个。
 - 修改 `requirements.txt`：`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`。
 - 修改 CI：只读权限、并发取消、三版本矩阵、单元测试、安全 job；新增 Dependabot。
 - 修改 `tools/build_release.py`：ZIP 后追加安全闸门，失败拒绝出包。

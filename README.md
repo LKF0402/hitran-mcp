@@ -422,7 +422,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三�
 
 ## 🔗 相关项目
 
-- **[SpectroLink](https://github.com/LKF0402/spectrolink)**：多技术光谱传感仿真 MCP 总入口，覆盖 TDLAS-DA/WMS、LITES、CRDS、NDIR、FTIR、DOAS 六类技术。独立仓库、独立维护；与本项目不重叠——本项目负责 HITRAN 取数与逐线/截面计算，需要某类传感技术的端到端仿真（调制系数 m、谐波、检测限、腔衰荡时间等）时可直接接入。
+- **[SpectroLink](https://github.com/LKF0402/spectrolink)**：多技术光谱传感仿真 MCP 总入口，覆盖 7 类技术（TDLAS-DA、TDLAS-WMS、LITES、CRDS、NDIR、FTIR、DOAS），拆成 6 个独立 server。独立仓库、独立维护；与本项目不重叠——本项目负责 HITRAN 取数与逐线/截面计算，需要某类传感技术的端到端仿真（调制系数 m、谐波、检测限、腔衰荡时间等）时可直接接入。
 
 ## ⚖️ 免责声明
 

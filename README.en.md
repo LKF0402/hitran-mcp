@@ -421,7 +421,7 @@ The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDI
 
 ## 🔗 Related projects
 
-- **[SpectroLink](https://github.com/LKF0402/spectrolink)**: an entry-point MCP for multi-technique spectral sensing simulation, covering TDLAS-DA/WMS, LITES, CRDS, NDIR, FTIR and DOAS. Independent repository and maintenance, and no overlap with this project — this project covers HITRAN retrieval plus line-by-line/cross-section computation; when you need end-to-end simulation of a specific sensing technique (modulation index m, harmonics, detection limit, ring-down time and so on), connect it there.
+- **[SpectroLink](https://github.com/LKF0402/spectrolink)**: an entry-point MCP for multi-technique spectral sensing simulation, covering seven techniques (TDLAS-DA, TDLAS-WMS, LITES, CRDS, NDIR, FTIR, DOAS) split across six standalone servers. Independent repository and maintenance, and no overlap with this project — this project covers HITRAN retrieval plus line-by-line/cross-section computation; when you need end-to-end simulation of a specific sensing technique (modulation index m, harmonics, detection limit, ring-down time and so on), connect it there.
 
 ## ⚖️ Disclaimer
 
