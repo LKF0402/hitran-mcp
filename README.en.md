@@ -21,6 +21,22 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 
 [English](./README.en.md) | [中文](./README.md)
 
+## Quick Start
+
+**Option 1: desktop GUI (recommended for beginners)** — no programming required.
+
+Download the latest build from [Releases](https://github.com/LKF0402/hitran-mcp/releases) → extract → double-click `HitranLab.exe` → pick molecules and parameters → click「Compute & Plot」.
+
+**Option 2: hook it into an AI assistant (recommended for research)** — natural language driven.
+
+Send this to any MCP-compatible client:
+
+> "Please configure the HITRAN MCP server: https://github.com/LKF0402/hitran-mcp"
+
+Then just describe the computation:
+
+> "Compute the CH4 absorption spectrum between 2950 and 3100 cm⁻¹ at 296 K and 1 atm"
+
 ## Preview
 
 **HitranLab desktop workstation** — CH4 + H2O mixture absorption spectrum (CH4 2000 ppm, H2O 1%, 296 K, 1 atm):
@@ -33,6 +49,7 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Preview](#preview)
 - [Overview](#overview)
 - [Features](#features)
@@ -52,7 +69,8 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
   - [Cross-Section (XSC) Database](#cross-section-xsc-database)
   - [Bridging the Two Channels](#bridging-the-two-channels)
 - [Usage Conventions](#usage-conventions)
-- [Self-Test](#self-test)
+- [Security & Privacy](#security--privacy)
+- [Testing & Quality Gates](#testing--quality-gates)
 - [FAQ](#faq)
 
 ## Overview
@@ -79,6 +97,8 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 | Full provenance | Every CSV/PNG carries HITRAN2024 + HAPI + TIPS version watermarks, traceable to the original references |
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLab workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
+| Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
+| Quality gates | 13 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## Repository Layout
@@ -87,17 +107,32 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 hitran-mcp/
 ├─ README.md                 # Chinese documentation
 ├─ README.en.md              # English documentation (this file)
-├─ docs/images/              # README screenshots
+├─ docs/
+│  ├─ images/                # README screenshots
+│  └─ QUALITY_AUDIT.md       # Per-dimension quality & sensitivity report
 ├─ CHANGELOG.md              # Changelog
+├─ SECURITY.md               # Security policy and vulnerability reporting
 ├─ LICENSE                   # GPLv3 License
-├─ requirements.txt          # Python dependencies
+├─ requirements.txt          # Python dependencies (pinned versions)
 ├─ mcp.config.example.json   # MCP client registration snippet (adjust paths)
+├─ HitranLab.spec            # PyInstaller spec
+├─ .github/
+│  ├─ workflows/ci.yml       # CI: three-version matrix + unit/contract/security jobs
+│  └─ dependabot.yml         # Weekly pip and Actions dependency updates
 ├─ app/
 │  ├─ hitran_app.py          # HitranLab desktop workstation (Tkinter + matplotlib GUI)
+│  ├─ updater.py             # Update security primitives (URL allow-list / SHA-256 / safe unzip)
+│  ├─ __init__.py
 │  └─ hitranlab.ico          # Application icon
+├─ tests/
+│  ├─ test_updater.py        # Update pipeline unit tests
+│  └─ test_core.py           # Redaction, filename escape prevention, status fields
 └─ tools/
    ├─ hitran_mcp.py          # MCP server (stdio JSON-RPC, pure stdlib)
    ├─ hitran.py              # Thin wrapper over official HAPI (guards + provenance + cache)
+   ├─ contract_check.py      # Offline contract check (12 tools / protocol / BOM)
+   ├─ security_check.py      # Secret & sensitivity scan (pre-release gate)
+   ├─ build_release.py       # One-shot build + zip + consistency check + security gate
    └─ __init__.py
 ```
 
@@ -124,6 +159,8 @@ HitranLab is a no-programming-required desktop application for spectral analysis
 > On first run, a `Hitran_Data/` cache directory is automatically created in the same folder as the executable. Computed line tables are cached automatically — no need to re-download next time.
 >
 > To share one cache/API-key directory between the packaged GUI and the source MCP server, set `HITRAN_DATA_DIR` to the same data folder. The Status tab shows the effective cache root and proxy.
+>
+> Upgrading: Help → Check for updates downloads and replaces the build in place. The download URL is constructed by the app itself from the fixed repository and fixed asset name; the file is extracted only after the GitHub-provided SHA-256 and size both match, and the archive must have exactly `HitranLab.exe` + `_internal` at the top level. Releases without a digest are refused and the app asks you to download manually (see [Security & Privacy](#security--privacy)).
 
 **Option 2: Run from source**
 
@@ -148,6 +185,7 @@ python app/hitran_app.py
 | Species table | Query the official HITRAN table of 61 line-by-line molecules |
 | Data export | Spectrum PNG (300 DPI), spectrum data CSV (with provenance watermark), complete line-list CSV |
 | Computation cache | Results for identical parameters are cached automatically; repeated computations return instantly |
+| Auto-update | Help → Check for updates: fixed repository URL, SHA-256 + size verification, safe extraction with a top-level allow-list |
 
 **Workflow**:
 1. Select molecule(s) (multi-component mixture supported), wavenumber window, temperature, pressure, step
@@ -287,31 +325,38 @@ HITRAN2024 uses a **dual-database distribution architecture** — the two data c
 5. **Provenance**: Every CSV/plot is traceable to HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807) + HAPI (Kochanov et al., JQSRT 2016) + TIPS version; for paper citation, use the `citation` field in the response.
 6. **Isotope convention**: Main isotope by default (pure gas weight 1.0); `iso="all"` weights by official natural abundance.
 
-## Self-Test
+## Security & Privacy
 
-**MCP server self-test**:
+**Data plane**: this project only fetches HITRAN data and computes spectra locally. It collects no telemetry and reports no usage data; the only credential involved is the HITRAN API key.
 
-```bash
-python tools/hitran_mcp.py --selftest
-```
+**Credential handling**: the API key lives only in the runtime data directory (`Hitran_Data/hitran_api_key.txt`, gitignored). Lookup order: `HITRAN_API_KEY` env var > `tools/hitran_api_key.txt` > `Hitran_Data/hitran_api_key.txt`. The release ZIP contains no key, cache or logs.
 
-Runs a real network fetch of a small CO window and plots, plus cross-section pipeline (synthetic file), online probe and status check.
+**Auto-update**:
 
-**Offline contract check** (run by CI on every push; no network, no cache writes):
+- The download URL is built by the app from `LKF0402/hitran-mcp` plus the fixed asset name `HitranLab-windows-x64.zip` — any URL returned by the API is ignored. Only the `https://github.com/...` prefix is accepted; http, foreign hosts and query strings are rejected.
+- The SHA-256 is computed while streaming and compared against the GitHub-provided `digest` together with the declared `size`; any mismatch deletes the partial file and aborts.
+- Extraction rejects absolute paths, drive letters, `..`, symlinks and encrypted entries entry by entry, caps entry count (20,000) and total uncompressed size (700 MB), and allows only `HitranLab.exe` and `_internal` at the top level.
+- Releases without a `digest` are refused for auto-update and reported as "download manually" — a deliberate security downgrade.
 
-```bash
-python tools/contract_check.py
-```
+**Release gate**: `tools/build_release.py` invokes `tools/security_check.py` before packaging; it scans tracked files, Git history, the worktree and the release ZIP for credentials, personal paths and dangerous calls, and refuses to ship on any blocking finding. CI re-runs the same gate in a dedicated job.
 
-Verifies the 12-tool `TOOLS`/`DISPATCH` consistency, schema required fields, `initialize`/`tools/list`/`ping` protocol responses, and that the two main files contain no UTF-8 BOM. The real `--selftest` depends on the network and is not part of CI.
+**Known limitation**: the Windows binary is not code-signed, so SmartScreen may warn on first run.
 
-**Desktop workstation self-test**:
+Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
-```bash
-python app/hitran_app.py --selftest selftest.json
-```
+## Testing & Quality Gates
 
-Verifies that the engine + data + network are fully usable in the packaged environment; outputs JSON with molecule count, spectrum point count, peak values, etc.
+| Check | Command | Coverage | Expected |
+|---|---|---|---|
+| Unit tests | `python -m unittest discover -s tests -v` | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention | 13/13 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.2"}` |
+| Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
+| MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
+| Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |
+
+CI (`.github/workflows/ci.yml`) runs on Windows across Python 3.10/3.11/3.12: syntax compilation, `pyflakes` static analysis, unit tests and the contract check, plus a `fetch-depth: 0` security job that scans Git history. Dependencies are pinned in `requirements.txt` (`hitran-api==1.3.0.0`, `numpy==2.0.1`, `matplotlib==3.9.1`) and checked weekly by Dependabot.
+
+The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md).
 
 ## FAQ
 

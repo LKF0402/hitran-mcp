@@ -21,21 +21,19 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
-> 💡 快速上手入口，详细文档见下文。
+### 方式一：桌面 GUI（新手推荐）
 
-### 🖥️ 方式一：桌面 GUI（新手推荐）
-
-> 无需编程，直接使用
+无需编程，直接使用。
 
 前往 [Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本 → 解压 → 双击 `HitranLab.exe` → 选择分子与参数 → 点击「计算并绘图」即可。
 
 ---
 
-### 🤖 方式二：接入 AI 助手（科研推荐）
+### 方式二：接入 AI 助手（科研推荐）
 
-> 自然语言驱动，AI 直接调用
+自然语言驱动，AI 直接调用。
 
 将以下内容发送给您的 AI 助手（支持 MCP 协议的客户端均可）：
 
@@ -81,7 +79,8 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
   - [截面库（XSC）](#截面库xsc)
   - [双库桥接](#双库桥接)
 - [使用规范](#使用规范)
-- [自测](#自测)
+- [安全与隐私](#安全与隐私)
+- [测试与质量门禁](#测试与质量门禁)
 - [常见问题](#常见问题)
 
 ## 项目概览
@@ -108,6 +107,8 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 | 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 + HAPI + TIPS 版本水印，可追溯到原始文献 |
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLab 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
+| 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
+| 质量门禁 | 13 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 仓库结构
@@ -116,17 +117,32 @@ MCP 服务器 + HitranLab 桌面工作站 · 实时取数 · 本地缓存</p>
 hitran-mcp/
 ├─ README.md                 # 中文文档（本文件）
 ├─ README.en.md              # English documentation
-├─ docs/images/              # README 配图（界面截图）
+├─ docs/
+│  ├─ images/                # README 配图（界面截图）
+│  └─ QUALITY_AUDIT.md       # 分维度质量评估与敏感性检测报告
 ├─ CHANGELOG.md              # 更新日志
+├─ SECURITY.md               # 安全政策与漏洞报告渠道
 ├─ LICENSE                   # GPLv3 协议
-├─ requirements.txt          # Python 依赖
+├─ requirements.txt          # Python 依赖（精确锁定版本）
 ├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
+├─ HitranLab.spec            # PyInstaller 打包规格
+├─ .github/
+│  ├─ workflows/ci.yml       # CI：三版本矩阵 + 单元/契约/安全 job
+│  └─ dependabot.yml         # pip 与 Actions 依赖周检
 ├─ app/
 │  ├─ hitran_app.py          # HitranLab 桌面工作站（Tkinter + matplotlib GUI）
+│  ├─ updater.py             # 自动更新安全原语（URL 白名单/SHA-256/安全解压）
+│  ├─ __init__.py
 │  └─ hitranlab.ico          # 应用图标
+├─ tests/
+│  ├─ test_updater.py        # 更新链路单元测试
+│  └─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
 └─ tools/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
    ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印 + 计算缓存）
+   ├─ contract_check.py      # 离线契约检查（12 工具 / 协议 / BOM）
+   ├─ security_check.py      # 安全与敏感性扫描（发布前闸门）
+   ├─ build_release.py       # 一键打包 + 出 zip + 一致性校验 + 安全闸门
    └─ __init__.py
 ```
 
@@ -153,6 +169,8 @@ HitranLab 是无需编程的光谱分析桌面应用，适合日常科研使用�
 > 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
 >
 > 若要让打包 GUI 与源码模式 MCP 共用同一份缓存和 API key，设置环境变量 `HITRAN_DATA_DIR` 指向同一个数据目录即可；「运行状态」页会显示实际缓存根与当前代理。
+>
+> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLab.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见[安全与隐私](#安全与隐私)）。
 
 **方式二：从源码运行**
 
@@ -177,6 +195,7 @@ python app/hitran_app.py
 | 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
 | 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
 | 计算缓存 | 相同参数计算结果自动缓存，重复计算瞬时返回 |
+| 自动更新 | 「帮助 → 检查更新」：固定仓库 URL、SHA-256 + 大小双校验、安全解压与顶层白名单 |
 
 **操作流程**：
 1. 选择分子（可多选混合气）、波数窗口、温度、压力、步长
@@ -255,8 +274,8 @@ pip install -r hitran-mcp/requirements.txt
 }
 ```
 
-> ⚠️ **Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
-> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/你/AppData/Local/Programs/Python/Python310/python.exe`）。
+**Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
+> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/<用户名>/AppData/Local/Programs/Python/Python310/python.exe`）。
 
 保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
 
@@ -317,31 +336,38 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。
 6. **同位素口径**：默认主同位素（纯气体权重 1.0）；`iso="all"` 按官方自然丰度加权。
 
-## 自测
+## 安全与隐私
 
-**MCP 服务器自测**：
+**数据面**：本项目只做 HITRAN 取数与本地光谱计算，不采集遥测、不上报使用数据；唯一的凭据是 HITRAN API key。
 
-```bash
-python tools/hitran_mcp.py --selftest
-```
+**凭据存放**：API key 只落在运行期数据目录（`Hitran_Data/hitran_api_key.txt`，已 gitignore）。查询优先级为环境变量 `HITRAN_API_KEY` > `tools/hitran_api_key.txt` > `Hitran_Data/hitran_api_key.txt`。发布 ZIP 不含 key、缓存与日志。
 
-走真实网络抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查。
+**自动更新**：
 
-**离线契约检查**（CI 每次运行，不联网、不写缓存）：
+- 下载地址由程序按 `LKF0402/hitran-mcp` + 固定资产名 `HitranLab-windows-x64.zip` 构造，不信任 API 返回的任意链接；只接受 `https://github.com/...` 前缀，拒绝 http、异域主机与查询串。
+- 下载时边写边算 SHA-256，同时校验 GitHub 提供的 `digest` 与 `size`；任一不符即删除半截文件并中止。
+- 解压逐条拒绝绝对路径、盘符、`..`、符号链接与加密条目，限制条目数（20000）与解压总量（700 MB）；顶层只允许 `HitranLab.exe` 与 `_internal`。
+- 旧版本资产若没有 `digest`，程序拒绝自动升级并提示手动下载——这是有意的安全降级。
 
-```bash
-python tools/contract_check.py
-```
+**发布闸门**：`tools/build_release.py` 在出包前调用 `tools/security_check.py`，扫描跟踪文件、Git 历史、工作区与发布 ZIP 中的凭据/个人路径/危险调用，出现阻断项直接拒绝出包；CI 另设独立 security job 复查。
 
-校验 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填字段、`initialize`/`tools/list`/`ping` 协议返回，以及两个主文件不带 UTF-8 BOM。真实 `--selftest` 依赖网络，未纳入 CI。
+**已知限制**：Windows 二进制未做代码签名，首次运行可能出现 SmartScreen 提示。
 
-**桌面工作站自测**：
+漏洞报告方式见 [SECURITY.md](SECURITY.md)。
 
-```bash
-python app/hitran_app.py --selftest selftest.json
-```
+## 测试与质量门禁
 
-验证引擎 + 数据 + 网络在打包环境内完整可用，输出 JSON 含分子数、谱点数、峰值等信息。
+| 检查 | 命令 | 覆盖范围 | 期望 |
+|---|---|---|---|
+| 单元测试 | `python -m unittest discover -s tests -v` | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 13/13 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.2"}` |
+| 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
+| MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
+| 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
+
+CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`），由 Dependabot 每周检查更新。
+
+分维度评分与敏感性检测明细见 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)。
 
 ## 常见问题
 
