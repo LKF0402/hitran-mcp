@@ -13,6 +13,10 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 <a href="https://github.com/LKF0402/hitran-mcp/stargazers"><img src="https://img.shields.io/github/stars/LKF0402/hitran-mcp?color=yellow" alt="Stars"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/issues"><img src="https://img.shields.io/github/issues/LKF0402/hitran-mcp" alt="Issues"></a>
 <img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
+<img src="https://img.shields.io/badge/MCP-stdio-6B8FD4" alt="MCP">
+<img src="https://img.shields.io/badge/HITRAN-2024-4C8C4A" alt="HITRAN">
+<img src="https://img.shields.io/badge/tools-12-9C6BD4" alt="Tools">
+<img src="https://img.shields.io/badge/docs-README%20%2B%20QUALITY-blueviolet" alt="Docs">
 [![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
 
 </div>
