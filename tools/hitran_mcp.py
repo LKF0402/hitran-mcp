@@ -30,6 +30,12 @@ else:
 if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))          # 保证 tools 包可导入（自包含）；冻结模式跳过，避免同目录 .py 影子覆盖
 
+# 缓存/API key 目录：可用 HITRAN_DATA_DIR 让源码 MCP 与打包 GUI 共用同一份数据。
+# 产物（OUT_DIR）和截面下载（XSC_DIR）仍跟随各自 ROOT，不强行混在一起。
+_DATA_DIR_ENV = os.environ.get("HITRAN_DATA_DIR", "").strip()
+DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
+             else ROOT / "Hitran_Data")
+
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
@@ -140,6 +146,7 @@ def _api_key():
     if env:
         return env
     for p in (ROOT / "tools" / "hitran_api_key.txt",
+              DATA_ROOT / "hitran_api_key.txt",
               ROOT / "Hitran_Data" / "hitran_api_key.txt"):
         try:
             if p.exists():
@@ -2129,14 +2136,14 @@ def t_apikey_status(probe=False):
     """
     key = _api_key()
     cache_n, cache_bytes, xsc_n, out_n = 0, 0, 0, 0
-    for d in (ROOT / "Hitran_Data", XSC_DIR, OUT_DIR):
+    for d in (DATA_ROOT, XSC_DIR, OUT_DIR):
         n, b = 0, 0
         if d.exists():
             for p in d.iterdir():
                 if p.is_file():
                     n += 1
                     b += p.stat().st_size
-        if d == ROOT / "Hitran_Data":
+        if d == DATA_ROOT:
             cache_n, cache_bytes = n, b
         elif d == XSC_DIR:
             xsc_n = n
@@ -2152,9 +2159,20 @@ def t_apikey_status(probe=False):
             h2 = ht.hapi2_status()
         except Exception:
             pass
-    return {"api_key_configured": bool(key), "api_key_source":
-            "env(HITRAN_API_KEY)" if os.environ.get("HITRAN_API_KEY", "").strip()
-            else "tools/hitran_api_key.txt" if key else "未配置",
+    key_env = os.environ.get("HITRAN_API_KEY", "").strip()
+    if key_env:
+        key_source = "env(HITRAN_API_KEY)"
+    elif key:
+        key_source = (f"{DATA_ROOT}\\hitran_api_key.txt"
+                      if (DATA_ROOT / "hitran_api_key.txt").exists()
+                      else "tools/hitran_api_key.txt")
+    else:
+        key_source = "未配置"
+    pp = _proxy_host_port()
+    return {"api_key_configured": bool(key), "api_key_source": key_source,
+            "cache_root": str(DATA_ROOT),
+            "cache_root_source": ("env(HITRAN_DATA_DIR)" if _DATA_DIR_ENV else "default"),
+            "proxy": (f"{pp[0]}:{pp[1]}" if pp else "未配置"),
             "line_cache_files": cache_n, "line_cache_MB": round(cache_bytes / 1e6, 2),
             "xsc_data_files": xsc_n, "output_files": out_n,
             "hapi_version": caps["hapi_version"],

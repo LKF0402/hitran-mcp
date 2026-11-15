@@ -23,6 +23,11 @@ if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).resolve().parent
 else:
     ROOT = Path(__file__).resolve().parent.parent
+# 与 tools/hitran.py 共用同一套缓存/密钥目录；打包 GUI 可用 HITRAN_DATA_DIR
+# 指向源码 MCP 的 Hitran_Data，避免两边各存一份导致冷缓存联网失败。
+_DATA_DIR_ENV = os.environ.get("HITRAN_DATA_DIR", "").strip()
+DATA_DIR = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
+            else ROOT / "Hitran_Data")
 if not getattr(sys, "frozen", False) and str(ROOT) not in sys.path:
     # 源码模式：保证 tools 包可导入；冻结模式跳过，避免 exe 同目录 .py 影子覆盖打包内模块
     sys.path.insert(0, str(ROOT))
@@ -277,7 +282,7 @@ class RoundedButton(tk.Canvas):
 
 
 class Worker:
-    """后台线程：不阻塞 GUI。result_queue 收到 (tag, payload)。
+    """后台线程：不阻塞 GUI。result_queue 收到 (tag, gen, payload)。
     支持 busy 互斥（防止重复提交）与 cancel（长循环可中途退出）。"""
 
     def __init__(self):
@@ -307,13 +312,14 @@ class Worker:
                 with self._lock:
                     stale = (gen != self._gen) or self.cancel_event.is_set()
                 if not stale:
-                    self.q.put(("ok", result))
+                    self.q.put(("ok", gen, result))
                 # else: 旧世代线程结束，不往队列塞消息（force_reset 已处理 UI 重置）
             except Exception as e:
                 with self._lock:
                     stale = (gen != self._gen) or self.cancel_event.is_set()
                 if not stale:
-                    self.q.put(("err", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
+                    self.q.put(("err", gen,
+                                f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}"))
                 # else: 旧世代线程出错，不往队列塞消息
             finally:
                 with self._lock:
@@ -1685,8 +1691,8 @@ class HitranLab(tk.Tk):
         gen = self.worker._gen          # 捕获本任务世代（run() 启动线程前已 ++）
         def cb(done, total, label):
             try:
-                self.worker.q.put(("progress", {"done": int(done), "total": int(total),
-                                                "label": str(label), "gen": gen}))
+                self.worker.q.put(("progress", gen, {"done": int(done), "total": int(total),
+                                                    "label": str(label)}))
             except Exception:
                 pass
         return cb
@@ -2242,13 +2248,15 @@ class HitranLab(tk.Tk):
     def _drain_queue(self):
         try:
             while True:
-                tag, payload = self.worker.q.get_nowait()
+                tag, gen, payload = self.worker.q.get_nowait()
+                # 世代校验必须覆盖所有消息类型：结果/错误也可能在“检查通过后、
+                # 入队前”被新任务换代，不能只靠 Worker 里的那次检查。
+                if gen != self.worker._gen:
+                    continue
                 if tag == "err":
                     self._set_busy(False, "出错")
                     self._show_error(payload)
                 elif tag == "progress":        # 后台线程上报的进度（不结束忙碌态）
-                    if payload.get("gen") != self.worker._gen:
-                        continue               # 旧世代进度，丢弃（防止停止后旧任务继续刷进度条）
                     self._on_progress(payload)
                 else:
                     try:
@@ -2590,6 +2598,8 @@ class HitranLab(tk.Tk):
                 key_line + "\n"
                 f"下载引擎: {st.get('download_engine', 'HAPI 1.x 旧下载接口（回退）')}\n"
                 f"线表缓存: {st.get('line_cache_files')} 个 / {st.get('line_cache_MB')} MB\n"
+                f"缓存目录: {st.get('cache_root', '—')}（{st.get('cache_root_source', '—')}）\n"
+                f"网络代理: {st.get('proxy', '未配置')}\n"
                 f"截面文件: {st.get('xsc_data_files')} 个\n"
                 f"产物: {st.get('output_files')} 个\n"
                 f"目录: {hm.OUT_DIR}")
@@ -3580,7 +3590,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
 
 
     def _show_api_key_config(self):
-        """配置 HITRAN API key（保存到 Hitran_Data/hitran_api_key.txt，已 gitignore）。
+        """配置 HITRAN API key（保存到数据目录 hitran_api_key.txt，已 gitignore）。
 
         key 的实际用途：① 线表下载经 HAPI2 走 HITRAN 官方 v2 API（key 带在 URL 里）；
         ② 截面文件的在线清单与下载（「搜索并下载」）同样走官方 v2 API。
@@ -3599,7 +3609,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
 
         # 当前状态
         current_key = os.environ.get("HITRAN_API_KEY", "").strip()
-        key_file = ROOT / "Hitran_Data" / "hitran_api_key.txt"
+        key_file = DATA_DIR / "hitran_api_key.txt"
         if not current_key and key_file.exists():
             try:
                 current_key = key_file.read_text(encoding="utf-8").strip()
@@ -3658,7 +3668,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
             key = key_var.get().strip()
             problems = []
             try:
-                (ROOT / "Hitran_Data").mkdir(parents=True, exist_ok=True)
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
                 if key:
                     key_file.write_text(key, encoding="utf-8")
                 elif key_file.exists():

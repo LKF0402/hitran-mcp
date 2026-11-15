@@ -89,12 +89,18 @@ def is_numba_available():
     return _NUMBA_AVAILABLE
 
 # ---- 统一缓存目录：HITRAN 线表落盘处（fetch 自动写此目录）----
-# 兼容源码运行与 PyInstaller 打包：冻结模式下用 exe 所在目录，源码模式用仓库根目录
+# 优先级：HITRAN_DATA_DIR 环境变量 > 冻结模式 exe 目录 > 源码仓库根目录。
+# 环境变量用于让源码 MCP 与打包 GUI 共用同一份 Hitran_Data，避免一边命中缓存、
+# 另一边冷启动联网导致的“MCP 能取、GUI 取不到”。
+_DATA_DIR_ENV = os.environ.get("HITRAN_DATA_DIR", "").strip()
 if getattr(sys, "frozen", False):
     _ROOT = Path(sys.executable).resolve().parent
 else:
     _ROOT = Path(__file__).resolve().parent.parent
-CACHE_ROOT = _ROOT / "Hitran_Data"
+if _DATA_DIR_ENV:
+    CACHE_ROOT = Path(_DATA_DIR_ENV).expanduser().resolve()
+else:
+    CACHE_ROOT = _ROOT / "Hitran_Data"
 
 _CACHE_READY = False
 

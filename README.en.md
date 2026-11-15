@@ -122,6 +122,8 @@ HitranLab is a no-programming-required desktop application for spectral analysis
 3. Double-click `HitranLab.exe` to run
 
 > On first run, a `Hitran_Data/` cache directory is automatically created in the same folder as the executable. Computed line tables are cached automatically — no need to re-download next time.
+>
+> To share one cache/API-key directory between the packaged GUI and the source MCP server, set `HITRAN_DATA_DIR` to the same data folder. The Status tab shows the effective cache root and proxy.
 
 **Option 2: Run from source**
 
