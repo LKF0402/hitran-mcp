@@ -182,7 +182,7 @@ HitranLink is a no-programming-required desktop application for spectral analysi
 >
 > To share one cache/API-key directory between the packaged GUI and the source MCP server, set `HITRAN_DATA_DIR` to the same data folder. The Status tab shows the effective cache root and proxy.
 >
-> Upgrading: Help → Check for updates downloads and replaces the build in place. The download URL is constructed by the app itself from the fixed repository and fixed asset name; the file is extracted only after the GitHub-provided SHA-256 and size both match, and the archive must have exactly `HitranLink.exe` + `_internal` at the top level. Releases without a digest are refused and the app asks you to download manually (see [Security & Privacy](#security)).
+> Upgrading: Help → Check for updates downloads and replaces the build in place. The download URL is constructed by the app itself from the fixed repository and fixed asset name; the file is extracted only after the GitHub-provided SHA-256 and size both match, and the archive must have exactly `HitranLink.exe` + `_internal` at the top level. Releases without a digest are refused and the app asks you to download manually (see "🔒 Security & privacy" below).
 
 **Option 2: Run from source**
 
