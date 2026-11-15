@@ -3915,7 +3915,7 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
         """关于对话框。"""
         win = tk.Toplevel(self)
         win.title("关于 HitranLab")
-        win.geometry("380x280")
+        win.geometry("400x340")
         win.configure(bg=self._bg)
         self._modal(win)
         ttk.Label(win, text="HitranLab", font=("Microsoft YaHei", 18, "bold"),
@@ -3929,7 +3929,12 @@ Ctrl+O 打开项目 · Ctrl+S 保存项目 · Alt+F4 退出
                   font=("Microsoft YaHei", 8)).pack()
         ttk.Label(win, text="License: GPLv3", background=self._bg, foreground=self._text_dim,
                   font=("Microsoft YaHei", 8)).pack(pady=(2, 0))
-        ttk.Button(win, text="关闭", command=win.destroy).pack(pady=16)
+        ttk.Label(win, text="独立开源项目：与 macOS 应用 HitranLab 及其开发者无关联，"
+                            "亦未获其授权或背书；与 HITRAN 官方数据库及其团队亦无隶属关系。",
+                  background=self._bg, foreground=self._text_dim,
+                  font=("Microsoft YaHei", 8), wraplength=340,
+                  justify="center").pack(pady=(10, 0), padx=16)
+        ttk.Button(win, text="关闭", command=win.destroy).pack(pady=14)
 
     # ───────────────────────── 工具 ─────────────────────────
     def _set_busy(self, busy, msg):

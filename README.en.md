@@ -87,6 +87,8 @@ Both frontends share the same physical computation engine (`tools/hitran.py`), e
 - **Coverage**: MCP server has 12 tools spanning both HITRAN2024 databases (line-by-line + cross-section); desktop workstation covers the full daily spectral analysis workflow.
 - **Repository boundary**: code and documentation only. Line-table caches (`Hitran_Data/`), outputs (`tmp/`), user-downloaded cross-section data (`xsc_data/`), build artifacts (`dist/`/`build/`) and API keys are all runtime artifacts under `.gitignore` — never committed.
 
+**Independence and naming**: this project is an independently developed open-source tool. It is not affiliated with, endorsed by, or sponsored by `HitranLab` for macOS or its developer, nor by the HITRAN database or its team at CfA. The desktop name is a generic "HITRAN" + "Lab" combination used only to describe "a tool for HITRAN computations".
+
 ## Features
 
 | Feature | Description |
@@ -374,6 +376,7 @@ The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDI
 This software is provided "AS IS" without warranty of any kind. The author shall not be liable for any direct or indirect damages arising from the use of this software.
 
 - This software is intended for research, educational, and learning purposes only. It does not constitute professional advice or product commitment.
+- This project is not affiliated with `HitranLab` for macOS or its developer, nor with the HITRAN database or its team, and is not endorsed by either.
 - Spectral calculation results are based on the HITRAN database and HAPI library, which may have data update delays, calculation approximations, or errors.
 - Users should independently verify the accuracy of calculation results. For critical applications, please refer to official data and professional software.
 - The author does not guarantee that the software is defect-free, uninterrupted, or meets specific requirements.
