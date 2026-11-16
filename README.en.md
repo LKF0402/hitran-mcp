@@ -15,8 +15,6 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 <a href="https://github.com/LKF0402/hitran-mcp/stargazers"><img src="https://img.shields.io/github/stars/LKF0402/hitran-mcp?color=yellow" alt="Stars"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/issues"><img src="https://img.shields.io/github/issues/LKF0402/hitran-mcp" alt="Issues"></a>
 <img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
-<img src="https://img.shields.io/badge/MCP-stdio-6B8FD4" alt="MCP">
-<img src="https://img.shields.io/badge/HITRAN-2024-4C8C4A" alt="HITRAN">
 <img src="https://img.shields.io/badge/tools-12-9C6BD4" alt="Tools">
 <img src="https://img.shields.io/badge/docs-README-blueviolet" alt="Docs">
 [![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
@@ -26,36 +24,36 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 [English](./README.en.md) | [中文](./README.md)
 
 
-## 🚀 Up in 3 steps
+## 🚀 Quick start
 
-**Two paths — pick one. Both are plug-and-play.**
+**Two ways to use the toolkit; choose one.**
 
-| Path | What you need | How long |
+| Path | Prerequisite | Setup |
 |---|---|---|
-| 🤖 **Let the AI do it** (recommended) | Any AI client that can run local commands | One paste |
-| 🖥️ **Desktop build** | Windows x64, no Python | Double-click |
+| 🤖 **AI-assisted setup** (recommended) | An AI client that can run commands locally | One conversation |
+| 🖥️ **Desktop build** | Windows x64, no Python | Extract and run |
 
-### 🤖 A · Paste this into your AI assistant
+### 🤖 A · Give this instruction to your AI assistant
 
-> Requirement: the assistant can execute commands on your machine (Claude Code / Cursor / Codex / Cherry Studio local mode, …).
+> Requirement: the assistant can execute commands on this machine (Claude Code / Cursor / Codex / Cherry Studio local mode, etc.).
 
 ```text
-I want to use hitran-mcp (a HITRAN spectroscopy toolkit) on this machine. Please set it up and verify it, in this order:
+I use hitran-mcp (a HITRAN spectroscopy toolkit) on this machine. Please complete installation and self-check in this order:
 1. Check whether Python is >= 3.10; if not, tell me which version to install and do not modify anything else on the system
 2. Clone https://github.com/LKF0402/hitran-mcp into a fixed directory (update it if it already exists), then run pip install -r requirements.txt there
-3. Run python tools/hitran_mcp.py --selftest and paste the result back to me
+3. Run python tools/hitran_mcp.py --selftest and return the result verbatim
 4. If your environment supports MCP client configuration, register it as an MCP server as described in the repository README section "MCP Client Setup"; if not, skip it and use the CLI entry point python tools/hitran_cli.py
 5. Verify with one CLI run: python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
-6. Finish with three sentences: what I can ask in plain language from now on, where the data cache lives, and what to check when something fails
+6. Finish with three sentences: which calculations I can request in natural language, where the data cache lives, and what to check when a run fails
 ```
 
-Then just talk: **"Compute the CH4 absorption spectrum around 2968 cm⁻¹ and plot it."**
+After installation, calculations can be requested directly in natural language, for example: **"Compute and plot the CH4 absorption spectrum around 2968 cm⁻¹."**
 
-### 🖥️ B · Download and run (no Python needed)
+### 🖥️ B · Desktop build (no Python required)
 
-[**⬇️ Latest release**](https://github.com/LKF0402/hitran-mcp/releases/latest) → extract → double-click `HitranLink.exe` → pick molecules and parameters → click「Compute & Plot」.
+[**⬇️ Latest release**](https://github.com/LKF0402/hitran-mcp/releases/latest) → extract → run `HitranLink.exe` → select molecules and parameters → click "Compute & Plot".
 
-> 💡 **MCP is optional**: when the client can run local commands, the AI can call `python tools/hitran_cli.py ...` directly — same engine, same numbers. Only a pure web chat needs MCP.
+> 💡 **MCP is optional**: when the client can run local commands, the AI can call `python tools/hitran_cli.py ...` directly — same engine, same results. Only a pure web-chat environment requires MCP.
 
 ## 📸 Preview
 
@@ -83,13 +81,13 @@ Then just talk: **"Compute the CH4 absorption spectrum around 2968 cm⁻¹ and p
 
 ## 🧭 Three ways to use it
 
-| You are | Use | Entry point |
+| Use case | Recommended path | Entry point |
 |---|---|---|
-| Just want spectra and plots | Desktop build | `HitranLink.exe` |
-| Talking to an AI | MCP server | collapsible "MCP client setup" below |
-| AI can run commands but no MCP config | CLI | `python tools/hitran_cli.py --list` |
+| Spectra and data export only | Desktop build | `HitranLink.exe` |
+| Calculations through AI conversation | MCP server | collapsible "MCP client setup" below |
+| Local command execution, no MCP configuration | CLI | `python tools/hitran_cli.py --list` |
 
-All three share one engine (`tools/hitran.py`) and give identical results.
+All three share one engine (`tools/hitran.py`) and produce identical results.
 
 ## 📖 Overview
 
@@ -383,7 +381,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 **Release gate**: `tools/build_release.py` invokes `tools/security_check.py` before packaging; it scans tracked files, Git history, the worktree and the release ZIP for credentials, personal paths and dangerous calls, and refuses to ship on any blocking finding. CI re-runs the same gate in a dedicated job.
 
-**Known limitation**: the Windows binary is not code-signed, so SmartScreen may warn on first run.
+**Runtime note**: the Windows binary is not code-signed. If SmartScreen warns on first launch, choose "More info → Run anyway".
 
 Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
@@ -394,8 +392,8 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention | 23/23 pass |
-| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.2"}` |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention | 23/23 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.3"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |

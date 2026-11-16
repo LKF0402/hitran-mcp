@@ -25,36 +25,36 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ---
 
-## 🚀 三秒上手
+## 🚀 快速开始
 
-**两条路，选一条即可，都是开箱即用。**
+**两种使用方式，任选其一。**
 
-| 方式 | 你要准备什么 | 花多久 |
+| 方式 | 前置条件 | 上手方式 |
 |---|---|---|
-| 🤖 **让 AI 装**（推荐） | 一个能执行本地命令的 AI 客户端 | 一句话 |
-| 🖥️ **下载桌面版** | Windows x64，不用装 Python | 双击即用 |
+| 🤖 **AI 一键部署**（推荐） | 具备本机命令执行能力的 AI 客户端 | 一次对话 |
+| 🖥️ **桌面版** | Windows x64，无需 Python | 解压后运行 |
 
-### 🤖 A · 把这段话贴给 AI
+### 🤖 A · 将以下指令交给 AI
 
-> 前提：你的 AI 助手能在本机执行命令（Claude Code / Cursor / Codex / Cherry Studio 本地模式等）。
+> 前置条件：AI 助手可在本机执行命令（Claude Code / Cursor / Codex / Cherry Studio 本地模式等）。
 
 ```text
-我在这台电脑上用 hitran-mcp（HITRAN 光谱工具），请帮我装好并跑通，按顺序执行：
-1. 检查 Python 是否 ≥ 3.10；如果不是，告诉我该装哪个版本，不要改动系统里其他组件
+我在这台电脑上使用 hitran-mcp（HITRAN 光谱工具），请完成安装与自检，按顺序执行：
+1. 检查 Python 是否 ≥ 3.10；如果不是，告知应安装的版本，不要改动系统内其他组件
 2. 克隆 https://github.com/LKF0402/hitran-mcp 到固定目录（已存在则更新），在该目录执行 pip install -r requirements.txt
-3. 运行 python tools/hitran_mcp.py --selftest，把结果原样贴给我
-4. 如果你的环境支持 MCP 客户端配置，按仓库 README「接入 MCP 客户端」把它注册为 MCP 服务器；不支持就跳过，改用命令行入口 python tools/hitran_cli.py
-5. 用命令行跑一个例子验证：python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
-6. 最后用三句话告诉我：以后我能直接用自然语言问什么、数据缓存在哪里、出错时该看哪条信息
+3. 运行 python tools/hitran_mcp.py --selftest，将结果原样返回
+4. 若环境支持 MCP 客户端配置，按仓库 README「接入 MCP 客户端」注册为 MCP 服务器；不支持则跳过，改用命令行入口 python tools/hitran_cli.py
+5. 用命令行执行一个示例验证：python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
+6. 最后用三句话说明：后续可直接用自然语言发起哪些计算、数据缓存位置、出错时应查看哪条信息
 ```
 
-装完你就可以说人话：**「算一下 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并画图」**
+安装完成后，可直接以自然语言发起计算，例如：**「计算 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并绘图」**
 
-### 🖥️ B · 下载即用（无需 Python）
+### 🖥️ B · 桌面版（无需 Python）
 
-[**⬇️ 下载最新版**](https://github.com/LKF0402/hitran-mcp/releases/latest) → 解压 → 双击 `HitranLink.exe` → 选分子和参数 → 点「计算并绘图」。
+[**⬇️ 下载最新版**](https://github.com/LKF0402/hitran-mcp/releases/latest) → 解压 → 运行 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」。
 
-> 💡 **不装 MCP 也能用**：客户端能执行本地命令时，AI 直接调 `python tools/hitran_cli.py ...`，同一套引擎、同样结果；纯网页对话才必须走 MCP。
+> 💡 **MCP 为可选形态**：客户端可执行本地命令时，AI 可直接调用 `python tools/hitran_cli.py ...`，与 MCP 通道共用同一引擎、结果一致；仅纯网页对话环境需要 MCP。
 
 ## 📸 效果预览
 
@@ -82,11 +82,11 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 ## 🧭 三种用法怎么选
 
-| 你是 | 用哪条 | 入口 |
+| 使用场景 | 推荐方式 | 入口 |
 |---|---|---|
-| 只想算谱看图 | 桌面版 | `HitranLink.exe` |
-| 用 AI 对话做计算 | MCP 服务器 | 下面折叠块「接入 MCP 客户端」 |
-| AI 能跑命令、但不想配 MCP | 命令行 | `python tools/hitran_cli.py --list` |
+| 仅需谱图与数据导出 | 桌面版 | `HitranLink.exe` |
+| 通过 AI 对话完成计算 | MCP 服务器 | 下方折叠块「接入 MCP 客户端」 |
+| 可执行本地命令、暂不配置 MCP | 命令行 | `python tools/hitran_cli.py --list` |
 
 三者共用同一套引擎（`tools/hitran.py`），结果一致。
 
@@ -384,7 +384,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 **发布闸门**：`tools/build_release.py` 在出包前调用 `tools/security_check.py`，扫描跟踪文件、Git 历史、工作区与发布 ZIP 中的凭据/个人路径/危险调用，出现阻断项直接拒绝出包；CI 另设独立 security job 复查。
 
-**已知限制**：Windows 二进制未做代码签名，首次运行可能出现 SmartScreen 提示。
+**运行提示**：Windows 二进制未做代码签名，首次运行如出现 SmartScreen 提示，可选择「更多信息 → 仍要运行」。
 
 漏洞报告方式见 [SECURITY.md](SECURITY.md)。
 
@@ -395,10 +395,10 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v` | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 23/23 通过 |
-| MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.2"}` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 23/23 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.3"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
-| MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并出图，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
+| MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
 
 CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`），由 Dependabot 每周检查更新。
