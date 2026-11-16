@@ -113,7 +113,7 @@ git clone https://github.com/LKF0402/hitran-mcp.git
 pip install -r hitran-mcp/requirements.txt
 ```
 
-或将仓库置于任意固定路径（下文以 `D:\hitran-mcp\` 为例）。
+或将仓库置于任意固定路径（下文以 `<仓库目录>` 为例）。
 
 ##### API Key（可选）
 
@@ -138,7 +138,7 @@ pip install -r hitran-mcp/requirements.txt
 ```
 
 **Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
-> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（如 `C:/Users/<用户名>/AppData/Local/Programs/Python/Python310/python.exe`）。
+> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（位于用户目录下的 `python.exe`）。
 
 保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
 

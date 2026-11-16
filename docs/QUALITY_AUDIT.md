@@ -57,7 +57,7 @@
 | 发布 ZIP 中的 key | 0 命中 |
 | 发布 ZIP 顶层结构 | 仅 `HitranLink.exe`、`_internal` |
 | 发布 ZIP 中的构建机路径 | 0 命中 |
-| 跟踪文件中的真实用户路径/邮箱 | 0 命中；仅 README `C:/Users/你`、`build_release.py` 的 `<本机用户名>/<构建者>` 占位符 |
+| 跟踪文件中的真实用户路径/邮箱 | 0 命中；代码与文档仅保留通用占位符 |
 | 危险调用 | 0 命中（`compile` 仅出现在 `re.compile`，已按 AST 节点类型排除） |
 
 本机敏感文件清单（均 `ignored=true`，不进入发布 ZIP）：
@@ -73,7 +73,7 @@
 ### 复现命令
 
 ```powershell
-cd D:\software\skills\hitran-mcp
+cd <仓库根目录>
 py -3.10 tools\security_check.py
 py -3.10 -m unittest discover -s tests -v
 py -3.10 tools\contract_check.py

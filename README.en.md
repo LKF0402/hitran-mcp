@@ -112,7 +112,7 @@ git clone https://github.com/LKF0402/hitran-mcp.git
 pip install -r hitran-mcp/requirements.txt
 ```
 
-Or place the repository at any fixed path (the rest of this document uses `D:\hitran-mcp\` as an example).
+Or place the repository at any fixed path (the rest of this document uses `<repository root>` as an example).
 
 ##### API Key (Optional)
 
