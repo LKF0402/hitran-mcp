@@ -2,7 +2,7 @@
 
 ## 结论速览
 
-- 评估对象：`D:\software\skills\hitran-mcp`（HitranLink GUI + HITRAN MCP）。
+- 评估对象：`hitran-mcp` 仓库（HitranLink GUI + HITRAN MCP）。
 - 评估时间：2026-11-15。
 - 评估口径：9 个维度独立打分，0–100；每个维度必须 ≥95；综合分按权重加权。
 - 结果：**9/9 维度达到 95 分以上，综合 95.7 分**。
