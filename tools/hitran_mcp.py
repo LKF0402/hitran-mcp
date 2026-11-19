@@ -6,8 +6,11 @@
   · 纯标准库实现的 stdio JSON-RPC（MCP 2024-11-05），零新增依赖；
     HAPI / matplotlib 惰性加载，空闲时不占用内存。
   · 所有 print 被捕获为 log 字段返回，绝不污染 stdout 协议流。
-  · 12 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
-    / 谱图绘制 / 配分函数 / 截面文件（HOTW）读入分析 / 截面子库在线检索·列目录·批量下载 / 运行状态。
+  · 13 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
+    / 谱图绘制 / **report 一站式报告（AI 首选）** / 配分函数 / 截面文件（HOTW）读入分析
+    / 截面子库在线检索·列目录·批量下载 / 运行状态。
+  · 失败返回机器可读错误 {"error": {code, message, hint}}，AI 可据此直接分支，不必猜错误含义。
+  · 谱计算可选 sample_points 回传采样曲线（索引抽样，不插值），让 AI 读到谱形而不只是峰值。
   · 产物统一落 tmp/mcp_out/（gitignore 区），CSV 自带 HITRAN 溯源水印。
   · 物理纪律沿用 tools/hitran.py：输入护栏 + 结果轮询 + 混合气 α = x·α_pure(T,P,空气浴)。
 
@@ -39,7 +42,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.7.0"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.1"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -211,6 +214,60 @@ def _np():
         import numpy as np
         _NP = np
     return _NP
+
+
+_ERROR_HINTS = {
+    "E_BAD_ARGS": "按 message 修正参数后重试：specs_csv 与 name 互斥；摩尔分数须 0<x<=1（1 ppm→1e-6，1%→0.01）；T/P 须为数字。",
+    "E_STRICT": "strict=True 要求 T、P 由用户明确给出：先向用户确认工况，再带 T/P 重算。",
+    "E_NO_LINES": "窗口内 0 条收录线：换窗口/换分子，或先调 hitran_lines 确认线表覆盖；不得据此判定'无干扰'。",
+    "E_WINDOW_UNCOVERED": "线表未覆盖请求窗口：改用 force=True 或先 hitran_fetch 按窗口重抓。",
+    "E_UPSTREAM_403": "官方鉴权/配额失败：先 hitran_apikey_status 查 key 与配额；也可换用已缓存的窗口离线计算。",
+    "E_UPSTREAM_429": "上游限流：退避（数十秒）后重试，或缩小窗口/减少同位素。",
+    "E_MISSING_FILE": "本地文件不存在：先 hitran_xsc_files 列清单，再核对 file_path。",
+    "E_INTERNAL": "未归类错误：保留 message 排查；必要时调 hitran_apikey_status 看环境。",
+}
+
+
+def _classify_error(e):
+    """把异常归类成 (code, message, hint)，供 AI 直接决定下一步。
+
+    只依赖错误文本做保守分类：命中不了就落 E_INTERNAL，绝不臆测成因。
+    """
+    msg = f"{type(e).__name__}: {e}"
+    low = msg.lower()
+    if isinstance(e, FileNotFoundError) or any(k in msg for k in ("不存在", "找不到", "no such file")):
+        code = "E_MISSING_FILE"
+    elif "403" in low or "forbidden" in low or "invalid api key" in low:
+        code = "E_UPSTREAM_403"
+    elif "429" in low or "too many requests" in low:
+        code = "E_UPSTREAM_429"
+    elif "strict" in low:
+        code = "E_STRICT"
+    elif any(k in msg for k in ("互斥", "不在 (0,1]", "不是数字", "必须给出", "需要 name", "缺少 name",
+                                "非法路径", "目录而非文件")):
+        code = "E_BAD_ARGS"
+    elif any(k in msg for k in ("0 条", "0 线", "无谱线", "恒为 0")):
+        code = "E_NO_LINES"
+    elif any(k in msg for k in ("未覆盖", "coverage", "覆盖")):
+        code = "E_WINDOW_UNCOVERED"
+    else:
+        code = "E_INTERNAL"
+    return code, msg, _ERROR_HINTS[code]
+
+
+def _downsample(nu, y, n):
+    """等间隔抽取 n 点（含两端），返回 {nu_cm-1, value, n_total}，供 AI 读曲线形状。
+
+    取索引而非插值：谱线是尖锐的，插值会削峰；索引抽样保证峰值原样保留。
+    数值按 6 位有效数字压缩，控制返回体积（64 点约 1.5 KB）。
+    """
+    nu = _np().asarray(nu, dtype=float)
+    y = _np().asarray(y, dtype=float)
+    n = max(2, min(int(n), 200, int(nu.size)))
+    idx = _np().unique(_np().linspace(0, nu.size - 1, n).astype(int))
+    return {"nu_cm-1": [float(f"{v:.6g}") for v in nu[idx]],
+            "value": [float(f"{v:.6g}") for v in y[idx]],
+            "n_total": int(nu.size)}
 
 
 def _jsonable(o):
@@ -1262,7 +1319,7 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
                T=None, P=None, step=None, wingHW=None, mode=None,
                path_length_cm=None, hitran_units=False, save=True, force=False,
                strict=False, min_abundance=1e-4, profile="voigt", diluent=None,
-               intensity_cutoff=None):
+               intensity_cutoff=None, sample_points=0):
     """吸收/透过率谱（支持混合气），返回 CSV 路径 + 峰值/积分 + 线表信息 + 告警。
 
     未给出的参数会用默认值，但**如实列在 assumed_defaults 里**，调用方应据此向用户确认
@@ -1277,14 +1334,19 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
     if force:
         for s in sp_list:
             s["force"] = True
+    # 关键默认值（T/P/摩尔分数）才值得回问用户；step/wingHW/mode 属技术默认，不阻断调用
+    _crit = ([] if T is not None else [f"T={DEFAULTS['T']} (未给温度)"]) + \
+            ([] if P is not None else [f"P={DEFAULTS['P']} (未给气压)"])
     kw, assumed = _resolve_defaults({"T": T, "P": P, "step": step,
                                      "wingHW": wingHW, "mode": mode}, strict)
     T, P, step, wingHW, mode = (kw["T"], kw["P"], kw["step"], kw["wingHW"], kw["mode"])
     for s in sp_list:                        # 浓度未给 = 假设纯气体，必须回问用户
         if not s.get("mole_frac_given"):
             assumed.append(f"{s['name']}.mole_frac=1 (纯气体)")
+            _crit.append(f"{s['name']}.mole_frac=1 (未给浓度)")
     if mode in ("transmittance", "both") and path_length_cm is None:
         assumed.append("path_length_cm=1 (默认光程)")
+        _crit.append("path_length_cm=1 (未给光程)")
 
     res = _compute(sp_list, numin, numax, T, P, step, wingHW, mode,
                    path_length_cm, hitran_units, profile, diluent, min_abundance,
@@ -1296,7 +1358,8 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
             "请向用户确认各组分浓度（混合气 α_i = x_i·α_pure_i(T,P,空气浴)）。")
     out = {"peaks": res["peaks"], "warnings": warnings,
            "tables": res["tables"],
-           "assumed_defaults": assumed, "needs_confirm": bool(assumed),
+           "assumed_defaults": assumed, "critical_defaults": _crit,
+           "needs_confirm": bool(_crit),
            "units": "cm2/molecule" if hitran_units else "cm-1",
            "n_points": int(len(res["nu"])), "csv": None}
     if res["trans"] is not None:                 # 透过率摘要（谷值与位置）
@@ -1310,6 +1373,8 @@ def t_spectrum(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
                              "peak_nu": float(res["nu"][int(res["total"].argmax())]),
                              "integral": float(np.trapezoid(res["total"], res["nu"]))
                              if hasattr(np, "trapezoid") else float(np.trapz(res["total"], res["nu"]))}
+    if int(sample_points or 0) > 0:      # 曲线采样：让 AI 能读谱形，而不只是峰值/积分
+        out["curve"] = _downsample(res["nu"], res["total"], sample_points)
     if save:
         out["csv"] = str(_save_csv(res))
     return out
@@ -1332,12 +1397,15 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
     if force:
         for s in sp_list:
             s["force"] = True
+    _crit = ([] if T is not None else [f"T={DEFAULTS['T']} (未给温度)"]) + \
+            ([] if P is not None else [f"P={DEFAULTS['P']} (未给气压)"])
     kw, assumed = _resolve_defaults({"T": T, "P": P, "step": step,
                                      "wingHW": wingHW, "mode": mode}, strict)
     T, P, step, wingHW, mode = (kw["T"], kw["P"], kw["step"], kw["wingHW"], kw["mode"])
     for s in sp_list:
         if not s.get("mole_frac_given"):
             assumed.append(f"{s['name']}.mole_frac=1 (纯气体)")
+            _crit.append(f"{s['name']}.mole_frac=1 (未给浓度)")
     res = _compute(sp_list, numin, numax, T, P, step, wingHW, mode,
                    path_length_cm, hitran_units, profile, diluent, min_abundance,
                    intensity_cutoff=intensity_cutoff)
@@ -1391,11 +1459,81 @@ def t_plot(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
 
     out = {"png": str(png), "peaks": res["peaks"], "warnings": warnings,
            "tables": res["tables"],
-           "assumed_defaults": assumed, "needs_confirm": bool(assumed),
+           "assumed_defaults": assumed, "critical_defaults": _crit,
+           "needs_confirm": bool(_crit),
            "n_points": int(len(nu))}
     if save_csv:
         out["csv"] = str(_save_csv(res))
     return out
+
+
+def t_report(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
+             numin=None, numax=None, T=None, P=None, step=None, wingHW=None,
+             profile="voigt", diluent=None, path_length_cm=None, mode=None,
+             top_n=10, sample_points=64, make_plot=True, dpi=160, strict=False,
+             force=False):
+    """一次调用给全：峰值 + 采样曲线 + 强线表 + PNG/CSV 路径 + 数据版次 + 告警 + 下一步建议。
+
+    等价于 hitran_lines + hitran_spectrum + hitran_plot，但只占一次往返——AI 调工具次数越少，
+    越不容易在中间丢参数。多组分（specs_csv 多于一个物种）不返回 lines：线表是单分子口径，
+    硬拼会给错干扰判断，故只给合并谱并要求按组分单独调 hitran_lines。
+    """
+    kw, assumed = _resolve_defaults({"T": T, "P": P, "step": step,
+                                     "wingHW": wingHW, "mode": mode}, strict)
+    # 用解析后的 T/P 再算，保证返回里的 conditions 与实际计算一致（不是"请求值"）
+    spec = t_spectrum(specs=specs, name=name, mole_frac=mole_frac, iso=iso,
+                      specs_csv=specs_csv, numin=numin, numax=numax,
+                      T=kw["T"], P=kw["P"], step=kw["step"], wingHW=kw["wingHW"],
+                      mode=kw["mode"], path_length_cm=path_length_cm, profile=profile,
+                      diluent=diluent, save=True, strict=strict, force=force,
+                      sample_points=sample_points)
+
+    sp_list = (_parse_specs_csv(specs_csv) if specs_csv is not None
+               else _norm_specs(specs, name, mole_frac, iso))
+    single = sp_list[0]["name"] if len(sp_list) == 1 else None
+    lines_out = None
+    if single:
+        lines_out = t_lines(single, numin, numax, iso=iso, top_n=top_n, force=force)
+
+    png = None
+    if make_plot:
+        png = t_plot(specs=specs, name=name, mole_frac=mole_frac, iso=iso,
+                     specs_csv=specs_csv, numin=numin, numax=numax,
+                     T=kw["T"], P=kw["P"], step=kw["step"], wingHW=kw["wingHW"],
+                     mode=kw["mode"], path_length_cm=path_length_cm, profile=profile,
+                     diluent=diluent, dpi=dpi, save_csv=False, strict=strict,
+                     force=force).get("png")
+
+    ht = _hitran()
+    _crit = spec.get("critical_defaults", [])
+    next_actions = []
+    if _crit:
+        next_actions.append("向用户确认 critical_defaults 里的关键值（T/P/浓度），再按确认值重算")
+    if lines_out is None:
+        next_actions.append("多组分未列强线：如需干扰分析，对每个组分单独调 hitran_lines")
+    if png:
+        next_actions.append("把 png 路径直接交付用户查看")
+    if spec.get("warnings"):
+        next_actions.append("逐条阅读 warnings（0 线/痕量/覆盖/版次），不要忽略")
+
+    return {"species": [{"name": s["name"], "mole_frac": s["mole_frac"]} for s in sp_list],
+            "window_cm-1": [float(numin), float(numax)],
+            "conditions": {"T_K": kw["T"], "P_atm": kw["P"], "profile": profile,
+                           "diluent": diluent or "air", "step": kw["step"],
+                           "path_length_cm": path_length_cm},
+            "peaks": spec["peaks"],
+            "curve": spec.get("curve"),
+            "top_lines": (lines_out or {}).get("lines"),
+            "n_in_window": (lines_out or {}).get("n_in_window"),
+            "png": png, "csv": spec.get("csv"),
+            "tables": spec["tables"],
+            "data": {"edition": getattr(ht, "HITRAN_EDITION", "HITRAN2024"),
+                     "latest_update": getattr(ht, "latest_update", lambda: None)()},
+            "warnings": spec.get("warnings", []) + ([] if lines_out is None
+                                                    else [w for w in [lines_out.get("warning")] if w]),
+            "assumed_defaults": spec.get("assumed_defaults", assumed),
+            "critical_defaults": _crit, "needs_confirm": bool(_crit),
+            "next_actions": next_actions}
 
 
 def _looks_like_native_xsc(path):
@@ -2349,8 +2487,11 @@ TOOLS = [
                                     "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["name", "numin", "numax"]}},
     {"name": "hitran_spectrum",
-     "description": "计算吸收系数 α / 透过率谱（单分子或全同位素），落盘带溯源水印的 CSV，"
-                    "返回峰值、积分、线表信息与告警。多组分混合请分次调用后自行叠加。"
+     "description": "用途：算吸收系数 α（cm-1）或透过率谱，单分子/混合气/全同位素，落盘带溯源水印的 CSV。"
+                    "返回：peaks（峰值/位置/积分）、curve（sample_points>0 时的采样曲线）、tables（线表覆盖与抓取日期）、"
+                    "warnings、assumed_defaults、needs_confirm、csv 路径。"
+                    "注意：α_i = x_i·α_pure_i(T,P,浴气)，不用分压；未给 T/P 用 296 K/1 atm 并列入 assumed_defaults；"
+                    "窗口未被线表覆盖会自动按窗口重抓；0 线直接报错不返回空谱。"
                     + _CONFIRM_NOTE,
      "inputSchema": {"type": "object",
                      "properties": {
@@ -2375,6 +2516,9 @@ TOOLS = [
                          "min_abundance": {"type": "number", "description": "iso='all' 时的丰度下限，默认 1e-4"},
                          "strict": {"type": "boolean", "description": "True 时 T/P 未给则报错（强制先向用户确认）"},
                          "save": {"type": "boolean", "description": "是否落盘 CSV，默认 True"},
+                         "sample_points": {"type": "integer",
+                                           "description": "返回 curve 采样点数（0=不返回，最大 200，建议 32–64）；"
+                                                          "按索引等间隔抽取，不插值，峰值原样保留"},
                          "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["numin", "numax"]}},
     {"name": "hitran_plot",
@@ -2398,6 +2542,40 @@ TOOLS = [
                          "min_abundance": {"type": "number"}, "strict": {"type": "boolean"},
                          "title": {"type": "string"}, "ylog": {"type": "boolean"},
                          "dpi": {"type": "integer"},
+                         "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
+                     "required": ["numin", "numax"]}},
+    {"name": "hitran_report",
+     "description": "推荐首选：一次调用完成「选线 + 算谱 + 出图」。"
+                    "用途：给一个窗口和组分，直接拿峰值、采样曲线、强线清单、PNG、CSV、数据版次与下一步建议。"
+                    "返回：species、window、conditions（实际使用的 T/P/线型/步长）、peaks、curve、top_lines、"
+                    "n_in_window、png、csv、tables、data(edition+latest_update)、warnings、assumed_defaults、"
+                    "needs_confirm、next_actions。"
+                    "注意：多组分（specs_csv 多于一个物种）时 top_lines 为 null（线表是单分子口径），"
+                    "干扰分析请按组分单独调 hitran_lines；make_plot=False 可省去出图开销。"
+                    + _CONFIRM_NOTE,
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "name": {"type": "string", "description": "分子式，如 CH4/CO2/H2O"},
+                         "specs_csv": {"type": "string",
+                                       "description": "多物种一次叠加：'CH4:0.01,C2H6:1e-5'，与 name 二选一"},
+                         "mole_frac": {"type": "number", "description": "摩尔分数 0~1；不填按纯气体 1 并列入 assumed_defaults"},
+                         "iso": {"type": "string", "description": "同位素号（如 1）或 'all'；默认主同位素"},
+                         "numin": {"type": "number", "description": "波数下限 cm-1（必填）"},
+                         "numax": {"type": "number", "description": "波数上限 cm-1（必填）"},
+                         "T": {"type": "number", "description": "温度 K（未给用 296 并标记待确认）"},
+                         "P": {"type": "number", "description": "气压 atm（未给用 1.01325 并标记待确认）"},
+                         "step": {"type": "number", "description": "波数步长 cm-1，默认 0.01"},
+                         "wingHW": {"type": "number", "description": "线翼半宽 cm-1，默认 50"},
+                         "mode": {"type": "string", "description": "alpha / transmittance / both"},
+                         "path_length_cm": {"type": "number", "description": "光程 cm（透过率用，默认 1）"},
+                         "profile": {"type": "string",
+                                     "description": "线型：voigt(默认)/lorentz/gauss/doppler/ht/sdvoigt；mht/qsdhc 上游不支持"},
+                         "diluent": {"type": "string", "description": "展宽浴：'air'(默认) 或 'self'"},
+                         "top_n": {"type": "integer", "description": "强线返回条数，默认 10"},
+                         "sample_points": {"type": "integer", "description": "curve 采样点数，默认 64（0=不返回，最大 200）"},
+                         "make_plot": {"type": "boolean", "description": "是否出 PNG，默认 True"},
+                         "dpi": {"type": "integer", "description": "PNG 分辨率，默认 160"},
+                         "strict": {"type": "boolean", "description": "True 时 T/P 未给直接报错"},
                          "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["numin", "numax"]}},
     {"name": "hitran_partition_sum",
@@ -2486,6 +2664,7 @@ DISPATCH = {
     "hitran_lines": t_lines,
     "hitran_spectrum": t_spectrum,
     "hitran_plot": t_plot,
+    "hitran_report": t_report,
     "hitran_partition_sum": t_partition_sum,
     "hitran_cross_section": t_cross_section,
     "hitran_xsc_search": t_xsc_search,
@@ -2520,8 +2699,10 @@ def handle(req):
         args = dict(params.get("arguments") or {})
         fn = DISPATCH.get(tname)
         if fn is None:
-            return rid, {"content": [{"type": "text", "text": f"未知工具: {tname}"}],
-                         "isError": True}, None
+            text = json.dumps({"error": {"code": "E_UNKNOWN_TOOL", "message": f"未知工具: {tname}",
+                                         "hint": "先调 tools/list 取可用工具名，不要臆造工具。"}},
+                              ensure_ascii=False, indent=2)
+            return rid, {"content": [{"type": "text", "text": text}], "isError": True}, None
         try:
             with _quiet() as buf:                 # 捕获 HAPI 等所有 print
                 result = fn(**args)
@@ -2534,9 +2715,12 @@ def handle(req):
             text = _redact_secrets(json.dumps(payload, ensure_ascii=False, indent=2))
             return rid, {"content": [{"type": "text", "text": text}], "isError": False}, None
         except Exception as e:
-            # 只返回错误类型和消息，不暴露完整 traceback（文件路径/内部结构）；同样脱敏
-            msg = _redact_secrets(f"{type(e).__name__}: {e}")
-            return rid, {"content": [{"type": "text", "text": msg}], "isError": True}, None
+            # 机器可读错误：code 供 AI 分支、hint 给下一步；不暴露 traceback（含路径/内部结构）
+            code, msg, hint = _classify_error(e)
+            text = _redact_secrets(json.dumps(
+                {"error": {"code": code, "message": msg, "hint": hint}},
+                ensure_ascii=False, indent=2))
+            return rid, {"content": [{"type": "text", "text": text}], "isError": True}, None
     if rid is None:                                # 未知通知：忽略
         return None, None, None
     return rid, None, {"code": -32601, "message": f"method not found: {method}"}

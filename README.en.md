@@ -76,7 +76,7 @@ After installation, calculations can be requested directly in natural language, 
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
-| Quality gates | 35 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
+| Quality gates | 50 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## 🧭 Three ways to use it
@@ -136,7 +136,7 @@ Any MCP-compatible client works. Merge the contents of `mcp.config.example.json`
 
 > On Windows, if `python` is not in PATH, use the full path to the interpreter (forward slashes or double backslashes both work).
 
-Save and restart the client. You should see the `hitran` server with 12 tools — that means it's connected.
+Save and restart the client. You should see the `hitran` server with 13 tools — that means it's connected.
 
 #### ⌨️ CLI entry point (no MCP)
 
@@ -285,7 +285,7 @@ hitran-mcp/
    ├─ hitran_mcp.py          # MCP server (stdio JSON-RPC, pure stdlib)
    ├─ hitran_cli.py          # CLI entry point (same tool functions, no MCP needed)
    ├─ hitran.py              # Thin wrapper over official HAPI (guards + provenance + cache)
-   ├─ contract_check.py      # Offline contract check (12 tools / protocol / BOM)
+   ├─ contract_check.py      # Offline contract check (13 tools / protocol / BOM)
    ├─ security_check.py      # Secret & sensitivity scan (pre-release gate)
    ├─ build_release.py       # One-shot build + zip + consistency check + security gate
    └─ __init__.py
@@ -330,15 +330,19 @@ HITRAN2024 uses a **dual-database distribution architecture** — the two data c
 </details>
 
 <details>
-<summary><b>📋 Tool reference (12)</b></summary>
+<summary><b>📋 Tool reference (13)</b></summary>
+
+> AI usage: for the usual "given parameters, show me the spectrum" case call `hitran_report` — one round trip returns everything; split into `hitran_lines` / `hitran_spectrum` / `hitran_plot` only when fine-grained control is needed.
+> Failures return `{"error": {"code", "message", "hint"}}` with codes `E_BAD_ARGS` / `E_STRICT` / `E_NO_LINES` / `E_WINDOW_UNCOVERED` / `E_UPSTREAM_403` / `E_UPSTREAM_429` / `E_MISSING_FILE` / `E_UNKNOWN_TOOL` / `E_INTERNAL`; follow `hint` instead of retrying the same bad arguments.
 
 | Tool | Purpose | Key Inputs |
 |---|---|---|
 | `hitran_species` | Official species table: molecule number M, main isotope, natural abundance and mass of each isotope | `name` (formula or M number; omit for full table) |
 | `hitran_fetch` | Fetch line table for a wavenumber window to local cache; windows not covered are auto-refetched | `name`, `numin`, `numax`, `iso` |
 | `hitran_lines` | Top N strongest lines in window (ν, S, γ_air, E″) for line selection/interference analysis | `name`, `numin`, `numax`, `top_n` |
-| `hitran_spectrum` | Absorption coefficient α / transmittance spectrum, CSV with provenance watermark; multi-species overlay via `specs_csv` | `specs_csv` or `name`; `numin`, `numax` required |
+| `hitran_spectrum` | Absorption coefficient α / transmittance spectrum, CSV with provenance watermark; multi-species overlay via `specs_csv`; `sample_points>0` returns a sampled curve for shape inspection | `specs_csv` or `name`; `numin`, `numax` required |
 | `hitran_plot` | Spectrum PNG (multi-species overlay + total, `ylog` optional) | Same as `hitran_spectrum`, plus `title/ylog/dpi` |
+| `hitran_report` | **AI default**: one call returns peaks + sampled curve + top lines + PNG/CSV + data edition + warnings + `next_actions` | `name` or `specs_csv`; `numin`, `numax`; optional `top_n/sample_points/make_plot` |
 | `hitran_partition_sum` | Partition sum Q(T), TIPS 2025/2021/2017/2011 selectable | `name` or `M`; `T` |
 | `hitran_cross_section` | Read a local XSC file (native `.xsc` or ν–σ two columns) → window/plot/provenance CSV | `file_path` (omitting lists available files in `xsc_data/`) |
 | `hitran_xsc_search` | Online probe of cross-section sub-database molecule file list (login-free, read-only, no filenames) | `name` (Portal display name) |
@@ -393,8 +397,8 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard | 35/35 pass |
-| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.7.0"}` |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard, MCP error codes, curve sampling, report assembly | 50/50 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 13 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 13, "version": "1.7.1"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |

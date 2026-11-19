@@ -5,6 +5,7 @@ import io
 import unittest
 
 from tools.hitran_cli import _NAME_MAP, _coerce, _parse_kwargs, main
+from tools import hitran_mcp as hm
 
 
 class CoerceTests(unittest.TestCase):
@@ -46,7 +47,7 @@ class DispatchTests(unittest.TestCase):
         self.assertIn("hitran_spectrum", _NAME_MAP)
         self.assertEqual(_NAME_MAP["hitran_spectrum"], "t_spectrum")
         self.assertEqual(_NAME_MAP["t_spectrum"], "t_spectrum")
-        self.assertEqual(len(_NAME_MAP), 24)  # 12 个工具，两种写法
+        self.assertEqual(len(_NAME_MAP), 2 * len(hm.TOOLS))  # 每个工具两种写法
 
     def test_list_runs_offline(self):
         buf = io.StringIO()
