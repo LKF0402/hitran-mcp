@@ -39,7 +39,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.6.3"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.0"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -256,7 +256,24 @@ def _parse_specs_csv(specs_csv):
             continue
         if ":" in s:
             nm, _, x = s.partition(":")
-            out.append({"name": nm.strip(), "mole_frac": float(x.strip())})
+            nm, xs = nm.strip(), x.strip()
+            if not nm:
+                raise ValueError(
+                    f"[hitran] specs_csv 片段 '{item}' 缺少分子名。"
+                    f"格式：'CH4:0.01,C2H6:1e-5'（物种名:摩尔分数，物种间用英文逗号分隔）。")
+            try:
+                xf = float(xs)
+            except ValueError:
+                raise ValueError(
+                    f"[hitran] specs_csv 片段 '{item}' 的浓度 '{xs}' 不是数字。"
+                    f"格式：'CH4:0.01,C2H6:1e-5'；1 ppm 写 1e-6，1% 写 0.01。")
+            # 提前拦截（比在 _validate_params 里拦住更早一步：此时还没发起任何联网取表）
+            if not (0.0 < xf <= 1.0):
+                raise ValueError(
+                    f"[hitran] specs_csv 片段 '{item}' 的摩尔分数 {xf:g} 不在 (0,1]。"
+                    f"摩尔分数必须 0<x<=1：1 ppm→1e-6、1%→0.01；"
+                    f"写成百分比(如 5)、ppm 数值(如 100)或负数都会算出错误的谱。")
+            out.append({"name": nm, "mole_frac": xf})
         else:
             out.append({"name": s})
     if not out:
@@ -279,9 +296,20 @@ def _norm_specs(specs, name=None, mole_frac=None, iso=None):
         if not nm:
             raise ValueError(f"specs 元素缺少 name: {sp}")
         x = sp.get("mole_frac")
+        if x is not None:
+            try:
+                xf = float(x)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"[hitran] specs 中 {nm} 的 mole_frac={x!r} 不是数字。"
+                    f"摩尔分数必须 0<x<=1（1 ppm→1e-6，1%→0.01）。")
+            if not (0.0 < xf <= 1.0):
+                raise ValueError(
+                    f"[hitran] specs 中 {nm} 的 mole_frac={xf:g} 不在 (0,1]。"
+                    f"摩尔分数必须 0<x<=1；写成百分比、ppm 数值或负数都会算出错误的谱。")
         out.append({"name": nm,
                     "iso": sp.get("iso"),
-                    "mole_frac": 1.0 if x is None else float(x),
+                    "mole_frac": 1.0 if x is None else xf,
                     "mole_frac_given": x is not None})
     return out
 
@@ -532,6 +560,22 @@ PROFILES = {                      # 官方 HAPI 谱函数（同名直调，不�
     "sdvoigt": "absorptionCoefficient_SDVoigt", # speed-dependent Voigt
 }
 
+# 上游尚未提供、但常被问到的线型：给出精确原因，而不是让调用方以为是自己填错了。
+#   · mHT（modified Hartmann-Tran）：Wcisło et al., JQSRT 2025 推荐并将纳入 HITRAN；
+#     但 HAPI 1.3.0.0 与 hapi2 0.2.1 均未导出该线型的吸收系数接口。
+#   · qSDHC（quadratic speed-dependent Hartmann-Tran）：HAPI 内部有 pcqsdhc 线型内核，
+#     但只经 Generic 低层接口暴露，缺少 eta 等参数到 HITRAN 线表字段的标准映射；
+#     未经参照数据验证就开放，会产出"看起来对但没验证过"的谱，故不开放。
+# 本表的作用是让报错可操作（告知能用什么替代），不假装支持。
+UNAVAILABLE_PROFILES = {
+    "mht": ("modified Hartmann-Tran：HITRAN2024 推荐该线型（Wcisło et al., JQSRT 2025），"
+            "但上游 HAPI 1.3.0.0 / hapi2 0.2.1 均未提供吸收系数接口；"
+            "请改用 ht（Hartmann-Tran）或 sdvoigt，二者所需参数在 HITRAN2024 线表中齐备"),
+    "qsdhc": ("quadratic speed-dependent Hartmann-Tran：HAPI 仅有 pcqsdhc 低层内核，"
+              "缺少 eta 等参数到线表字段的可验证映射；请改用 sdvoigt（同为速度依赖型），"
+              "可复现且参数齐备"),
+}
+
 
 def _diluent_dict(diluent):
     """展宽浴：None/空 → {'air':1.0}；'self' → {'self':1.0}；也可给 dict。"""
@@ -677,7 +721,9 @@ except Exception:
 
 # 缓存版本号：算法或结果格式发生变更时必须递增，否则旧缓存会被错误复用
 # （例如网格点数规则修好后，命中旧缓存仍会返回修复前的点数）。
-_CACHE_SCHEMA = 2
+# 2 → 3：tinfo 新增 data_edition / table_fetched_at / 版次告警，旧条目缺这些字段，
+#        必须整体失效，否则 CSV 水印会带着"抓取日期未知"进论文。
+_CACHE_SCHEMA = 3
 
 
 def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
@@ -692,6 +738,23 @@ def _abs_cache_key(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
             float(step), float(wingHW), bool(hitran_units), str(profile).lower(), dil_items,
             float(intensity_cutoff) if intensity_cutoff is not None else None,
             float(min_abundance))
+
+
+def _table_fetched_at(table):
+    """线表缓存文件的"抓取日期"(YYYY-MM-DD)；读不到返回 None。
+
+    # ponytail: 已知天花板 —— 用 .data 的 mtime 近似抓取时刻（HAPI 落盘即抓取），
+    精度到天已足够回答"是否早于官方更新批次"；若要精确到批次，升级路径是在
+    _ensure_table_for 里另写 <table>.meta.json 记录 batch id。
+    """
+    try:
+        from datetime import date
+        p = _hitran().CACHE_ROOT / f"{table}.data"
+        if p.exists():
+            return date.fromtimestamp(p.stat().st_mtime).isoformat()
+    except Exception:
+        return None
+    return None
 
 
 def abs_cache_stats():
@@ -735,7 +798,7 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
     单同位素时权重必须是 1.0（纯气体），不可误传自然丰度，否则 α 会凭空少 1%~2%。
     """
     global _ABS_CACHE_HITS, _ABS_CACHE_MISSES
-    _hitran()          # 惰性加载库并触发 db_begin（副作用必需，返回值不用）
+    ht = _hitran()     # 惰性加载库并触发 db_begin（副作用必需，返回值本函数还要用）
     np = _np()
     import hapi
     import copy
@@ -816,6 +879,10 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
 
     pkey = str(profile or "voigt").strip().lower()
     if pkey not in PROFILES:
+        if pkey in UNAVAILABLE_PROFILES:
+            raise ValueError(
+                f"[hitran] 线型 '{profile}' 当前不可用：{UNAVAILABLE_PROFILES[pkey]}。"
+                f"当前可选: {sorted(PROFILES)}")
         raise ValueError(f"[hitran] 未知线型 '{profile}'，官方可选: {sorted(PROFILES)}")
     bath = _diluent_dict(diluent)
     _hapi_kwargs = dict(
@@ -876,6 +943,15 @@ def _absorption(name, iso, numin, numax, T, P, step, wingHW, hitran_units,
              "components": [{"I": e["I"], "natural_abundance": e["ab"],
                              "weight": e["ab_norm"], "table": e["table"]}
                             for e in entries]}
+    # 版次台账：记录每张线表的抓取日期，供 CSV/PNG 水印与"是否早于官方更新"判断使用。
+    # 官方 2026-05 修正过 O2 A 带 SDVoigt 自增宽参数、2026-09 修过原子氧配分函数——
+    # 抓取早于这些批次的线表必须显式告警，否则用户拿旧参数出图而无从追溯。
+    _fetched = {e["table"]: _table_fetched_at(e["table"]) for e in entries}
+    tinfo["data_edition"] = getattr(ht, "HITRAN_EDITION", "HITRAN2024")
+    tinfo["table_fetched_at"] = _fetched
+    _stale_warn = ht.stale_data_warning(_fetched, pkey)
+    if _stale_warn:
+        warn_msgs.append(_stale_warn)
     if skipped:
         tinfo["skipped_isotopologues"] = skipped
     if warn_msgs:
@@ -1009,10 +1085,20 @@ def _save_csv(res):
         cols.append(res["trans"]); labels.append("transmittance")
 
     dil = "+".join(f"{k}:{v:g}" for k, v in res["diluent"].items())
+    # 抓取日期：把各组分线表的 table_fetched_at 合并成 {表名: 日期}，写进水印并可判版次
+    _fd = {}
+    for _tinfo in (res.get("tables") or {}).values():
+        _fd.update((_tinfo or {}).get("table_fetched_at") or {})
+    _stale = ht.stale_data_warning(_fd, res["profile"])
+    # 实际使用的线表名（含窗口后缀）：静态推导只对基础表成立，必须传真实表名
+    _tl = [t for t in ((_t or {}).get("table") for _t in (res.get("tables") or {}).values()) if t]
     if len(res["per"]) == 1:
         sp = res["specs"][0]
         head = ht.provenance(sp["name"], res["numin"], res["numax"], res["T"],
-                             res["P"], sp["iso"], res["hitran_units"])
+                             res["P"], sp["iso"], res["hitran_units"],
+                             profile=res["profile"], diluent=res["diluent"],
+                             fetch_dates=_fd,
+                             tables=(_tl[0] if _tl else None))
         head += (f"\n# ACTUAL condition: diluent={dil}, profile={res['profile']}, "
                  f"step={res['step']}, wingHW={res['wingHW']}")
         if sp["mole_frac"] != 1.0:
@@ -1025,9 +1111,14 @@ def _save_csv(res):
                              for s in res["specs"]),
             f"# condition: T={res['T']} K, P={res['P']} atm, diluent={dil}, "
             f"profile={res['profile']}, step={res['step']}, wingHW={res['wingHW']}",
+            f"# data: {getattr(ht, 'HITRAN_EDITION', 'HITRAN2024')} · table fetched "
+            f"{'; '.join(f'{t}@{d}' for t, d in _fd.items()) or '未知（旧缓存）'}",
+            f"# tables: {'+'.join(_tl) or '未知'}",
             f"# units: {unit};  mixing rule: alpha_i = x_i * alpha_pure_i(T,P,{dil} bath)",
             "# ===========================================",
         ])
+        if _stale:
+            head += "\n# WARN: " + _stale
     with open(path, "w", encoding="utf-8") as f:
         f.write(head + "\n")
         f.write(",".join(labels) + "\n")

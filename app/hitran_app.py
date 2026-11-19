@@ -57,6 +57,58 @@ PROFILES = ["voigt", "lorentz", "gauss", "doppler", "ht", "sdvoigt"]
 # 叠加模式的颜色循环（柔和配色，不刺眼）
 OVERLAY_COLORS = ["#E07A7A", "#6B8FD4", "#7BC47F", "#D4A86B", "#A88BD4", "#6BB8D4", "#D4936B", "#6BB8A8"]
 
+
+def _copy_pil_to_clipboard(img):
+    """把 PIL 图像写入 Windows 剪贴板（CF_DIB），不依赖第三方剪贴板库。
+
+    替代原先的 img.copy_to_clipboard()：Pillow 并不提供该方法（实测
+    Image.Image 无此属性），旧实现必然抛 AttributeError → 恒显示"复制图像失败"。
+    # ponytail: 已知天花板 —— 仅 Windows（本项目只发 Windows x64）；跨平台需换
+    剪贴板后端（pyperclip / Qt），为不引入新依赖暂不做。
+    """
+    if not hasattr(ctypes, "windll"):
+        raise OSError("当前平台不支持 Windows 剪贴板")
+    import io
+    from ctypes import wintypes
+
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="BMP")
+    dib = buf.getvalue()[14:]        # 去掉 14 字节 BMP 文件头，余下即 CF_DIB 的 DIB
+    GMEM_MOVEABLE, CF_DIB = 0x0002, 8
+
+    k32 = ctypes.windll.kernel32
+    u32 = ctypes.windll.user32
+    k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    k32.GlobalAlloc.restype = wintypes.HANDLE
+    k32.GlobalLock.argtypes = [wintypes.HANDLE]
+    k32.GlobalLock.restype = ctypes.c_void_p
+    k32.GlobalUnlock.argtypes = [wintypes.HANDLE]
+    k32.GlobalFree.argtypes = [wintypes.HANDLE]
+    u32.OpenClipboard.argtypes = [wintypes.HWND]
+    u32.OpenClipboard.restype = wintypes.BOOL
+    u32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    u32.SetClipboardData.restype = wintypes.HANDLE
+
+    if not u32.OpenClipboard(None):
+        raise OSError("无法打开剪贴板（可能被其他程序占用）")
+    try:
+        h = k32.GlobalAlloc(GMEM_MOVEABLE, len(dib))
+        if not h:
+            raise OSError("GlobalAlloc 分配失败")
+        p = k32.GlobalLock(h)
+        if not p:
+            k32.GlobalFree(h)
+            raise OSError("GlobalLock 失败")
+        ctypes.memmove(p, dib, len(dib))
+        k32.GlobalUnlock(h)
+        u32.EmptyClipboard()
+        if not u32.SetClipboardData(CF_DIB, h):
+            k32.GlobalFree(h)
+            raise OSError("SetClipboardData 失败")
+        # 成功后句柄所有权归剪贴板，绝不能再 GlobalFree
+    finally:
+        u32.CloseClipboard()
+
 # 分子别名表：别名（小写） -> 标准分子式
 # 包含常见英文名、中文名、HITRAN M 编号
 MOLECULE_ALIASES = {
@@ -2677,6 +2729,26 @@ class HitranLink(tk.Tk):
         else:
             header += "# units: alpha cm-1\n"
 
+        # 每组数据的线型 + 线表抓取日期：官方要求引用时注明"是否使用更新版"，
+        # 且 O2 A 带 SDVoigt 参数、原子氧配分函数都在 2026 年被官方修正过。
+        for i, ds in enumerate(datasets, 1):
+            res_i = (ds.get("data") or {}).get("res") or {}
+            prof = res_i.get("profile")
+            fd = {}
+            for _t in (res_i.get("tables") or {}).values():
+                fd.update((_t or {}).get("table_fetched_at") or {})
+            if not prof and not fd:
+                continue
+            fd_txt = "; ".join(f"{k}@{v}" for k, v in fd.items()) or "未知（旧缓存）"
+            header += (f"# dataset {i} ({ds['tag']}): profile={prof or 'n/a'}, "
+                       f"table fetched {fd_txt}\n")
+            try:
+                stale = hm._hitran().stale_data_warning(fd, prof) if fd else None
+            except Exception:
+                stale = None
+            if stale:
+                header += f"# WARN: {stale}\n"
+
         # 列：波数 + 每个数据集的 T（透过率）或 total（多组分）或单组分
         cols = ["nu_cm-1"]
         data_cols = []
@@ -2917,15 +2989,15 @@ class HitranLink(tk.Tk):
             self._show_error(f"导入失败: {e}")
 
     def _copy_image(self):
-        """复制当前图像到剪贴板。"""
+        """复制当前图像到剪贴板（Windows CF_DIB）。"""
         try:
             from PIL import Image
             import io
             buf = io.BytesIO()
             self.fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
             buf.seek(0)
-            img = Image.open(buf)
-            img.copy_to_clipboard()
+            img = Image.open(buf).convert("RGB")
+            _copy_pil_to_clipboard(img)
             self.status_var.set("图像已复制到剪贴板")
         except Exception as e:
             self._show_error(f"复制图像失败: {e}")

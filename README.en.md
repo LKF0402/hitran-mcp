@@ -72,11 +72,11 @@ After installation, calculations can be requested directly in natural language, 
 | Full pipeline | Species lookup → line-table fetch → strong-line list → absorption/transmittance spectrum → plot → partition sum → cross-section analysis |
 | Dual-database bridge | LBL via HAPI online API; XSC (600+ heavy molecules) via official-API discovery + one-click download (no Portal login), or local file ingestion — unified output pipeline |
 | Physical safeguards | Mixtures computed as `α_i = x_i · α_pure_i(T, P, bath)`; windows not covered are auto-refetched; zero-line/failure raise explicit errors instead of silently returning a flat spectrum |
-| Full provenance | Every CSV/PNG carries HITRAN2024 + HAPI + TIPS version watermarks, traceable to the original references |
+| Full provenance | Every CSV/PNG carries HITRAN2024 edition + actual line profile + bath gas + line-table name + fetch date + HAPI/TIPS watermarks, traceable to the original references; tables older than the latest official incremental update raise a warning (the official citation guidance requires stating whether an updated edition was used) |
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
-| Quality gates | 23 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
+| Quality gates | 35 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## 🧭 Three ways to use it
@@ -267,6 +267,7 @@ hitran-mcp/
 ├─ SECURITY.md               # Security policy and vulnerability reporting
 ├─ LICENSE                   # GPLv3 License
 ├─ requirements.txt          # Python dependencies (pinned versions)
+├─ requirements-py313.txt    # Python 3.13 pins (numpy 2.1.3 / matplotlib 3.10.0)
 ├─ mcp.config.example.json   # MCP client registration snippet (adjust paths)
 ├─ HitranLink.spec            # PyInstaller spec
 ├─ .github/
@@ -362,8 +363,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 1. **Units**: Returns absorption coefficient α (cm⁻¹) by default; `hitran_units=true` returns cross-section σ (cm²/molecule, not scaled by mole fraction).
 2. **Mixtures**: Computed as `α_i = x_i · α_pure_i(T, P, bath)`, not `x·P` as partial pressure; if concentration is not provided, pure gas is assumed with a confirmation prompt.
 3. **Parameter clarification**: Missing parameters fall back to defaults that are honestly listed (when `needs_confirm=true`, the user must confirm T/P/window/concentration); `strict=true` raises an error if T/P is missing.
-4. **Line profiles**: `profile` options: voigt (default) / lorentz / gauss / doppler / ht / sdvoigt — all call official HAPI profile functions directly.
-5. **Provenance**: Every CSV/plot is traceable to HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807) + HAPI (Kochanov et al., JQSRT 2016) + TIPS version; for paper citation, use the `citation` field in the response.
+4. **Line profiles**: `profile` options: voigt (default) / lorentz / gauss / doppler / ht / sdvoigt — all call official HAPI profile functions directly. `mht` (modified Hartmann-Tran, recommended by HITRAN2024) and `qsdhc` are not selectable yet: neither HAPI 1.3.0.0 nor hapi2 0.2.1 exposes an absorption-coefficient entry point for them, so the program raises an explicit error and suggests `ht` / `sdvoigt` instead of shipping an unverified implementation.
+5. **Provenance**: Every CSV/plot is traceable to HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807) + HAPI (Kochanov et al., JQSRT 2016) + TIPS version; for paper citation, use the `citation` field in the response. The watermark also records the actual line profile, bath gas, line-table name and fetch date (`# data: ... table fetched ...`) — the official citation guidance requires stating whether an updated edition was used; tables fetched before the latest official update batch get a `# WARN` line and a matching entry in `warnings`.
 6. **Isotope convention**: Main isotope by default (pure gas weight 1.0); `iso="all"` weights by official natural abundance.
 
 #### 🔒 Security & privacy
@@ -392,13 +393,13 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention | 23/23 pass |
-| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.3"}` |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard | 35/35 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 12 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.7.0"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |
 
-CI (`.github/workflows/ci.yml`) runs on Windows across Python 3.10/3.11/3.12: syntax compilation, `pyflakes` static analysis, unit tests and the contract check, plus a `fetch-depth: 0` security job that scans Git history. Dependencies are pinned in `requirements.txt` (`hitran-api==1.3.0.0`, `numpy==2.0.1`, `matplotlib==3.9.1`) and checked weekly by Dependabot.
+CI (`.github/workflows/ci.yml`) runs on Windows across Python 3.10/3.11/3.12: syntax compilation, `pyflakes` static analysis, unit tests and the contract check, plus a `fetch-depth: 0` security job that scans Git history. Dependencies are pinned in `requirements.txt` (`hitran-api==1.3.0.0`, `numpy==2.0.1`, `matplotlib==3.9.1`, `Pillow==11.0.0`) and checked weekly by Dependabot; Python 3.13 uses `requirements-py313.txt` (same pinned policy, numpy 2.1.3 / matplotlib 3.10.0) because 2.0.1 / 3.9.1 ship no 3.13 wheels.
 
 The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md).
 

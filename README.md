@@ -73,11 +73,11 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 | 全链路覆盖 | 物种查询 → 线表抓取 → 强线列表 → 吸收/透过率谱 → 谱图 → 配分函数 → 截面文件分析 |
 | 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）走官方 API 在线检索 + 一键下载（免 Portal 登录），或读入本地文件，统一产物链路 |
 | 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
-| 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 + HAPI + TIPS 版本水印，可追溯到原始文献 |
+| 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 版次 + 实际线型 + 浴气 + 线表名 + 抓取日期 + HAPI/TIPS 版本水印，可追溯到原始文献；线表早于官方增量更新时自动告警（官方要求引用须注明是否使用更新版） |
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 23 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 35 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 🧭 三种用法怎么选
@@ -270,6 +270,7 @@ hitran-mcp/
 ├─ SECURITY.md               # 安全政策与漏洞报告渠道
 ├─ LICENSE                   # GPLv3 协议
 ├─ requirements.txt          # Python 依赖（精确锁定版本）
+├─ requirements-py313.txt    # Python 3.13 同名锁定（numpy 2.1.3 / matplotlib 3.10.0）
 ├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
 ├─ HitranLink.spec            # PyInstaller 打包规格
 ├─ .github/
@@ -365,8 +366,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 1. **单位**：默认返回吸收系数 α（cm⁻¹）；`hitran_units=true` 返回截面 σ（cm²/molecule，不按摩尔分数缩放）。
 2. **混合气**：按 `α_i = x_i · α_pure_i(T, P, 浴气)` 计算，不使用 `x·P` 作为分压；未提供浓度时按纯气体计算并提示确认。
 3. **参数澄清**：未给出参数使用默认值并如实列出（`needs_confirm=true` 时需向用户复核 T/P/窗口/浓度）；`strict=true` 时 T/P 缺失直接报错。
-4. **线型**：`profile` 可选 voigt（默认）/ lorentz / gauss / doppler / ht / sdvoigt，全部直调官方 HAPI 谱函数。
-5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。
+4. **线型**：`profile` 可选 voigt（默认）/ lorentz / gauss / doppler / ht / sdvoigt，全部直调官方 HAPI 谱函数。`mht`（modified Hartmann-Tran，HITRAN2024 推荐）与 `qsdhc` 目前不可选：上游 HAPI 1.3.0.0 / hapi2 0.2.1 均未提供其吸收系数接口，程序会显式报错并建议改用 `ht` / `sdvoigt`，不做未经验证的强行实现。
+5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。水印另记实际线型、浴气、线表名与抓取日期（`# data: ... table fetched ...`）——官方要求引用时注明是否使用更新版；抓取日期早于最近一次官方更新批次时写入 `# WARN` 并在 `warnings` 中提示。
 6. **同位素口径**：默认主同位素（纯气体权重 1.0）；`iso="all"` 按官方自然丰度加权。
 
 #### 🔒 安全与隐私
@@ -395,13 +396,13 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸 | 23/23 通过 |
-| MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.6.3"}` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏 | 35/35 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 12 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 12, "version": "1.7.0"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
 
-CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`），由 Dependabot 每周检查更新。
+CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`、`Pillow==11.0.0`），由 Dependabot 每周检查更新；Python 3.13 另用 `requirements-py313.txt`（同口径精确锁定，numpy 2.1.3 / matplotlib 3.10.0），因 2.0.1 / 3.9.1 无 3.13 轮子。
 
 分维度评分与敏感性检测明细见 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)。
 

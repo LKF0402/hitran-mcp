@@ -424,6 +424,45 @@ CITATION = (
     "Partition sums: TIPS-2025."
 )
 
+# ---- 版次与官方增量更新台账 ----
+# HITRAN2024 于 2026-01 上线后，官方仍在持续发布 "Database Updates"（hitran.org 首页
+# 右侧面板），并明确要求：引用时须注明是否使用了"更新版"。本地线表一旦落盘就永久有效，
+# 所以必须记录抓取日期——否则用户会拿修正前的参数出图且无从追溯。
+# 典型案例：O2 A 带 SDVoigt 自增宽参数直到 2026-05 才被官方修正。
+# 维护方式：官方每次发公告，在 HITRAN_UPDATES 追加一行（升序），无需改其他代码。
+HITRAN_EDITION = "HITRAN2024"
+HITRAN_EDITION_BASE = "2026-01"          # 版次基准月（该版正式上线）
+HITRAN_UPDATES = (
+    ("2026-01", "HITRAN2024 正式上线（版次基准）"),
+    ("2026-05", "修正 O2 A 带 SDVoigt 自增宽参数错乱；H2O 远红外 4 条弱线重指派"),
+    ("2026-09", "修复原子氧配分函数文件被填零"),
+)
+
+
+def latest_update():
+    """返回 (日期, 说明)：官方已发布的最近一次增量更新。"""
+    return HITRAN_UPDATES[-1]
+
+
+def stale_data_warning(fetch_dates, profile=None):
+    """线表抓取日期早于最近一次官方增量更新时，返回告警文案；否则 None。
+
+    fetch_dates: {"表名": "YYYY-MM-DD" 或 None}。日期未知（None）不告警——
+    不做"猜日期"的推断，由调用方如实展示"抓取日期未知"。
+    """
+    try:
+        upto, desc = latest_update()
+    except Exception:
+        return None
+    stale = [f"{t}({d})" for t, d in (fetch_dates or {}).items()
+             if isinstance(d, str) and d and d < upto]
+    if not stale:
+        return None
+    prof = f"，profile={profile}" if profile else ""
+    return (f"[数据版次] 线表抓取早于官方 {upto} 更新（{desc}）：{', '.join(stale)}{prof}。"
+            f"若涉及该更新覆盖的分子/波段，请先清理线表缓存再重算，"
+            f"引用时须注明所用为『更新前版本』。")
+
 
 def _resolve(name, iso):
     """返回 (M, I, table_name)。iso=None 时取官方主同位素（丰度最大者）。
@@ -781,8 +820,19 @@ def check_spectrum(nu, coef, name=None, *, numin=None, numax=None,
 # ----------------------------------------------------------------------------
 # 溯源与防呆输出：任何产物都要能追到官方库，不留孤儿数据
 # ----------------------------------------------------------------------------
-def provenance(name, numin, numax, T, P, iso=None, hitran_units=False):
-    """返回溯源字符串（多行 '#' 注释），可写入 CSV 头或图注，防孤儿数据。"""
+def provenance(name, numin, numax, T, P, iso=None, hitran_units=False,
+               profile=None, diluent=None, fetch_dates=None, tables=None):
+    """返回溯源字符串（多行 '#' 注释），可写入 CSV 头或图注，防孤儿数据。
+
+    profile: 实际使用的线型（voigt/lorentz/gauss/doppler/ht/sdvoigt）。为 None 时才
+             回落到 voigt —— 旧实现把 "profile=Voigt" 硬编码在文案里，用户选 HT/SDVoigt
+             时 CSV 头仍标 Voigt，产物一离开程序就自带错误标注，属实证 bug。
+    diluent: 浴气字典（默认空气），写进条件行，避免"在不同浴气下算的谱混用"。
+    fetch_dates: {"表名": "YYYY-MM-DD"}，用于标注线表抓取日期 + 版次告警。
+    tables: 实际使用的线表名（字符串或列表）。不给时按 name/iso 静态推导——静态推导
+             只对基础表成立，带窗口后缀的表（如 CH4_6_1_2968_2970）会被标错，
+             所以计算路径必须传入实际表名。
+    """
     canonical = _canonical(name)
     M = SPECIES[canonical]
     if iso == "all":
@@ -790,26 +840,37 @@ def provenance(name, numin, numax, T, P, iso=None, hitran_units=False):
     else:
         I = int(iso) if iso is not None else ISO_ID.get(canonical, 1)
         iso_desc, table = I, f"{canonical}_{M}_{I}"
+    _tables = ("+".join(tables) if isinstance(tables, (list, tuple, set)) else str(tables)) \
+        if tables else table
     unit = ("cm2/molecule (cross section σ)"
             if hitran_units else "cm-1 (absorption coeff α)")
-    return "\n".join([
+    _prof = str(profile).strip().lower() if profile else "voigt"
+    _bath = "+".join(f"{k}:{float(v):g}" for k, v in (diluent or {"air": 1.0}).items())
+    _fd = "; ".join(f"{t}@{d}" for t, d in (fetch_dates or {}).items()) or "未知（旧缓存）"
+    lines = [
         "# ===== HITRAN spectrum provenance =====",
         "# source: HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807)",
-        f"# molecule={name} (M={M}, iso={iso_desc})  table={table}",
+        f"# molecule={name} (M={M}, iso={iso_desc})  table={_tables}",
         f"# fetch window = {numin}–{numax} cm-1",
-        f"# condition: T={T} K, P={P} atm, bath=air, profile=Voigt, wingHW default",
+        f"# condition: T={T} K, P={P} atm, bath={_bath}, profile={_prof}, wingHW default",
+        f"# data: {HITRAN_EDITION} (edition {HITRAN_EDITION_BASE}) · table fetched {_fd}",
         f"# units: {unit}",
         "# engine: HAPI 1.3.0.0 (Kochanov et al., JQSRT 2016); partition sums TIPS-2025",
-        "# ======================================",
-    ])
+    ]
+    _stale = stale_data_warning(fetch_dates, _prof)
+    if _stale:
+        lines.append("# WARN: " + _stale)
+    lines.append("# ======================================")
+    return "\n".join(lines)
 
 
 def save_spectrum_csv(path, nu, coef, *, name, numin, numax, T, P,
-                      iso=None, hitran_units=False, extra=None, extra_labels=None):
+                      iso=None, hitran_units=False, extra=None, extra_labels=None,
+                      profile=None, diluent=None, fetch_dates=None, tables=None):
     """写谱数据 CSV，头部带 provenance 注释（防呆：任何产物都能追到官方库）。
 
     path: 输出文件；nu/coef: 波数/谱；extra: 额外列（元组/数组）；
-    extra_labels: 对应列名。返回 path。
+    extra_labels: 对应列名。profile/diluent/fetch_dates 透传给 provenance()。
     """
     cols = [np.asarray(nu), np.asarray(coef)]
     labels = ["wavenumber_cm-1",
@@ -821,7 +882,9 @@ def save_spectrum_csv(path, nu, coef, *, name, numin, numax, T, P,
     # 落盘即轮询一次：防某次计算把错谱写成"可信产物"
     check_spectrum(nu, coef, name, numin=numin, numax=numax, T=T, P=P,
                    hitran_units=hitran_units)
-    stamp = provenance(name, numin, numax, T, P, iso, hitran_units)
+    stamp = provenance(name, numin, numax, T, P, iso, hitran_units,
+                       profile=profile, diluent=diluent, fetch_dates=fetch_dates,
+                       tables=tables)
     with open(path, "w", encoding="utf-8") as f:
         f.write(stamp + "\n")
         f.write(",".join(labels) + "\n")
