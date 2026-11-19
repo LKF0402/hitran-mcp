@@ -42,7 +42,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.7.4"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.5"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -1061,6 +1061,20 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     specs = _norm_specs(specs)
     numin, numax, T, P, step, wingHW = (float(numin), float(numax), float(T),
                                         float(P), float(step), float(wingHW))
+    # 窗口/工况护栏：这些参数写错时 HAPI 不会给出人话，常见表现是空谱、零宽网格或
+    # 直接抛 numpy 除零错误，容易被误读成"该窗口无谱线"。
+    if not (numax > numin):
+        raise ValueError(f"[hitran] 波数窗口非法：numin={numin:g} 必须小于 numax={numax:g}（cm-1），"
+                         f"二者写反会得到反向/空网格。")
+    if not (step > 0):
+        raise ValueError(f"[hitran] 波数步长必须大于 0（cm-1），收到 {step:g}。"
+                         f"常用 0.01；步长为 0 会让网格退化成单点。")
+    if not (wingHW >= 0):
+        raise ValueError(f"[hitran] 线翼半宽 wingHW 不能为负（cm-1），收到 {wingHW:g}。")
+    if not (T > 0):
+        raise ValueError(f"[hitran] 温度必须 >0 K，收到 {T:g}。")
+    if not (P > 0):
+        raise ValueError(f"[hitran] 气压必须 >0 atm，收到 {P:g}；P=0 会让压力展宽归零，谱线退化为无限窄。")
     if mode not in ("alpha", "transmittance", "both"):
         raise ValueError(f"mode 必须是 alpha / transmittance / both，收到 {mode!r}")
 
@@ -1304,6 +1318,12 @@ def t_lines(name, numin, numax, iso=None, top_n=10, min_intensity=None, force=Fa
     np = _np()
     import hapi
     numin, numax = float(numin), float(numax)
+    if not (numax > numin):
+        raise ValueError(f"[hitran_lines] 波数窗口非法：numin={numin:g} 必须小于 numax={numax:g}（cm-1）。")
+    top_n = int(top_n)
+    if top_n <= 0:
+        raise ValueError(f"[hitran_lines] top_n 必须 ≥1，收到 {top_n}（旧实现会静默返回空列表，"
+                         f"看起来像'窗口内无线'）。")
     formula, M = _resolve_M(name)
     isos = _isotopologues(M, iso)
     rows, skipped = [], []
@@ -1597,8 +1617,11 @@ def t_interference(name, interferers_csv, numin=None, numax=None, mole_frac=None
         _crit.append(f"{tgt['name']}.mole_frac=1 (未给浓度)")
 
     # 1) 定位目标线：默认取窗口内最强线，line_index 可换第 2/3 强线
+    _li = int(line_index)
+    if _li < 0:
+        raise ValueError(f"[hitran_interference] line_index 必须 ≥0（0=最强线），收到 {_li}。")
     lines = t_lines(tgt["name"], numin, numax, iso=iso,
-                    top_n=max(1, int(line_index) + 1))
+                    top_n=max(1, _li + 1))
     rows = lines.get("lines") or []
     if not rows:
         raise ValueError(f"[hitran_interference] {tgt['name']} 在 {numin}-{numax} cm-1 "
@@ -1711,7 +1734,11 @@ def _looks_like_native_xsc(path):
             h = f.readline()
         if len(h) < 60:
             return False
-        float(h[20:30]); float(h[30:40]); int(h[40:47])
+        numin, numax = float(h[20:30]), float(h[30:40])
+        npts = int(h[40:47])
+        # 头部还需自洽：否则"首行很长"的两列文本会被误判为原生 .xsc 而整份读错
+        if not (npts > 0 and numax > numin and numin >= 0):
+            return False
         float(h[47:54]); float(h[54:60])
         return True
     except Exception:
@@ -2648,7 +2675,7 @@ TOOLS = [
                                     "numin": {"type": "number", "description": "波数下限 cm-1（必填）"},
                                     "numax": {"type": "number", "description": "波数上限 cm-1（必填）"},
                                     "iso": {"type": "string", "description": "同位素号（如 1）或 'all'"},
-                                    "top_n": {"type": "integer", "description": "返回条数，默认 10"},
+                                    "top_n": {"type": "integer", "minimum": 1, "description": "返回条数，默认 10（≥1）"},
                                     "min_intensity": {"type": "number", "description": "最小线强阈值"},
                                     "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["name", "numin", "numax"]}},

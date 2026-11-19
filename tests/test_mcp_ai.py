@@ -304,6 +304,33 @@ class ChromaticBugTests(unittest.TestCase):
         self.assertIn("demo.xsc", names)
         self.assertIn("demo2.txt", names)
 
+    def test_invalid_window_and_step_rejected(self):
+        """窗口反向 / 步长为 0 / 气压为 0 必须显式报错，不得退化成空谱或抛 numpy 除零。"""
+        for kw in ({"numin": 2147.0, "numax": 2143.0},
+                   {"step": 0.0}, {"P": 0.0}, {"T": 0.0}):
+            args = dict(specs=[self._spec()], numin=2143.0, numax=2147.0)
+            args.update(kw)
+            with self.assertRaises(ValueError):
+                with mock.patch.object(m, "_hitran", lambda: _FakeAbsorption._DUMMY_HT), \
+                        mock.patch.object(m, "_absorption", _FakeAbsorption.fake_abs):
+                    m._compute(**args)
+
+    def test_lines_rejects_zero_top_n(self):
+        """top_n=0 旧实现静默返回空列表（看起来像"窗口无收录线"）。"""
+        with self.assertRaises(ValueError):
+            m.t_lines("CO", 2143, 2147, top_n=0)
+        with self.assertRaises(ValueError):
+            m.t_lines("CO", 2147, 2143, top_n=3)
+
+    def test_native_header_detection_requires_consistent_header(self):
+        """长首行两列文本不得被误判为原生 .xsc（头部 numin/numax 反了就必须拒绝）。"""
+        head = ("C3H8".ljust(20) + f"{1100.0:10.4f}{1000.0:10.4f}{12:7d}"
+                f"{296.0:7.1f}{760.0:6.1f}")
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "bad.xsc"
+            p.write_text(head + "\n", encoding="utf-8")
+            self.assertFalse(m._looks_like_native_xsc(p))
+
 
 if __name__ == "__main__":
     unittest.main()
