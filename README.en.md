@@ -76,7 +76,7 @@ After installation, calculations can be requested directly in natural language, 
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
-| Quality gates | 56 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
+| Quality gates | 60 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## 🧭 Three ways to use it
@@ -343,7 +343,7 @@ HITRAN2024 uses a **dual-database distribution architecture** — the two data c
 | `hitran_spectrum` | Absorption coefficient α / transmittance spectrum, CSV with provenance watermark; multi-species overlay via `specs_csv`; `sample_points>0` returns a sampled curve for shape inspection | `specs_csv` or `name`; `numin`, `numax` required |
 | `hitran_plot` | Spectrum PNG (multi-species overlay + total, `ylog` optional) | Same as `hitran_spectrum`, plus `title/ylog/dpi` |
 | `hitran_report` | **AI default**: one call returns peaks + sampled curve + top lines + PNG/CSV + data edition + warnings + `next_actions` | `name` or `specs_csv`; `numin`, `numax`; optional `top_n/sample_points/make_plot` |
-| `hitran_interference` | **Line-usability check**: cross-interference ratio at the target line center (per-component α, ratio, dB, window max, combined grade negligible/minor/significant/dominant) | `name`, `interferers_csv` ('H2O:0.01,CO2:4e-4'); `numin`, `numax`; optional `line_index/half_width/T/P` |
+| `hitran_interference` | **Line-usability check**: cross-interference at the target line center (per-component α, ratio, dB, window max, combined grade); add **2f weighting** when `modulation_cm1` or `m` is given (numerical lock-in, ideal sinusoidal FM) | `name`, `interferers_csv` ('H2O:0.01,CO2:4e-4'); `numin`, `numax`; optional `line_index/half_width/T/P/modulation_cm1/m` |
 | `hitran_partition_sum` | Partition sum Q(T), TIPS 2025/2021/2017/2011 selectable | `name` or `M`; `T` |
 | `hitran_cross_section` | Read a local XSC file (native `.xsc` or ν–σ two columns) → window/plot/provenance CSV | `file_path` (omitting lists available files in `xsc_data/`) |
 | `hitran_xsc_search` | Online probe of cross-section sub-database molecule file list (login-free, read-only, no filenames) | `name` (Portal display name) |
@@ -371,6 +371,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 4. **Line profiles**: `profile` options: voigt (default) / lorentz / gauss / doppler / ht / sdvoigt — all call official HAPI profile functions directly. `mht` (modified Hartmann-Tran, recommended by HITRAN2024) and `qsdhc` are not selectable yet: neither HAPI 1.3.0.0 nor hapi2 0.2.1 exposes an absorption-coefficient entry point for them, so the program raises an explicit error and suggests `ht` / `sdvoigt` instead of shipping an unverified implementation.
 5. **Provenance**: Every CSV/plot is traceable to HITRAN2024 (Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807) + HAPI (Kochanov et al., JQSRT 2016) + TIPS version; for paper citation, use the `citation` field in the response. The watermark also records the actual line profile, bath gas, line-table name and fetch date (`# data: ... table fetched ...`) — the official citation guidance requires stating whether an updated edition was used; tables fetched before the latest official update batch get a `# WARN` line and a matching entry in `warnings`.
 6. **Isotope convention**: Main isotope by default (pure gas weight 1.0); `iso="all"` weights by official natural abundance.
+7. **2f-weighted interference**: with `modulation_cm1` (modulation amplitude a, cm⁻¹) or `m` (modulation index, folded via HWHM≈γ_air·P), `hitran_interference` numerically lock-ins the same α to its 2f amplitude before comparing — smooth distant line wings are rejected, only absorption within the modulation width counts, so the 2f ratio is typically far below the line-center ratio. Model assumes ideal sinusoidal FM, no RAM, no electro-optic phase lag, adiabatic, and is not normalized to 1f; real values shift with m, phase and bandwidth, so it is a screening tool only.
 
 #### 🔒 Security & privacy
 
@@ -398,8 +399,8 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading | 56/56 pass |
-| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 14 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.2"}` |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading, 2f linearity invariant and m conversion | 60/60 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 14 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.3"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |

@@ -157,7 +157,8 @@ class InterferenceTests(unittest.TestCase):
         nu = np.linspace(numin, numax, 101)
         x = sp["mole_frac"]
         amp = self.PURE_AMP.get(sp["name"], 0.0)
-        y = amp * x * (1.0 - abs(2968.73 - nu))     # 线心附近近似三角形，便于取点
+        # 洛伦兹线型（γ=0.05），锁定 2f 的线性不变量：形状相同 → 比值等于幅度比
+        y = amp * x / (1.0 + ((nu - 2968.73) / 0.05) ** 2)
         label = sp["name"] if x == 1 else f"{sp['name']}@{x:g}"
         return {"nu": nu, "per": {label: y}, "warnings": [], "tables": {}}
 
@@ -208,6 +209,44 @@ class InterferenceTests(unittest.TestCase):
         default = m._parse_specs_csv("CO,N2O")
         self.assertTrue(all(s["mole_frac_given"] for s in given))
         self.assertFalse(any(s["mole_frac_given"] for s in default))
+
+    def test_no_2f_without_modulation_params(self):
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-5",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325)
+        self.assertIsNone(out["wms"])
+        self.assertNotIn("ratio_2f", out["interferers"][0])
+        self.assertTrue(any("单点判据" in w for w in out["warnings"]))
+
+    def test_2f_linearity_invariant(self):
+        """同形状不同幅度 → 2f 比值必须等于 α 比值（锁相是线性算子）。"""
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-5",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325, modulation_cm1=0.05)
+        w = out["wms"]
+        self.assertAlmostEqual(w["modulation_cm1"], 0.05)
+        self.assertGreater(w["target_s2f_amp"], 0.0)
+        self.assertAlmostEqual(w["interferers"][0]["ratio_2f"], 5.0, delta=0.05)
+        self.assertEqual(w["verdict"]["level"], "dominant")
+        self.assertTrue(any("2f" in w_ for w_ in out["warnings"]))
+
+    def test_m_converts_to_modulation_amplitude(self):
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-9",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325, m=2.0)
+        # γ_air=0.05 × P=1.01325 → HWHM≈0.0507；a≈0.1013
+        self.assertAlmostEqual(out["wms"]["modulation_cm1"], 2.0 * 0.05 * 1.01325, delta=1e-6)
+
+    def test_modulation_params_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            m.t_interference(name="CH4", interferers_csv="H2O:1e-5",
+                             numin=2968, numax=2970, modulation_cm1=0.05, m=1.0)
 
 
 if __name__ == "__main__":
