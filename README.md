@@ -78,7 +78,7 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 56 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 62 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 🧭 三种用法怎么选
@@ -284,7 +284,10 @@ hitran-mcp/
 │  └─ hitranlink.ico          # 应用图标
 ├─ tests/
 │  ├─ test_updater.py        # 更新链路单元测试
-│  └─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
+│  ├─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
+│  ├─ test_data_version.py   # 线表版次台账 / 摩尔分数护栏 / specs_csv 浓度标志
+│  ├─ test_mcp_ai.py         # MCP 错误契约 / 曲线采样 / 干扰判级 / 组分标签与 σ–τ 回归
+│  └─ test_cli.py            # 命令行入口测试
 └─ tools/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
    ├─ hitran_cli.py          # 命令行入口（不装 MCP 也能调用同一批工具函数）
@@ -369,8 +372,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 #### 📏 使用规范
 
-1. **单位**：默认返回吸收系数 α（cm⁻¹）；`hitran_units=true` 返回截面 σ（cm²/molecule，不按摩尔分数缩放）。
-2. **混合气**：按 `α_i = x_i · α_pure_i(T, P, 浴气)` 计算，不使用 `x·P` 作为分压；未提供浓度时按纯气体计算并提示确认。
+1. **单位**：默认返回吸收系数 α（cm⁻¹）；`hitran_units=true` 返回截面 σ（cm²/molecule），**两种口径都按摩尔分数加权**（α_i=x_i·α_pure，σ_i=x_i·σ_pure），混合气总量即混合物口径。<br>`mode=transmittance` 且 `hitran_units=true` 时，τ=exp(−σ·N·L)，N=P/(k_BT)（理想气体，返回 `number_density_cm-3`）；α 口径为 τ=exp(−α·L)。
+2. **混合气**：α 与 σ 同一条规则——按 `α_i = x_i · α_pure_i(T, P, 浴气)`、`σ_i = x_i · σ_pure_i` 计算，不使用 `x·P` 作为分压；未提供浓度时按纯气体计算并提示确认。同一分子多组分（如不同同位素）各自独立计入 total，标签带 `[I=…]` 后缀，不会互相覆盖。
 3. **参数澄清**：未给出参数使用默认值并如实列出（`needs_confirm=true` 时需向用户复核 T/P/窗口/浓度）；`strict=true` 时 T/P 缺失直接报错。
 4. **线型**：`profile` 可选 voigt（默认）/ lorentz / gauss / doppler / ht / sdvoigt，全部直调官方 HAPI 谱函数。`mht`（modified Hartmann-Tran，HITRAN2024 推荐）与 `qsdhc` 目前不可选：上游 HAPI 1.3.0.0 / hapi2 0.2.1 均未提供其吸收系数接口，程序会显式报错并建议改用 `ht` / `sdvoigt`，不做未经验证的强行实现。
 5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。水印另记实际线型、浴气、线表名与抓取日期（`# data: ... table fetched ...`）——官方要求引用时注明是否使用更新版；抓取日期早于最近一次官方更新批次时写入 `# WARN` 并在 `warnings` 中提示。
@@ -402,8 +405,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级 | 56/56 通过 |
-| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.2"}` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级；组分标签唯一化、σ 口径加权、σ–透过率数密度、原生 .xsc 优先解析、缓存根跟随数据目录 | 62/62 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.4"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |

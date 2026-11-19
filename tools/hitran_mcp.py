@@ -42,7 +42,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.7.2"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.4"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -651,7 +651,7 @@ _ABS_CACHE_HITS = 0
 _ABS_CACHE_MISSES = 0
 
 # ---- 计算缓存持久化（重启后秒出，避免重复 HAPI 计算）----
-_PERSIST_CACHE_DIR = ROOT / "Hitran_Data" / "compute_cache"
+_PERSIST_CACHE_DIR = DATA_ROOT / "compute_cache"
 _PERSIST_INDEX_FILE = _PERSIST_CACHE_DIR / "index.json"
 # 磁盘缓存条目上限：超出时按文件时间**淘汰最旧**。否则 .npz 与启动加载量会随使用
 # 无上限增长（一个大窗口一组就是 MB 级），长期使用会拖慢启动并占满磁盘。
@@ -1054,7 +1054,7 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
     """算谱核心：返回 dict(nu, per{label:coef}, total, trans, meta)。
 
     混合气纪律（物理正确性要求）：α_i = x_i · α_pure_i(T, P, 空气浴)，
-    绝不用 x·P 当分压；截面模式（hitran_units=True）不按摩尔分数缩放。
+    绝不用 x·P 当分压；截面模式（hitran_units=True）同样按 x 加权（σ_mix = Σ x_i σ_i）。
     窗口纪律：线表必须真正覆盖请求窗口，否则自动按窗口重抓（见 _ensure_table）。
     """
     ht, np = _hitran(), _np()
@@ -1066,6 +1066,20 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
 
     nu = None
     per, peaks, tables, warnings = {}, {}, {}, []
+
+    def _base_label(sp_):
+        return (sp_["name"] if abs(sp_["mole_frac"] - 1.0) < 1e-12
+                else f"{sp_['name']}@{sp_['mole_frac']:g}")
+
+    # 标签唯一化：同一分子可以合法出现多次（不同同位素分别计入）。旧实现只用 name/x
+    # 作键 → 后写的组分直接覆盖先写的，total 少算一个组分的贡献且完全无告警。
+    _base_counts, _used = {}, {}
+    for _sp in specs:
+        _b = _base_label(_sp)
+        _base_counts[_b] = _base_counts.get(_b, 0) + 1
+    if any(v > 1 for v in _base_counts.values()):
+        warnings.append("同一分子在 specs 中出现多次（不同同位素/重复项）：已按同位素后缀区分标签，"
+                        "各组分别计入 total。")
     for sp in specs:
         name, iso, x = sp["name"], sp["iso"], sp["mole_frac"]
         # 输入护栏（沿用 hitran.py 第一层防呆）；纯气体 x=1 不传，免"是否主成分"噪声提示
@@ -1082,11 +1096,26 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
                                         progress=progress)
         nu_i = np.asarray(nu_i, dtype=float)
         coef = np.asarray(coef, dtype=float)
-        if not hitran_units:
-            coef = coef * x                      # 混合气缩放（物理正确）
+        # 混合气缩放，两种口径同一条物理规则：
+        #   α 口径：α_i = x_i·α_pure；σ 口径：σ_i = x_i·σ_pure（混合物每分子截面）。
+        #   旧实现跳过 σ 口径的缩放 → 混合气 total 把各组分**纯气体截面**直接相加，
+        #   浓度信息整体丢失（σ 峰值与 x=1 时一模一样）。x=1 时两式都退化为纯气体，不变。
+        if abs(x - 1.0) >= 1e-12:
+            coef = coef * x
+            if hitran_units:
+                warnings.append(f"[{_base_label(sp)}] 截面已按摩尔分数 {x:g} 加权（混合物口径）；"
+                                f"需要纯气体截面请令 mole_frac=1。")
         if nu is None:
             nu = nu_i
-        label = name if abs(x - 1.0) < 1e-12 else f"{name}@{x:g}"
+        base = _base_label(sp)
+        label = base
+        if _base_counts.get(base, 0) > 1:
+            iso_lbl = sp["iso"] if sp["iso"] not in (None, "") else "main"
+            label = f"{base}[I={iso_lbl}]"
+        _n = _used.get(label, 0) + 1
+        _used[label] = _n
+        if _n > 1:
+            label = f"{label}#{_n}"
         per[label] = coef
         tables[label] = tinfo
         peaks[label] = {"peak_value": float(coef.max()),
@@ -1108,16 +1137,27 @@ def _compute(specs, numin, numax, T=296.0, P=1.01325, step=0.01, wingHW=50.0,
                                        T=T, P=P, hitran_units=hitran_units) or [])
 
     trans = None
+    number_density_cm3 = None
     if mode in ("transmittance", "both"):
         L = float(path_length_cm if path_length_cm is not None else 1.0)
-        trans = np.exp(-total * L)
+        if hitran_units:
+            # σ 是「每分子」截面（cm²/molecule），光程单位 cm → 必须先乘数密度才是无量纲
+            # 光学厚度；旧实现直接 exp(-σ·L)，量纲不成立，透过率恒为 1.0（静默错）。
+            # 理想气体 N = P/(k_B T)，P 由 atm 转 Pa。
+            number_density_cm3 = P * 101325.0 / (1.380649e-23 * T)
+            trans = np.exp(-total * number_density_cm3 * L)
+            warnings.append(f"截面口径透过率按理想气体数密度 N=P/(kT)={number_density_cm3:.4g} cm-3 换算"
+                            f"（τ=exp(-σ·N·L)，L={L:g} cm）；非理想气体需改用实测 N。")
+        else:
+            trans = np.exp(-total * L)
 
     return {"nu": nu, "per": per, "total": total, "trans": trans,
             "peaks": peaks, "warnings": warnings, "tables": tables, "specs": specs,
             "numin": numin, "numax": numax, "T": T, "P": P, "step": step,
             "wingHW": wingHW, "mode": mode, "hitran_units": bool(hitran_units),
             "profile": profile, "diluent": _diluent_dict(diluent),
-            "path_length_cm": path_length_cm}
+            "path_length_cm": path_length_cm,
+            "number_density_cm-3": number_density_cm3}
 
 
 def _csv_path(res, extra=""):
@@ -1739,6 +1779,10 @@ def _read_hotw_file(path):
         raise ValueError(f"[hitran_cross_section] 截面文件不存在: {path}")
     if path.is_dir():
         raise ValueError(f"[hitran_cross_section] 给出的是目录而非文件: {path}")
+    # 必须先判原生 .xsc：其数据行是每行 10 个 σ 值，末行常剩 2 个，会被两列解析误吞成
+    # 一个 (ν, σ) 假数据点（npnts%10==2 时必现），从而静默返回 1 点的垃圾结果。
+    if _looks_like_native_xsc(path):
+        return _read_xsc_native(path)
     nu, coef, header, skipped = [], [], [], 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for ln in f:
@@ -1761,8 +1805,6 @@ def _read_hotw_file(path):
             if not nu and skipped > 200:      # 头部垃圾行过多，疑似非截面文件
                 break
     if not nu:
-        if _looks_like_native_xsc(path):        # hitran_xsc_download 下到的原生 .xsc
-            return _read_xsc_native(path)
         raise ValueError(
             f"[hitran_cross_section] '{path.name}' 中未解析到两列数值数据（nu, coef）。"
             f"请确认是 hitran.org/xsc 下载的 HOTW 截面文件（形如 '2950.0000 1.23e-21'），"
@@ -1776,7 +1818,7 @@ def _list_xsc_files():
         return []
     out = []
     for p in sorted(XSC_DIR.iterdir()):
-        if p.is_file() and p.suffix.lower() in (".txt", ".dat", ".csv"):
+        if p.is_file() and p.suffix.lower() in (".txt", ".dat", ".csv", ".xsc"):
             out.append({"file": str(p), "name": p.name,
                         "size_bytes": p.stat().st_size,
                         "mtime": p.stat().st_mtime})
@@ -2633,7 +2675,7 @@ TOOLS = [
                          "wingHW": {"type": "number", "description": "线翼半宽 cm-1，默认 50"},
                          "mode": {"type": "string", "description": "alpha / transmittance / both"},
                          "path_length_cm": {"type": "number", "description": "光程 cm（透过率用，默认 1）"},
-                         "hitran_units": {"type": "boolean", "description": "True 返回 cm2/molecule 截面（σ，不按 x 缩放）"},
+                         "hitran_units": {"type": "boolean", "description": "True 返回 cm2/molecule 截面（σ，按摩尔分数加权：纯气体 σ=x·σ_pure）"},
                          "profile": {"type": "string",
                                      "description": "线型：voigt(默认)/lorentz/gauss/doppler/ht/sdvoigt（官方 HAPI 谱函数）"},
                          "diluent": {"type": "string", "description": "展宽浴：'air'(默认) 或 'self'"},

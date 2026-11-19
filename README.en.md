@@ -72,12 +72,12 @@ After installation, calculations can be requested directly in natural language, 
 | Full pipeline | Species lookup → line-table fetch → strong-line list → absorption/transmittance spectrum → plot → partition sum → cross-section analysis |
 | Scope | Line parameters and absorption spectra only (S, γ, α, transmittance, cross-sections). Detection techniques — WMS/2f modulation or demodulation, LITES, CRDS response — are out of scope for this repository |
 | Dual-database bridge | LBL via HAPI online API; XSC (600+ heavy molecules) via official-API discovery + one-click download (no Portal login), or local file ingestion — unified output pipeline |
-| Physical safeguards | Mixtures computed as `α_i = x_i · α_pure_i(T, P, bath)`; windows not covered are auto-refetched; zero-line/failure raise explicit errors instead of silently returning a flat spectrum |
+| Physical safeguards | Mixtures computed as `α_i = x_i · α_pure_i(T, P, bath)` (same rule for σ); windows not covered are auto-refetched; zero-line/failure raise explicit errors instead of silently returning a flat spectrum; duplicate components (e.g. different isotopes of one molecule) get distinct labels and are all counted |
 | Full provenance | Every CSV/PNG carries HITRAN2024 edition + actual line profile + bath gas + line-table name + fetch date + HAPI/TIPS watermarks, traceable to the original references; tables older than the latest official incremental update raise a warning (the official citation guidance requires stating whether an updated edition was used) |
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
-| Quality gates | 56 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
+| Quality gates | 62 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## 🧭 Three ways to use it
@@ -281,7 +281,10 @@ hitran-mcp/
 │  └─ hitranlink.ico          # Application icon
 ├─ tests/
 │  ├─ test_updater.py        # Update pipeline unit tests
-│  └─ test_core.py           # Redaction, filename escape prevention, status fields
+│  ├─ test_core.py           # Redaction, filename-escape prevention, status fields
+│  ├─ test_data_version.py   # Table-fetch ledger / mole-fraction guard / specs_csv fraction flag
+│  ├─ test_mcp_ai.py         # MCP error contract / curve sampling / interference grading / label & σ–τ regressions
+│  └─ test_cli.py            # CLI entry point tests
 └─ tools/
    ├─ hitran_mcp.py          # MCP server (stdio JSON-RPC, pure stdlib)
    ├─ hitran_cli.py          # CLI entry point (same tool functions, no MCP needed)
@@ -366,7 +369,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 #### 📏 Usage conventions
 
-1. **Units**: Returns absorption coefficient α (cm⁻¹) by default; `hitran_units=true` returns cross-section σ (cm²/molecule, not scaled by mole fraction).
+1. **Units**: Returns absorption coefficient α (cm⁻¹) by default; `hitran_units=true` returns cross-section σ (cm²/molecule). **Both are weighted by mole fraction** (α_i=x_i·α_pure, σ_i=x_i·σ_pure), so the total is the mixture value.<br>With `mode=transmittance` and `hitran_units=true`, τ=exp(−σ·N·L) where N=P/(k_BT) (ideal gas, returned as `number_density_cm-3`); the α path uses τ=exp(−α·L).
 2. **Mixtures**: Computed as `α_i = x_i · α_pure_i(T, P, bath)`, not `x·P` as partial pressure; if concentration is not provided, pure gas is assumed with a confirmation prompt.
 3. **Parameter clarification**: Missing parameters fall back to defaults that are honestly listed (when `needs_confirm=true`, the user must confirm T/P/window/concentration); `strict=true` raises an error if T/P is missing.
 4. **Line profiles**: `profile` options: voigt (default) / lorentz / gauss / doppler / ht / sdvoigt — all call official HAPI profile functions directly. `mht` (modified Hartmann-Tran, recommended by HITRAN2024) and `qsdhc` are not selectable yet: neither HAPI 1.3.0.0 nor hapi2 0.2.1 exposes an absorption-coefficient entry point for them, so the program raises an explicit error and suggests `ht` / `sdvoigt` instead of shipping an unverified implementation.
@@ -399,8 +402,8 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading | 56/56 pass |
-| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 14 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.2"}` |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading; label uniqueness, σ scaling, σ–transmittance number density, native .xsc priority, cache root following the data dir | 62/62 pass |
+| MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 14 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.4"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |

@@ -1,6 +1,10 @@
 """MCP 面向 AI 调用契约的离线测试：错误码、曲线采样、report 组装。全部不联网。"""
 import json
+import os
+import tempfile
+import types
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import tools.hitran_mcp as m
@@ -208,6 +212,97 @@ class InterferenceTests(unittest.TestCase):
         default = m._parse_specs_csv("CO,N2O")
         self.assertTrue(all(s["mole_frac_given"] for s in given))
         self.assertFalse(any(s["mole_frac_given"] for s in default))
+
+
+class _FakeAbsorption:
+    """把 _absorption 换成常数谱：只用 iso 决定幅度（1→2.0, 2→4.0），隔离 HITRAN 取数。"""
+
+    _DUMMY_HT = types.SimpleNamespace(
+        _validate_params=lambda *a, **k: None,
+        check_spectrum=lambda *a, **k: [])
+
+    @staticmethod
+    def fake_abs(name, iso, numin, numax, *a, **k):
+        import numpy as np
+        nu = np.linspace(float(numin), float(numax), 21)
+        amp = 4.0 if iso == 2 else 2.0
+        return nu, np.full_like(nu, amp), {"table": "T", "coverage_cm-1": [numin, numax],
+                                           "n_lines_in_window": 1, "n_lines_table": 1,
+                                           "table_fetched_at": {}}
+
+
+class ChromaticBugTests(unittest.TestCase):
+    """针对实测复现的 5 个 bug 的回归锁定（全部离线）。"""
+
+    def _compute(self, specs, **kw):
+        with mock.patch.object(m, "_hitran", lambda: _FakeAbsorption._DUMMY_HT), \
+                mock.patch.object(m, "_absorption", _FakeAbsorption.fake_abs):
+            return m._compute(specs, 2143.0, 2147.0, T=kw.pop("T", 296.0),
+                              P=kw.pop("P", 1.0), **kw)
+
+    def _spec(self, name="CO", iso=None, x=1.0):
+        return {"name": name, "iso": iso, "mole_frac": x}
+
+    def test_duplicate_species_labels_do_not_collide(self):
+        """① 同一分子不同同位素：旧实现标签撞车，后一个覆盖前一个且无告警。"""
+        res = self._compute([self._spec(iso=1), self._spec(iso=2)])
+        self.assertEqual(len(res["per"]), 2, res["per"].keys())
+        labels = sorted(res["per"].keys())
+        self.assertIn("CO[I=1]", labels)
+        self.assertIn("CO[I=2]", labels)
+        import numpy as np
+        self.assertAlmostEqual(float(res["total"][0]), 6.0)     # 2.0 + 4.0，不再被覆盖
+        self.assertTrue(any("同位素" in w for w in res["warnings"]))
+
+    def test_sigma_mode_respects_mole_fraction(self):
+        """② σ 口径也要按 x 加权：混合物 total = Σ x_i·σ_i（旧实现直接加纯气体 σ）。"""
+        res = self._compute([self._spec(iso=1, x=0.5), self._spec(name="CH4", x=0.5)],
+                            hitran_units=True)
+        self.assertAlmostEqual(float(res["total"][0]), 0.5 * 2.0 + 0.5 * 2.0)
+        self.assertTrue(any("摩尔分数" in w for w in res["warnings"]))
+
+    def test_transmittance_sigma_uses_number_density(self):
+        """② σ + 透过率：必须 τ=exp(-σ·N·L)，旧实现量纲不成立、τ 恒为 1.0。"""
+        res = self._compute([self._spec(x=1e-6)], hitran_units=True,
+                            mode="transmittance", path_length_cm=100.0)
+        import numpy as np
+        n_exp = 1.0 * 101325.0 / (1.380649e-23 * 296.0)
+        self.assertAlmostEqual(res["number_density_cm-3"], n_exp, delta=abs(n_exp) * 1e-6)
+        tau_exp = float(np.exp(-2.0 * 1e-6 * n_exp * 100.0))
+        self.assertAlmostEqual(float(res["trans"][0]), tau_exp, places=12)
+        self.assertLess(float(res["trans"][0]), 1.0)
+
+    def test_native_xsc_not_eaten_by_two_column_parser(self):
+        """③ npnts % 10 == 2 时，末行 2 个数会被两列解析吞成假数据点（旧顺序的错）。"""
+        import numpy as np
+        npnts, numin, numax = 12, 1000.0, 1011.0
+        head = ("C3H8".ljust(20) + f"{numin:10.4f}{numax:10.4f}{npnts:7d}"
+                f"{296.0:7.1f}{760.0:6.1f}")
+        vals = np.linspace(1e-21, 2e-21, npnts)
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "fake.xsc"
+            p.write_text(head + "\n" + " ".join(f"{v:.4e}" for v in vals[:10]) + "\n"
+                         + " ".join(f"{v:.4e}" for v in vals[10:]) + "\n", encoding="utf-8")
+            nu, coef, header, skipped = m._read_hotw_file(p)
+        self.assertEqual(len(nu), npnts)
+        self.assertEqual(len(coef), npnts)
+        self.assertAlmostEqual(float(nu[0]), numin, places=6)
+        self.assertAlmostEqual(float(nu[-1]), numax, places=6)
+        self.assertGreater(float(coef.max()), 1e-21)
+
+    def test_compute_cache_follows_data_dir(self):
+        """④ 计算缓存必须与线表缓存同根（HITRAN_DATA_DIR 只生效一半是 bug）。"""
+        self.assertEqual(m._PERSIST_CACHE_DIR, m.DATA_ROOT / "compute_cache")
+
+    def test_xsc_listing_includes_native_suffix(self):
+        """⑤ 下载的原生 .xsc 必须出现在可用清单里。"""
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "demo.xsc").write_text("x", encoding="utf-8")
+            Path(d, "demo2.txt").write_text("x", encoding="utf-8")
+            with mock.patch.object(m, "XSC_DIR", Path(d)):
+                names = [f["name"] for f in m._list_xsc_files()]
+        self.assertIn("demo.xsc", names)
+        self.assertIn("demo2.txt", names)
 
 
 if __name__ == "__main__":
