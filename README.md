@@ -1,9 +1,9 @@
-﻿<div align="center">
+<div align="center">
 
 <h1>hitran-mcp</h1>
 
-<p><b>HITRAN 鍏夎氨鏁版嵁搴撶殑 AI 宸ュ叿閾?/b><br>
-MCP 鏈嶅姟鍣?+ HitranLink 妗岄潰宸ヤ綔绔?路 瀹炴椂鍙栨暟 路 鏈湴缂撳瓨</p>
+<p><b>HITRAN 光谱数据库的 AI 工具链</b><br>
+MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="GPLv3"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/LKF0402/hitran-mcp?color=6B8FD4" alt="Release"></a>
@@ -21,112 +21,112 @@ MCP 鏈嶅姟鍣?+ HitranLink 妗岄潰宸ヤ綔绔?路 瀹炴椂鍙栨暟 路 �
 
 </div>
 
-[English](./README.en.md) | 涓枃
+[English](./README.en.md) | 中文
 
 ---
 
-## 馃殌 蹇€熷紑濮?
+## 🚀 快速开始
 
-**涓ょ浣跨敤鏂瑰紡锛屼换閫夊叾涓€銆?*
+**两种使用方式，任选其一。**
 
-| 鏂瑰紡 | 鍓嶇疆鏉′欢 | 涓婃墜鏂瑰紡 |
+| 方式 | 前置条件 | 上手方式 |
 |---|---|---|
-| 馃 **AI 涓€閿儴缃?*锛堟帹鑽愶級 | 鍏峰鏈満鍛戒护鎵ц鑳藉姏鐨?AI 瀹㈡埛绔?| 涓€娆″璇?|
-| 馃枼锔?**妗岄潰鐗?* | Windows x64锛屾棤闇€ Python | 瑙ｅ帇鍚庤繍琛?|
+| 🤖 **AI 一键部署**（推荐） | 具备本机命令执行能力的 AI 客户端 | 一次对话 |
+| 🖥️ **桌面版** | Windows x64，无需 Python | 解压后运行 |
 
-### 馃 A 路 灏嗕互涓嬫寚浠や氦缁?AI
+### 🤖 A · 将以下指令交给 AI
 
-> 鍓嶇疆鏉′欢锛欰I 鍔╂墜鍙湪鏈満鎵ц鍛戒护锛圕laude Code / Cursor / Codex / Cherry Studio 鏈湴妯″紡绛夛級銆?
+> 前置条件：AI 助手可在本机执行命令（Claude Code / Cursor / Codex / Cherry Studio 本地模式等）。
 
 ```text
-鎴戝湪杩欏彴鐢佃剳涓婁娇鐢?hitran-mcp锛圚ITRAN 鍏夎氨宸ュ叿锛夛紝璇峰畬鎴愬畨瑁呬笌鑷锛屾寜椤哄簭鎵ц锛?
-1. 妫€鏌?Python 鏄惁 鈮?3.10锛涘鏋滀笉鏄紝鍛婄煡搴斿畨瑁呯殑鐗堟湰锛屼笉瑕佹敼鍔ㄧ郴缁熷唴鍏朵粬缁勪欢
-2. 鍏嬮殕 https://github.com/LKF0402/hitran-mcp 鍒板浐瀹氱洰褰曪紙宸插瓨鍦ㄥ垯鏇存柊锛夛紝鍦ㄨ鐩綍鎵ц pip install -r requirements.txt
-3. 杩愯 python tools/hitran_mcp.py --selftest锛屽皢缁撴灉鍘熸牱杩斿洖
-4. 鑻ョ幆澧冩敮鎸?MCP 瀹㈡埛绔厤缃紝鎸変粨搴?README銆屾帴鍏?MCP 瀹㈡埛绔€嶆敞鍐屼负 MCP 鏈嶅姟鍣紱涓嶆敮鎸佸垯璺宠繃锛屾敼鐢ㄥ懡浠よ鍏ュ彛 python tools/hitran_cli.py
-5. 鐢ㄥ懡浠よ鎵ц涓€涓ず渚嬮獙璇侊細python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
-6. 鏈€鍚庣敤涓夊彞璇濊鏄庯細鍚庣画鍙洿鎺ョ敤鑷劧璇█鍙戣捣鍝簺璁＄畻銆佹暟鎹紦瀛樹綅缃€佸嚭閿欐椂搴旀煡鐪嬪摢鏉′俊鎭?
+我在这台电脑上使用 hitran-mcp（HITRAN 光谱工具），请完成安装与自检，按顺序执行：
+1. 检查 Python 是否 ≥ 3.10；如果不是，告知应安装的版本，不要改动系统内其他组件
+2. 克隆 https://github.com/LKF0402/hitran-mcp 到固定目录（已存在则更新），在该目录执行 pip install -r requirements.txt
+3. 运行 python tools/hitran_mcp.py --selftest，将结果原样返回
+4. 若环境支持 MCP 客户端配置，按仓库 README「接入 MCP 客户端」注册为 MCP 服务器；不支持则跳过，改用命令行入口 python tools/hitran_cli.py
+5. 用命令行执行一个示例验证：python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 --numin 2950 --numax 3100 --T 296 --P 1.01325
+6. 最后用三句话说明：后续可直接用自然语言发起哪些计算、数据缓存位置、出错时应查看哪条信息
 ```
 
-瀹夎瀹屾垚鍚庯紝鍙洿鎺ヤ互鑷劧璇█鍙戣捣璁＄畻锛屼緥濡傦細**銆岃绠?CH鈧?鍦?2968 cm鈦宦?闄勮繎鐨勫惛鏀惰氨骞剁粯鍥俱€?*
+安装完成后，可直接以自然语言发起计算，例如：**「计算 CH₄ 在 2968 cm⁻¹ 附近的吸收谱并绘图」**
 
-### 馃枼锔?B 路 妗岄潰鐗堬紙鏃犻渶 Python锛?
+### 🖥️ B · 桌面版（无需 Python）
 
-[**猬囷笍 涓嬭浇鏈€鏂扮増**](https://github.com/LKF0402/hitran-mcp/releases/latest) 鈫?瑙ｅ帇 鈫?杩愯 `HitranLink.exe` 鈫?閫夋嫨鍒嗗瓙涓庡弬鏁?鈫?鐐瑰嚮銆岃绠楀苟缁樺浘銆嶃€?
+[**⬇️ 下载最新版**](https://github.com/LKF0402/hitran-mcp/releases/latest) → 解压 → 运行 `HitranLink.exe` → 选择分子与参数 → 点击「计算并绘图」。
 
-> 馃挕 **MCP 涓哄彲閫夊舰鎬?*锛氬鎴风鍙墽琛屾湰鍦板懡浠ゆ椂锛孉I 鍙洿鎺ヨ皟鐢?`python tools/hitran_cli.py ...`锛屼笌 MCP 閫氶亾鍏辩敤鍚屼竴寮曟搸銆佺粨鏋滀竴鑷达紱浠呯函缃戦〉瀵硅瘽鐜闇€瑕?MCP銆?
+> 💡 **MCP 为可选形态**：客户端可执行本地命令时，AI 可直接调用 `python tools/hitran_cli.py ...`，与 MCP 通道共用同一引擎、结果一致；仅纯网页对话环境需要 MCP。
 
-## 馃摳 鏁堟灉棰勮
+## 📸 效果预览
 
-**HitranLink 妗岄潰宸ヤ綔绔?* 鈥斺€?CH鈧?+ H鈧侽 娣峰悎姘斿惛鏀惰氨锛圕H鈧?2000 ppm銆丠鈧侽 1%锛?96 K銆? atm锛夛細
+**HitranLink 桌面工作站** —— CH₄ + H₂O 混合气吸收谱（CH₄ 2000 ppm、H₂O 1%，296 K、1 atm）：
 
-![HitranLink 涓荤晫闈(docs/images/hitranlink.png)
+![HitranLink 主界面](docs/images/hitranlink.png)
 
-**鎴潰搴撳湪绾挎绱笌涓€閿笅杞?* 鈥斺€?鎸変腑鏂囧悕妯＄硦鍖归厤鍒嗗瓙銆佸嬀閫?T/P 宸ュ喌鍚庢壒閲忎笅杞斤細
+**截面库在线检索与一键下载** —— 按中文名模糊匹配分子、勾选 T/P 工况后批量下载：
 
-![鎴潰搴撲笅杞界獥鍙(docs/images/xsc-download.png)
+![截面库下载窗口](docs/images/xsc-download.png)
 
-## 鉁?鍔熻兘鐗规€?
+## ✨ 功能特性
 
-| 鐗规€?| 璇存槑 |
+| 特性 | 说明 |
 |---|---|
-| 鍏ㄩ摼璺鐩?| 鐗╃鏌ヨ 鈫?绾胯〃鎶撳彇 鈫?寮虹嚎鍒楄〃 鈫?鍚告敹/閫忚繃鐜囪氨 鈫?璋卞浘 鈫?閰嶅垎鍑芥暟 鈫?鎴潰鏂囦欢鍒嗘瀽 |
-| 鑼冨洿杈圭晫 | 鍙仛璋辩嚎鍙傛暟涓庡惛鏀惰氨浠跨湡锛圫銆佄炽€佄便€侀€忚繃鐜囥€佹埅闈級锛屼笉娑夊強鍏蜂綋妫€娴嬫妧鏈紙WMS/2f銆丩ITES銆丆RDS 绛夌殑璋冨埗銆佽В璋冦€佷华鍣ㄥ搷搴斾笉鍦ㄦ湰浠撳簱锛?|
-| 鍙屽簱妗ユ帴 | 閫愮嚎搴撹蛋 HAPI 鍦ㄧ嚎 API锛涙埅闈㈠簱锛?00+ 閲嶅垎瀛愶級璧板畼鏂?API 鍦ㄧ嚎妫€绱?+ 涓€閿笅杞斤紙鍏?Portal 鐧诲綍锛夛紝鎴栬鍏ユ湰鍦版枃浠讹紝缁熶竴浜х墿閾捐矾 |
-| 鐗╃悊闃插憜 | 娣峰悎姘旀寜 `伪_i = x_i 路 伪_pure_i(T, P, 娴存皵)`锛涚獥鍙ｆ湭瑕嗙洊鑷姩閲嶆姄锛? 绾?澶辫触鏄惧紡鎶ラ敊锛屼笉闈欓粯鍑虹┖璋?|
-| 鍏ㄧ▼婧簮 | 浠讳綍 CSV/PNG 鍧囧甫 HITRAN2024 鐗堟 + 瀹為檯绾垮瀷 + 娴存皵 + 绾胯〃鍚?+ 鎶撳彇鏃ユ湡 + HAPI/TIPS 鐗堟湰姘村嵃锛屽彲杩芥函鍒板師濮嬫枃鐚紱绾胯〃鏃╀簬瀹樻柟澧為噺鏇存柊鏃惰嚜鍔ㄥ憡璀︼紙瀹樻柟瑕佹眰寮曠敤椤绘敞鏄庢槸鍚︿娇鐢ㄦ洿鏂扮増锛?|
-| 璁＄畻缂撳瓨 | 鐩稿悓鍙傛暟鐨勮氨璁＄畻缁撴灉鑷姩缂撳瓨锛?00 鏉′笂闄愶紝LRU 娣樻卑锛夛紝閲嶅璁＄畻鐬椂杩斿洖 |
-| 妗岄潰 GUI | HitranLink 宸ヤ綔绔欙細澶氱粍鍒嗗彔鍔犵粯鍥俱€佸浘灞傜鐞嗐€佸己绾垮垪琛紙鏍囨敞鍒嗗瓙鏉ユ簮锛夈€丵(T) 鏇茬嚎銆佹尝闀库啍娉㈡暟鎹㈢畻鍣ㄣ€佹埅闈㈡枃浠跺湪绾挎悳绱笌涓嬭浇銆丆SV/PNG 瀵煎嚭 |
-| 瀹夊叏鏇存柊 | 銆屽府鍔?鈫?妫€鏌ユ洿鏂般€嶏細涓嬭浇鍦板潃鎸夊浐瀹氫粨搴?+ 鍥哄畾璧勪骇鍚嶆瀯閫狅紝寮哄埗 SHA-256 涓庡ぇ灏忓弻鏍￠獙锛岄€愭潯瀹夊叏瑙ｅ帇 + 椤跺眰鐧藉悕鍗曪紝鏃ц祫浜х己鎽樿鍒欐嫆缁濊嚜鍔ㄥ崌绾?|
-| 璐ㄩ噺闂ㄧ | 62 椤圭绾垮崟鍏冩祴璇曘€丮CP 濂戠害妫€鏌ャ€佸畨鍏?鏁忔劅鎬ф壂鎻忥紱CI 涓夌増鏈煩闃?+ 鐙珛 security job锛涗緷璧栫簿纭攣瀹?+ Dependabot 鍛ㄦ |
-| 闆舵暟鎹叆搴?| 缂撳瓨銆佷骇鐗┿€佷釜浜轰笅杞界殑鎴潰鏂囦欢銆佹墦鍖呬骇鐗╁叏閮?gitignore锛屼粨搴撲繚鎸佽交閲?|
+| 全链路覆盖 | 物种查询 → 线表抓取 → 强线列表 → 吸收/透过率谱 → 谱图 → 配分函数 → 截面文件分析 |
+| 范围边界 | 只做谱线参数与吸收谱仿真（S、γ、α、透过率、截面），不涉及具体检测技术（WMS/2f、LITES、CRDS 等的调制、解调、仪器响应不在本仓库） |
+| 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）走官方 API 在线检索 + 一键下载（免 Portal 登录），或读入本地文件，统一产物链路 |
+| 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
+| 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 版次 + 实际线型 + 浴气 + 线表名 + 抓取日期 + HAPI/TIPS 版本水印，可追溯到原始文献；线表早于官方增量更新时自动告警（官方要求引用须注明是否使用更新版） |
+| 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
+| 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
+| 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
+| 质量门禁 | 67 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
-## 馃Л 涓夌鐢ㄦ硶鎬庝箞閫?
+## 🧭 三种用法怎么选
 
-| 浣跨敤鍦烘櫙 | 鎺ㄨ崘鏂瑰紡 | 鍏ュ彛 |
+| 使用场景 | 推荐方式 | 入口 |
 |---|---|---|
-| 浠呴渶璋卞浘涓庢暟鎹鍑?| 妗岄潰鐗?| `HitranLink.exe` |
-| 閫氳繃 AI 瀵硅瘽瀹屾垚璁＄畻 | MCP 鏈嶅姟鍣?| 涓嬫柟鎶樺彔鍧椼€屾帴鍏?MCP 瀹㈡埛绔€?|
-| 鍙墽琛屾湰鍦板懡浠ゃ€佹殏涓嶉厤缃?MCP | 鍛戒护琛?| `python tools/hitran_cli.py --list` |
+| 仅需谱图与数据导出 | 桌面版 | `HitranLink.exe` |
+| 通过 AI 对话完成计算 | MCP 服务器 | 下方折叠块「接入 MCP 客户端」 |
+| 可执行本地命令、暂不配置 MCP | 命令行 | `python tools/hitran_cli.py --list` |
 
-涓夎€呭叡鐢ㄥ悓涓€濂楀紩鎿庯紙`tools/hitran.py`锛夛紝缁撴灉涓€鑷淬€?
+三者共用同一套引擎（`tools/hitran.py`），结果一致。
 
-## 馃摉 椤圭洰姒傝
+## 📖 项目概览
 
-涓€濂楃墿鐞嗗紩鎿庯紙`tools/hitran.py`锛屽畼鏂?HAPI 1.3.0.0锛夋敮鎾戜笁绉嶇敤娉曪細MCP 鏈嶅姟鍣ㄣ€佸懡浠よ鍏ュ彛銆佹闈㈠伐浣滅珯鈥斺€斿悓涓€缁勫弬鏁帮紝鍚屼竴浠界粨鏋溿€?
+一套物理引擎（`tools/hitran.py`，官方 HAPI 1.3.0.0）支撑三种用法：MCP 服务器、命令行入口、桌面工作站——同一组参数，同一份结果。
 
-鏁版嵁瀹炴椂鍙栬嚜 HITRANonline 鍙屽簱锛堥€愮嚎 + 鎴潰锛夛紱缂撳瓨銆佷骇鐗┿€佹埅闈㈡枃浠躲€佹墦鍖呬骇鐗╁叏閮ㄨ蛋 `.gitignore`锛屼粨搴撳彧鐣欎唬鐮佷笌鏂囨。銆?
+数据实时取自 HITRANonline 双库（逐线 + 截面）；缓存、产物、截面文件、打包产物全部走 `.gitignore`，仓库只留代码与文档。
 
 <details>
-<summary><b>馃 鎺ュ叆 AI锛圡CP / 鍛戒护琛岋級</b></summary>
+<summary><b>🤖 接入 AI（MCP / 命令行）</b></summary>
 
-#### 鈿欙笍 浠庢簮鐮佽锛圡CP锛?
+#### ⚙️ 从源码装（MCP）
 
-##### 鐜瑕佹眰
+##### 环境要求
 
-- Python 鈮?3.10
-- 渚濊禆锛歚hitran-api`锛堝畼鏂?HAPI锛夈€乣numpy`銆乣matplotlib`锛堜粎缁樺浘/璁＄畻鏃舵儼鎬у姞杞斤級
+- Python ≥ 3.10
+- 依赖：`hitran-api`（官方 HAPI）、`numpy`、`matplotlib`（仅绘图/计算时惰性加载）
 
-##### 瀹夎
+##### 安装
 
 ```bash
 git clone https://github.com/LKF0402/hitran-mcp.git
 pip install -r hitran-mcp/requirements.txt
 ```
 
-鎴栧皢浠撳簱缃簬浠绘剰鍥哄畾璺緞锛堜笅鏂囦互 `<浠撳簱鐩綍>` 涓轰緥锛夈€?
+或将仓库置于任意固定路径（下文以 `<仓库目录>` 为例）。
 
-##### API Key锛堝彲閫夛級
+##### API Key（可选）
 
-**妗岄潰 GUI**锛欻itranLink 鈫?宸ュ叿 鈫?閰嶇疆 API key 鈫?杈撳叆骞朵繚瀛橈紙鑷姩鍚屾鍒?`Hitran_Data/hitran_api_key.txt` 鍜?HAPI2 `config.json`锛夈€?
+**桌面 GUI**：HitranLink → 工具 → 配置 API key → 输入并保存（自动同步到 `Hitran_Data/hitran_api_key.txt` 和 HAPI2 `config.json`）。
 
-**鍛戒护琛?MCP**锛氬埌 [hitran.org](https://hitran.org) 娉ㄥ唽璐﹀彿鑾峰彇 API key锛屽啓鍏?`tools/hitran_api_key.txt`锛堜笌 `hitran_mcp.py` 鍚岀洰褰曪級锛屾垨璁剧疆鐜鍙橀噺 `HITRAN_API_KEY`銆?
+**命令行/MCP**：到 [hitran.org](https://hitran.org) 注册账号获取 API key，写入 `tools/hitran_api_key.txt`（与 `hitran_mcp.py` 同目录），或设置环境变量 `HITRAN_API_KEY`。
 
-> 璇存槑锛氶厤缃?key 鍚庯紝绾胯〃涓嬭浇璧?HITRAN 瀹樻柟 v2 API锛圲RL 鎼哄甫 key锛夛紝鎴潰鏂囦欢娓呭崟锛坄/api/v2/<key>/cross-sections`锛変笌涓嬭浇涔熼渶瑕佸畠锛涙湭閰嶇疆鏃惰嚜鍔ㄥ洖閫€ HAPI 1.x 鏃ф帴鍙ｏ紙璇ユ帴鍙ｄ笉鏍￠獙 key锛夈€傚畼鏂瑰 fetch 鏈夋瘡鏃ラ厤棰濓紝瓒呴檺杩斿洖 403锛涙湰宸ュ叿鑷姩澶嶇敤缂撳瓨锛屼笉閲嶅涓嬭浇銆?
+> 说明：配置 key 后，线表下载走 HITRAN 官方 v2 API（URL 携带 key），截面文件清单（`/api/v2/<key>/cross-sections`）与下载也需要它；未配置时自动回退 HAPI 1.x 旧接口（该接口不校验 key）。官方对 fetch 有每日配额，超限返回 403；本工具自动复用缓存，不重复下载。
 
-#### 馃 鎺ュ叆 MCP 瀹㈡埛绔?
+#### 🤖 接入 MCP 客户端
 
-浠绘剰鏀寔 MCP 鍗忚鐨勫鎴风鍧囧彲銆傚皢 `mcp.config.example.json` 鐨勫唴瀹瑰悎鍏ュ鎴风閰嶇疆锛堥€氬父浣嶄簬璁剧疆涓殑 MCP/宸ュ叿绠＄悊锛夛紝骞?*鏇挎崲涓轰綘鐨勫疄闄呰矾寰?*锛?
+任意支持 MCP 协议的客户端均可。将 `mcp.config.example.json` 的内容合入客户端配置（通常位于设置中的 MCP/工具管理），并**替换为你的实际路径**：
 
 ```json
 "hitran": {
@@ -138,60 +138,60 @@ pip install -r hitran-mcp/requirements.txt
 }
 ```
 
-**Windows 鐢ㄦ埛娉ㄦ剰**锛歚python` 缁忓父涓嶅湪 PATH锛堟垨鎸囧悜 Microsoft Store 绌哄３锛夈€?
-> 鍏堝湪缁堢杩愯 `where python` 楠岃瘉锛涙壘涓嶅埌灏卞～瑙ｉ噴鍣ㄥ畬鏁磋矾寰勶紙浣嶄簬鐢ㄦ埛鐩綍涓嬬殑 `python.exe`锛夈€?
+**Windows 用户注意**：`python` 经常不在 PATH（或指向 Microsoft Store 空壳）。
+> 先在终端运行 `where python` 验证；找不到就填解释器完整路径（位于用户目录下的 `python.exe`）。
 
-淇濆瓨鍚庨噸鍚鎴风锛岀湅鍒?`hitran` 鏈嶅姟鍣ㄤ笌澶氫釜宸ュ叿鍗虫帴鍏ユ垚鍔熴€?
+保存后重启客户端，看到 `hitran` 服务器与多个工具即接入成功。
 
-#### 鈱笍 鍛戒护琛屽叆鍙ｏ紙涓嶈 MCP锛?
+#### ⌨️ 命令行入口（不装 MCP）
 
-`tools/hitran_cli.py` 鎶婂悓涓€鎵瑰伐鍏峰嚱鏁版毚闇叉垚鍛戒护琛岋紝涓嶉渶瑕佹敞鍐?MCP 鏈嶅姟鍣ㄣ€備换浣曡兘鎵ц鏈湴鍛戒护鐨?AI 鍔╂墜锛圕laude Code銆丆ursor銆丆odex 绛夛級鎴栬剼鏈兘鍙互鐩存帴璋冪敤锛岀畻鍑虹殑缁撴灉涓?MCP 閫氶亾瀹屽叏涓€鑷淬€?
+`tools/hitran_cli.py` 把同一批工具函数暴露成命令行，不需要注册 MCP 服务器。任何能执行本地命令的 AI 助手（Claude Code、Cursor、Codex 等）或脚本都可以直接调用，算出的结果与 MCP 通道完全一致。
 
 ```bash
-# 鍒楀嚭鍏ㄩ儴宸ュ叿锛堝悕绉般€佺敤閫旓級
+# 列出全部工具（名称、用途）
 python tools/hitran_cli.py --list
 
-# 鏌ュ垎瀛?鍚屼綅绱犺〃
+# 查分子/同位素表
 python tools/hitran_cli.py t_species --name CH4
 
-# 鍙栫獥鍙ｅ唴鏈€寮?5 鏉＄嚎锛堥€夌嚎/骞叉壈鍒嗘瀽锛?
+# 取窗口内最强 5 条线（选线/干扰分析）
 python tools/hitran_cli.py t_lines --name CH4 --numin 2960 --numax 2975 --top_n 5
 
-# 绠楀惛鏀惰氨锛圕H4 2000 ppm锛?950-3100 cm鈦宦癸紝296 K锛? atm锛?
+# 算吸收谱（CH4 2000 ppm，2950-3100 cm⁻¹，296 K，1 atm）
 python tools/hitran_cli.py t_spectrum --name CH4 --mole_frac 0.002 \
     --numin 2950 --numax 3100 --T 296 --P 1.01325
 
-# 閰嶅垎鍑芥暟 Q(T)
+# 配分函数 Q(T)
 python tools/hitran_cli.py t_partition_sum --name CH4 --T 300
 ```
 
-- 宸ュ叿鍚嶅彲鍐?`hitran_spectrum`锛堜笌 MCP 涓€鑷达級鎴?`t_spectrum`锛堝嚱鏁板悕锛夈€?
-- 鍙傛暟鍐欐硶 `--閿?鍊糮锛岄敭鍚嶅嵆鍑芥暟鍙傛暟鍚嶏紱鏁板瓧銆乣true/false`銆丣SON 鏁扮粍浼氳嚜鍔ㄨ瘑鍒€?
-- 缁撴灉浠?JSON 鎵撳埌 stdout锛堝簱鏃ュ織璧?stderr锛屼笉姹℃煋杈撳嚭锛夛紝鍔?`--out 缁撴灉.json` 鍙惤鐩樸€?
-- 鏀圭敤 MCP 鍓嶆棤闇€浠讳綍杩佺Щ锛氫袱鑰呰皟鐢ㄧ殑鏄悓涓€濂楀嚱鏁般€?
+- 工具名可写 `hitran_spectrum`（与 MCP 一致）或 `t_spectrum`（函数名）。
+- 参数写法 `--键 值`，键名即函数参数名；数字、`true/false`、JSON 数组会自动识别。
+- 结果以 JSON 打到 stdout（库日志走 stderr，不污染输出），加 `--out 结果.json` 可落盘。
+- 改用 MCP 前无需任何迁移：两者调用的是同一套函数。
 
 </details>
 
 <details>
-<summary><b>馃枼锔?妗岄潰宸ヤ綔绔?/b></summary>
+<summary><b>🖥️ 桌面工作站</b></summary>
 
-HitranLink 鏄棤闇€缂栫▼鐨勫厜璋卞垎鏋愭闈㈠簲鐢紝閫傚悎鏃ュ父绉戠爺浣跨敤銆?
+HitranLink 是无需编程的光谱分析桌面应用，适合日常科研使用。
 
-#### 涓嬭浇涓庤繍琛?
+#### 下载与运行
 
-**鏂瑰紡涓€锛氫笅杞介缂栬瘧鐗堟湰锛堟帹鑽愶級**
+**方式一：下载预编译版本（推荐）**
 
-1. 鍓嶅線 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 涓嬭浇鏈€鏂扮増鏈殑 `HitranLink-windows-x64.zip`
-2. 瑙ｅ帇鍒颁换鎰忕洰褰曪紙璺緞寤鸿涓嶅惈涓枃鍜岀┖鏍硷級
-3. 鍙屽嚮 `HitranLink.exe` 鍗冲彲杩愯
+1. 前往 [GitHub Releases](https://github.com/LKF0402/hitran-mcp/releases) 下载最新版本的 `HitranLink-windows-x64.zip`
+2. 解压到任意目录（路径建议不含中文和空格）
+3. 双击 `HitranLink.exe` 即可运行
 
-> 棣栨杩愯鏃朵細鑷姩鍦ㄧ▼搴忓悓鐩綍鍒涘缓 `Hitran_Data/` 缂撳瓨鐩綍锛岃绠楄繃鐨勭嚎琛ㄤ細鑷姩缂撳瓨锛屼笅娆℃棤闇€閲嶆柊涓嬭浇銆?
+> 首次运行时会自动在程序同目录创建 `Hitran_Data/` 缓存目录，计算过的线表会自动缓存，下次无需重新下载。
 >
-> 鑻ヨ璁╂墦鍖?GUI 涓庢簮鐮佹ā寮?MCP 鍏辩敤鍚屼竴浠界紦瀛樺拰 API key锛岃缃幆澧冨彉閲?`HITRAN_DATA_DIR` 鎸囧悜鍚屼竴涓暟鎹洰褰曞嵆鍙紱銆岃繍琛岀姸鎬併€嶉〉浼氭樉绀哄疄闄呯紦瀛樻牴涓庡綋鍓嶄唬鐞嗐€?
+> 若要让打包 GUI 与源码模式 MCP 共用同一份缓存和 API key，设置环境变量 `HITRAN_DATA_DIR` 指向同一个数据目录即可；「运行状态」页会显示实际缓存根与当前代理。
 >
-> 鍗囩骇锛氱▼搴忓唴銆屽府鍔?鈫?妫€鏌ユ洿鏂般€嶁啋 鑷姩涓嬭浇骞舵浛鎹€備笅杞藉湴鍧€鐢辩▼搴忔寜鍥哄畾浠撳簱涓庡浐瀹氳祫浜у悕鑷鏋勯€狅紝鏍￠獙 GitHub 鎻愪緵鐨?SHA-256 涓庢枃浠跺ぇ灏忓悗鎵嶈В鍘嬶紝骞跺彧鎺ュ彈椤跺眰 `HitranLink.exe` + `_internal` 鐨勭粨鏋勶紱鏈€鏂拌祫浜х己灏戞憳瑕佹椂鎷掔粷鑷姩鍗囩骇锛屾敼涓烘彁绀烘墜鍔ㄤ笅杞斤紙璇﹁涓嬫柟銆岎煍?瀹夊叏涓庨殣绉併€嶏級銆?
+> 升级：程序内「帮助 → 检查更新」→ 自动下载并替换。下载地址由程序按固定仓库与固定资产名自行构造，校验 GitHub 提供的 SHA-256 与文件大小后才解压，并只接受顶层 `HitranLink.exe` + `_internal` 的结构；最新资产缺少摘要时拒绝自动升级，改为提示手动下载（详见下方「🔒 安全与隐私」）。
 
-**鏂瑰紡浜岋細浠庢簮鐮佽繍琛?*
+**方式二：从源码运行**
 
 ```bash
 git clone https://github.com/LKF0402/hitran-mcp.git
@@ -200,166 +200,166 @@ pip install -r requirements.txt
 python app/hitran_app.py
 ```
 
-#### 鍔熻兘璇存槑
+#### 功能说明
 
-| 鍔熻兘妯″潡 | 璇存槑 |
+| 功能模块 | 说明 |
 |---|---|
-| 璋辫绠?| 鏀寔鍚告敹绯绘暟 伪銆佹埅闈?蟽銆佺嚎寮?S(296K)銆侀€忚繃鐜?T 鍥涚杈撳嚭妯″紡 |
-| 澶氱粍鍒嗗彔鍔?| 榛樿鍙犲姞缁樺浘锛屽彲鍙犲姞澶氫釜鍒嗗瓙/涓嶅悓宸ュ喌鐨勮氨绾匡紝鍥惧眰鍙崟鐙垹闄?|
-| 寮虹嚎鍒楄〃 | 鏄剧ず绐楀彛鍐呮渶寮?N 鏉¤氨绾匡紙谓銆丼銆佄砡air銆丒鈥筹級锛屽鍒嗗瓙鍚堝苟鏃舵爣娉ㄦ瘡鏉＄嚎鏉ユ簮鍒嗗瓙 |
-| Q(T) 鏇茬嚎 | 閰嶅垎鍑芥暟闅忔俯搴﹀彉鍖栨洸绾匡紝鐢ㄤ簬璇勪及娓╁害瀵圭嚎寮虹殑褰卞搷 |
-| 閰嶅垎鍑芥暟 | 鏌ヨ鎸囧畾娓╁害涓嬬殑 Q(T) 鍊硷紙TIPS-2025锛?|
-| 鎴潰鏂囦欢 | 鍦ㄧ嚎鎸変腑鏂囧悕/鍖栧寮忔绱㈡埅闈㈠垎瀛愬苟涓€閿笅杞斤紙鍏?Portal 鐧诲綍锛夛紝璇诲叆鍘熺敓 .xsc / 涓ゅ垪 .txt锛岀粯鍥惧苟瀵煎嚭婧簮 CSV |
-| 鎹㈢畻宸ュ叿 | 娉㈤暱 鈫?娉㈡暟瀹炴椂鎹㈢畻鍣?|
-| 鍒嗗瓙琛ㄦ煡璇?| HITRAN 瀹樻柟 61 绉嶉€愮嚎鍒嗗瓙琛ㄦ煡璇?|
-| 鏁版嵁瀵煎嚭 | 璋卞浘 PNG锛?00 DPI锛夈€佽氨鏁版嵁 CSV锛堝甫婧簮姘村嵃锛夈€佸畬鏁寸嚎琛?CSV |
-| 璁＄畻缂撳瓨 | 鐩稿悓鍙傛暟璁＄畻缁撴灉鑷姩缂撳瓨锛岄噸澶嶈绠楃灛鏃惰繑鍥?|
-| 鑷姩鏇存柊 | 銆屽府鍔?鈫?妫€鏌ユ洿鏂般€嶏細鍥哄畾浠撳簱 URL銆丼HA-256 + 澶у皬鍙屾牎楠屻€佸畨鍏ㄨВ鍘嬩笌椤跺眰鐧藉悕鍗?|
+| 谱计算 | 支持吸收系数 α、截面 σ、线强 S(296K)、透过率 T 四种输出模式 |
+| 多组分叠加 | 默认叠加绘图，可叠加多个分子/不同工况的谱线，图层可单独删除 |
+| 强线列表 | 显示窗口内最强 N 条谱线（ν、S、γ_air、E″），多分子合并时标注每条线来源分子 |
+| Q(T) 曲线 | 配分函数随温度变化曲线，用于评估温度对线强的影响 |
+| 配分函数 | 查询指定温度下的 Q(T) 值（TIPS-2025） |
+| 截面文件 | 在线按中文名/化学式检索截面分子并一键下载（免 Portal 登录），读入原生 .xsc / 两列 .txt，绘图并导出溯源 CSV |
+| 换算工具 | 波长 ↔ 波数实时换算器 |
+| 分子表查询 | HITRAN 官方 61 种逐线分子表查询 |
+| 数据导出 | 谱图 PNG（300 DPI）、谱数据 CSV（带溯源水印）、完整线表 CSV |
+| 计算缓存 | 相同参数计算结果自动缓存，重复计算瞬时返回 |
+| 自动更新 | 「帮助 → 检查更新」：固定仓库 URL、SHA-256 + 大小双校验、安全解压与顶层白名单 |
 
-**鎿嶄綔娴佺▼**锛?
-1. 閫夋嫨鍒嗗瓙锛堝彲澶氶€夋贩鍚堟皵锛夈€佹尝鏁扮獥鍙ｃ€佹俯搴︺€佸帇鍔涖€佹闀?
-2. 閫夋嫨杈撳嚭妯″紡锛堝惛鏀剁郴鏁?鎴潰/绾垮己/閫忚繃鐜囷級
-3. 鐐瑰嚮銆岃绠楀苟缁樺浘銆?
-4. 鍙户缁皟鏁村弬鏁板啀娆¤绠楋紝璋辩嚎浼氳嚜鍔ㄥ彔鍔犲埌鍚屼竴鐢诲竷
-5. 鐐瑰嚮銆屾竻绌哄浘銆嶉噸缃敾甯冿紝鐐瑰嚮銆屽鍑?CSV/PNG銆嶄繚瀛樼粨鏋?
+**操作流程**：
+1. 选择分子（可多选混合气）、波数窗口、温度、压力、步长
+2. 选择输出模式（吸收系数/截面/线强/透过率）
+3. 点击「计算并绘图」
+4. 可继续调整参数再次计算，谱线会自动叠加到同一画布
+5. 点击「清空图」重置画布，点击「导出 CSV/PNG」保存结果
 
-#### 浠庢簮鐮佹墦鍖?/ 鍙戠増
+#### 从源码打包 / 发版
 
-**鎺ㄨ崘浣跨敤涓€閿彂甯冭剼鏈?* 鈥斺€?瀹冩妸"鎵撳寘 exe"涓?鐢熸垚 zip 璧勪骇"缁戞垚涓€姝ワ紝骞惰嚜鍔ㄦ牎楠屼竴鑷存€э細
+**推荐使用一键发布脚本** —— 它把"打包 exe"与"生成 zip 资产"绑成一步，并自动校验一致性：
 
 ```bash
 pip install pyinstaller
 python tools/build_release.py
 ```
 
-鑴氭湰鎸夐『搴忓畬鎴愶細
+脚本按顺序完成：
 
-1. 渚濇嵁 `HitranLink.spec` 鎵撳寘 exe锛?
-2. 鏇挎崲 `dist/HitranLink/`锛堜繚鐣?exe 渚х嚎琛ㄧ紦瀛樹笌 `hitran_api_key.txt` 鈥斺€?浠呮湇鍔?*鍙戝竷鑰呮湰鏈?*锛屽垏鍕跨洿鎺ュ垎鍙?`dist/` 鐩綍锛夛紱
-3. 瀵规墦鍖呬骇鐗╄窇涓€娆℃棤鐣岄潰鑷锛堝垎瀛愭暟 / 璋辩偣鏁?/ 宄板€?/ 涓嬭浇寮曟搸锛夛紱
-4. 鐢熸垚 GitHub release 璧勪骇 `dist/HitranLink-windows-x64.zip`锛?*鐧藉悕鍗曞紡**锛氬彧鍚?`HitranLink.exe` + `_internal/`锛孉PI key / 缂撳瓨 / 鏃ュ織涓€寰嬩笉杩?zip锛夛紱
-5. **鏍￠獙 zip 鍐呯殑 exe 涓?`dist/HitranLink/HitranLink.exe` 鐨勫ぇ灏忎笌 CRC32 瀹屽叏涓€鑷?*
-   鈥斺€?涓嶄竴鑷寸洿鎺ユ姤閿欓€€鍑恒€傝繖鏍峰氨涓嶄細鍐嶅嚭鐜?zip 蹇樹簡閲嶅缓銆佺敤鎴蜂笅杞藉埌鏃х増鏈?鐨勯棶棰樸€?
+1. 依据 `HitranLink.spec` 打包 exe；
+2. 替换 `dist/HitranLink/`（保留 exe 侧线表缓存与 `hitran_api_key.txt` —— 仅服务**发布者本机**，切勿直接分发 `dist/` 目录）；
+3. 对打包产物跑一次无界面自检（分子数 / 谱点数 / 峰值 / 下载引擎）；
+4. 生成 GitHub release 资产 `dist/HitranLink-windows-x64.zip`（**白名单式**：只含 `HitranLink.exe` + `_internal/`，API key / 缓存 / 日志一律不进 zip）；
+5. **校验 zip 内的 exe 与 `dist/HitranLink/HitranLink.exe` 的大小与 CRC32 完全一致**
+   —— 不一致直接报错退出。这样就不会再出现"zip 忘了重建、用户下载到旧版本"的问题。
 
-鍙€夊弬鏁帮細
+可选参数：
 
 ```bash
-python tools/build_release.py --zip-only      # 鍙噸寤?zip锛堟部鐢ㄧ幇鏈?dist锛?
-python tools/build_release.py --no-selftest   # 璺宠繃鎵撳寘鍚庣殑鑷
+python tools/build_release.py --zip-only      # 只重建 zip（沿用现有 dist）
+python tools/build_release.py --no-selftest   # 跳过打包后的自检
 ```
 
-鎵撳寘鐩綍绾?245 MB锛坥ne-dir 妯″紡锛屽惈 HAPI2 / sqlalchemy / numba / llvmlite锛夛紝鍘嬬缉鍚?zip 绾?100 MB銆傚彂甯冩椂涓婁紶绗?4 姝ョ敓鎴愮殑 zip 浣滀负 release 璧勪骇鍗冲彲銆?
+打包目录约 245 MB（one-dir 模式，含 HAPI2 / sqlalchemy / numba / llvmlite），压缩后 zip 约 100 MB。发布时上传第 4 步生成的 zip 作为 release 资产即可。
 
-> 鎵撳寘鍓嶈鍏抽棴鎵€鏈夋鍦ㄨ繍琛岀殑 HitranLink 绐楀彛锛屽惁鍒欎細鍥犳枃浠堕攣瀹氬け璐ワ紙鑴氭湰浼氱粰鍑烘槑纭彁绀猴級銆?
+> 打包前请关闭所有正在运行的 HitranLink 窗口，否则会因文件锁定失败（脚本会给出明确提示）。
 >
-> **涓嶈鎵嬪啓 `pyinstaller` 鍛戒护**锛歚HitranLink.spec` 涓寘鍚?HAPI2 / sqlalchemy / numba /
-> llvmlite / pyparsing 绛夊繀闇€渚濊禆锛屾墜鍐欏弬鏁版瀬鏄撴紡鎺夛紝瀵艰嚧鎵撳寘鐗?HAPI2 涓嶅彲鐢ㄣ€?
+> **不要手写 `pyinstaller` 命令**：`HitranLink.spec` 中包含 HAPI2 / sqlalchemy / numba /
+> llvmlite / pyparsing 等必需依赖，手写参数极易漏掉，导致打包版 HAPI2 不可用。
 
 </details>
 
 <details>
-<summary><b>馃梻锔?浠撳簱缁撴瀯涓庢墦鍖?/b></summary>
+<summary><b>🗂️ 仓库结构与打包</b></summary>
 
 ```
 hitran-mcp/
-鈹溾攢 README.md                 # 涓枃鏂囨。锛堟湰鏂囦欢锛?
-鈹溾攢 README.en.md              # English documentation
-鈹溾攢 docs/
-鈹? 鈹溾攢 images/                # README 閰嶅浘锛堢晫闈㈡埅鍥撅級
-鈹? 鈹斺攢 QUALITY_AUDIT.md       # 鍒嗙淮搴﹁川閲忚瘎浼颁笌鏁忔劅鎬ф娴嬫姤鍛?
-鈹溾攢 CHANGELOG.md              # 鏇存柊鏃ュ織
-鈹溾攢 SECURITY.md               # 瀹夊叏鏀跨瓥涓庢紡娲炴姤鍛婃笭閬?
-鈹溾攢 LICENSE                   # GPLv3 鍗忚
-鈹溾攢 requirements.txt          # Python 渚濊禆锛堢簿纭攣瀹氱増鏈級
-鈹溾攢 requirements-py313.txt    # Python 3.13 鍚屽悕閿佸畾锛坣umpy 2.1.3 / matplotlib 3.10.0锛?
-鈹溾攢 mcp.config.example.json   # MCP 瀹㈡埛绔敞鍐岀墖娈碉紙鏀硅矾寰勫悗鍚堝叆浣犵殑閰嶇疆锛?
-鈹溾攢 HitranLink.spec            # PyInstaller 鎵撳寘瑙勬牸
-鈹溾攢 .github/
-鈹? 鈹溾攢 workflows/ci.yml       # CI锛氫笁鐗堟湰鐭╅樀 + 鍗曞厓/濂戠害/瀹夊叏 job
-鈹? 鈹斺攢 dependabot.yml         # pip 涓?Actions 渚濊禆鍛ㄦ
-鈹溾攢 app/
-鈹? 鈹溾攢 hitran_app.py          # HitranLink 妗岄潰宸ヤ綔绔欙紙Tkinter + matplotlib GUI锛?
-鈹? 鈹溾攢 updater.py             # 鑷姩鏇存柊瀹夊叏鍘熻锛圲RL 鐧藉悕鍗?SHA-256/瀹夊叏瑙ｅ帇锛?
-鈹? 鈹溾攢 __init__.py
-鈹? 鈹斺攢 hitranlink.ico          # 搴旂敤鍥炬爣
-鈹溾攢 tests/
-鈹? 鈹溾攢 test_updater.py        # 鏇存柊閾捐矾鍗曞厓娴嬭瘯
-鈹? 鈹溾攢 test_core.py           # 鑴辨晱銆佹枃浠跺悕闃查€冮€搞€佺姸鎬佸瓧娈垫祴璇?
-鈹? 鈹溾攢 test_data_version.py   # 绾胯〃鐗堟鍙拌处 / 鎽╁皵鍒嗘暟鎶ゆ爮 / specs_csv 娴撳害鏍囧織
-鈹? 鈹溾攢 test_mcp_ai.py         # MCP 閿欒濂戠害 / 鏇茬嚎閲囨牱 / 骞叉壈鍒ょ骇 / 缁勫垎鏍囩涓?蟽鈥撓?鍥炲綊
-鈹? 鈹斺攢 test_cli.py            # 鍛戒护琛屽叆鍙ｆ祴璇?
-鈹斺攢 tools/
-   鈹溾攢 hitran_mcp.py          # MCP 鏈嶅姟鍣ㄦ湰浣擄紙stdio JSON-RPC锛岀函鏍囧噯搴擄級
-   鈹溾攢 hitran_cli.py          # 鍛戒护琛屽叆鍙ｏ紙涓嶈 MCP 涔熻兘璋冪敤鍚屼竴鎵瑰伐鍏峰嚱鏁帮級
-   鈹溾攢 hitran.py              # 瀹樻柟 HAPI 鐨勭粺涓€钖勫皝瑁咃紙杈撳叆鎶ゆ爮 + 婧簮姘村嵃 + 璁＄畻缂撳瓨锛?
-   鈹溾攢 contract_check.py      # 绂荤嚎濂戠害妫€鏌ワ紙14 宸ュ叿 / 鍗忚 / BOM锛?
-   鈹溾攢 security_check.py      # 瀹夊叏涓庢晱鎰熸€ф壂鎻忥紙鍙戝竷鍓嶉椄闂級
-   鈹溾攢 build_release.py       # 涓€閿墦鍖?+ 鍑?zip + 涓€鑷存€ф牎楠?+ 瀹夊叏闂搁棬
-   鈹斺攢 __init__.py
+├─ README.md                 # 中文文档（本文件）
+├─ README.en.md              # English documentation
+├─ docs/
+│  ├─ images/                # README 配图（界面截图）
+│  └─ QUALITY_AUDIT.md       # 分维度质量评估与敏感性检测报告
+├─ CHANGELOG.md              # 更新日志
+├─ SECURITY.md               # 安全政策与漏洞报告渠道
+├─ LICENSE                   # GPLv3 协议
+├─ requirements.txt          # Python 依赖（精确锁定版本）
+├─ requirements-py313.txt    # Python 3.13 同名锁定（numpy 2.1.3 / matplotlib 3.10.0）
+├─ mcp.config.example.json   # MCP 客户端注册片段（改路径后合入你的配置）
+├─ HitranLink.spec            # PyInstaller 打包规格
+├─ .github/
+│  ├─ workflows/ci.yml       # CI：三版本矩阵 + 单元/契约/安全 job
+│  └─ dependabot.yml         # pip 与 Actions 依赖周检
+├─ app/
+│  ├─ hitran_app.py          # HitranLink 桌面工作站（Tkinter + matplotlib GUI）
+│  ├─ updater.py             # 自动更新安全原语（URL 白名单/SHA-256/安全解压）
+│  ├─ __init__.py
+│  └─ hitranlink.ico          # 应用图标
+├─ tests/
+│  ├─ test_updater.py        # 更新链路单元测试
+│  ├─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
+│  ├─ test_data_version.py   # 线表版次台账 / 摩尔分数护栏 / specs_csv 浓度标志
+│  ├─ test_mcp_ai.py         # MCP 错误契约 / 曲线采样 / 干扰判级 / 组分标签与 σ–τ 回归
+│  └─ test_cli.py            # 命令行入口测试
+└─ tools/
+   ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
+   ├─ hitran_cli.py          # 命令行入口（不装 MCP 也能调用同一批工具函数）
+   ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印 + 计算缓存）
+   ├─ contract_check.py      # 离线契约检查（14 工具 / 协议 / BOM）
+   ├─ security_check.py      # 安全与敏感性扫描（发布前闸门）
+   ├─ build_release.py       # 一键打包 + 出 zip + 一致性校验 + 安全闸门
+   └─ __init__.py
 ```
 
-杩愯鏈熻嚜鍔ㄧ敓鎴愶紙鍙殢鏃跺垹闄わ紝鐢卞伐鍏烽噸鐢燂級锛?
+运行期自动生成（可随时删除，由工具重生）：
 
-- `Hitran_Data/` 鈥?绾胯〃缂撳瓨
-- `tmp/mcp_out/` 鈥?MCP 宸ュ叿浜х墿锛圕SV/PNG锛岃嚜甯︽函婧愭按鍗帮級
-- `tmp/` 鈥?妗岄潰宸ヤ綔绔欎复鏃舵枃浠朵笌鑷祴杈撳嚭
-- `xsc_data/` 鈥?鐢ㄦ埛鎸夐渶涓嬭浇鐨勬埅闈㈡枃浠讹紙涓汉鏁版嵁锛屼笉鍏ュ簱锛?
-- `dist/` / `build/` 鈥?PyInstaller 鎵撳寘浜х墿锛堜笉鍏ュ簱锛?
-
-</details>
-
-<details>
-<summary><b>馃П 鏁版嵁鏋舵瀯</b></summary>
-
-HITRAN2024 閲囩敤**鍙屽簱鍒嗗彂鏋舵瀯**锛屼袱鏉℃暟鎹€氶亾鐨勮闂満鍒朵笉鍚屸€斺€旇繖涔熸槸"鏌愮墿绉嶅湪閫愮嚎宸ュ叿涓煡涓嶅埌"鐨勬牴鍥犮€?
-
-#### 閫愮嚎搴擄紙LBL锛?
-
-- 瑕嗙洊 **61 绉嶅垎瀛?*锛圚鈧侽 / CO鈧?/ CH鈧?/ C鈧侶鈧?/ N鈧侽鈥︼級鍙?130+ 鍚屼綅绱犱綋锛屾暟鎹负**閫愯穬杩佺嚎鍙傛暟**锛埼? S, 纬_air, E鈥斥€︼級銆?
-- 瀛樺偍浜?HITRANonline 鍏崇郴鍨嬫暟鎹簱锛岀粡瀹樻柟 **HAPI**锛圚ITRAN Application Programming Interface锛孠ochanov et al., JQSRT 177, 15鈥?0, 2016锛?*鍦ㄧ嚎 API** 鎻愪緵鈥斺€斿搴旀湰 MCP 鐨?`hitran_fetch / lines / spectrum / plot` 閫氶亾锛氬疄鏃跺彇鏁般€佹湰鍦扮紦瀛樸€佸彲澶嶇幇銆?
-
-#### 鎴潰搴擄紙XSC锛?
-
-- 瑕嗙洊 **600+ 閲嶅垎瀛?*锛堢兎鐑冦€乂OC銆佸埗鍐峰墏绛夛級锛氬涓虹瀵嗘尟鍔ㄥ甫缁撴瀯銆佺己涔忛€愮嚎楠岃瘉鍙傛暟锛屼互**娴嬮噺鍏夎氨鏂囦欢**鏀跺綍鈥斺€斿師鐢?`.xsc`锛? 琛屽畾瀹藉ご + 蟽 搴忓垪锛屽崟浣?cm虏/molecule锛夋垨涓ゅ垪 谓鈥撓?鏂囨湰锛堝崟浣?cm鈦宦?/ cm虏路molecule鈦宦癸級銆?
-- 璁块棶鏈哄埗锛氬畼鏂?v2 API锛坄/api/v2/<key>/cross-sections`锛夋彁渚?*鏂囦欢娓呭崟**锛屽叕寮€鏁版嵁璺緞 `/data/xsec/` 鎻愪緵**鏂囦欢鏈綋**锛屼簩鑰呭潎鍙洿鎺ヨ闂€?*鏃犻渶鐧诲綍 Web Portal**锛堥渶鏈満閰嶇疆 HITRAN API key锛夈€侶API 1.x 渚т粎鎻愪緵 `read_hotw()` 鏈湴璇绘枃浠舵帴鍙ｃ€?
-
-#### 鍙屽簱妗ユ帴
-
-- 閫愮嚎閫氶亾锛堥€愯穬杩佸弬鏁帮級涓庢埅闈㈤€氶亾锛堟祴閲忓厜璋憋級鏄袱濂楁暟鎹粨鏋勶紝HITRAN 瀹樻柟鍒嗗紑鍒嗗彂锛涙湰宸ュ叿鎶婂畠浠粺涓€鍒板悓涓€鏉′骇鐗╅摼璺€?
-- **涓€閿笅杞斤紙鎺ㄨ崘锛屽厤 Portal 鐧诲綍锛?*锛?
-  1. `hitran_xsc_molecules(query="涓欑兎")` 妫€绱㈠垎瀛愬苟鎷垮埌 `id`锛堟敮鎸佷腑鏂囧悕/鍖栧寮?鑻辨枃鍚?淇楀悕锛夛紱
-  2. `hitran_xsc_files(molecule_id=<id>)` 鍒楀嚭鍙洿鎺ヤ笅杞界殑鏂囦欢锛圱/P/娉㈡暟鑼冨洿/鐐规暟/浣撶Н锛夛紱
-  3. `hitran_xsc_download(name=..., filenames=[...])` 涓嬭浇鍒?`xsc_data/`锛坓itignore锛屼笉鍏ュ簱锛涢粯璁や笂闄?300 MB锛夛紱
-  4. `hitran_cross_section(file_path=...)` 璇诲叆锛屽畬鎴愭埅绐椼€佺粯鍥俱€佹函婧?CSV 瀵煎嚭锛屼笌閫愮嚎璋卞叡鐢?`tmp/mcp_out/` 浜х墿閾捐矾銆?
-- **鎵嬪姩涓嬭浇锛堟棤 API key 鏃讹級**锛歚hitran_xsc_search(name=...)` 鍏嶇櫥褰曟帰娴嬫竻鍗?鈫?鑷?hitran.org/xsc 涓嬭浇鏂囦欢鏀惧叆 `xsc_data/` 鈫?`hitran_cross_section` 璇诲叆銆?
-- 閫愮嚎宸ュ叿閬囧埌鎴潰搴撴敹褰曠殑鍒嗗瓙鏃讹紝鎶ラ敊淇℃伅浼氭樉寮忔彁绀鸿鏋舵瀯宸紓涓庢纭矾寰勩€?
+- `Hitran_Data/` — 线表缓存
+- `tmp/mcp_out/` — MCP 工具产物（CSV/PNG，自带溯源水印）
+- `tmp/` — 桌面工作站临时文件与自测输出
+- `xsc_data/` — 用户按需下载的截面文件（个人数据，不入库）
+- `dist/` / `build/` — PyInstaller 打包产物（不入库）
 
 </details>
 
 <details>
-<summary><b>馃搵 宸ュ叿鍙傝€冿紙14 涓級</b></summary>
+<summary><b>🧱 数据架构</b></summary>
 
-> AI 璋冪敤寤鸿锛氬厛鐢?`hitran_interference` 鍒よ繖鏉＄嚎鑳戒笉鑳界敤锛屽啀鐢?`hitran_report` 涓€瓒熸嬁鍏紙璋?鍥?寮虹嚎锛夈€傞渶瑕佺粏绮掑害鎺у埗鍐嶆媶鐢?`hitran_lines` / `hitran_spectrum` / `hitran_plot`銆?
-> 澶辫触鏃惰繑鍥?`{"error": {"code", "message", "hint"}}`锛歚E_BAD_ARGS` / `E_STRICT` / `E_NO_LINES` / `E_WINDOW_UNCOVERED` / `E_UPSTREAM_403` / `E_UPSTREAM_429` / `E_MISSING_FILE` / `E_UNKNOWN_TOOL` / `E_INTERNAL`锛屾寜 `hint` 鍐冲畾涓嬩竴姝ワ紝涓嶈閲嶈瘯鍚屼竴缁勯敊璇弬鏁般€?
+HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不同——这也是"某物种在逐线工具中查不到"的根因。
 
-| 宸ュ叿 | 鐢ㄩ€?| 鍏抽敭杈撳叆 |
+#### 逐线库（LBL）
+
+- 覆盖 **61 种分子**（H₂O / CO₂ / CH₄ / C₂H₆ / N₂O…）及 130+ 同位素体，数据为**逐跃迁线参数**（ν, S, γ_air, E″…）。
+- 存储于 HITRANonline 关系型数据库，经官方 **HAPI**（HITRAN Application Programming Interface，Kochanov et al., JQSRT 177, 15–30, 2016）**在线 API** 提供——对应本 MCP 的 `hitran_fetch / lines / spectrum / plot` 通道：实时取数、本地缓存、可复现。
+
+#### 截面库（XSC）
+
+- 覆盖 **600+ 重分子**（烷烃、VOC、制冷剂等）：多为稠密振动带结构、缺乏逐线验证参数，以**测量光谱文件**收录——原生 `.xsc`（1 行定宽头 + σ 序列，单位 cm²/molecule）或两列 ν–σ 文本（单位 cm⁻¹ / cm²·molecule⁻¹）。
+- 访问机制：官方 v2 API（`/api/v2/<key>/cross-sections`）提供**文件清单**，公开数据路径 `/data/xsec/` 提供**文件本体**，二者均可直接访问、**无需登录 Web Portal**（需本机配置 HITRAN API key）。HAPI 1.x 侧仅提供 `read_hotw()` 本地读文件接口。
+
+#### 双库桥接
+
+- 逐线通道（逐跃迁参数）与截面通道（测量光谱）是两套数据结构，HITRAN 官方分开分发；本工具把它们统一到同一条产物链路。
+- **一键下载（推荐，免 Portal 登录）**：
+  1. `hitran_xsc_molecules(query="丙烷")` 检索分子并拿到 `id`（支持中文名/化学式/英文名/俗名）；
+  2. `hitran_xsc_files(molecule_id=<id>)` 列出可直接下载的文件（T/P/波数范围/点数/体积）；
+  3. `hitran_xsc_download(name=..., filenames=[...])` 下载到 `xsc_data/`（gitignore，不入库；默认上限 300 MB）；
+  4. `hitran_cross_section(file_path=...)` 读入，完成截窗、绘图、溯源 CSV 导出，与逐线谱共用 `tmp/mcp_out/` 产物链路。
+- **手动下载（无 API key 时）**：`hitran_xsc_search(name=...)` 免登录探测清单 → 至 hitran.org/xsc 下载文件放入 `xsc_data/` → `hitran_cross_section` 读入。
+- 逐线工具遇到截面库收录的分子时，报错信息会显式提示该架构差异与正确路径。
+
+</details>
+
+<details>
+<summary><b>📋 工具参考（14 个）</b></summary>
+
+> AI 调用建议：先用 `hitran_interference` 判这条线能不能用，再用 `hitran_report` 一趟拿全（谱+图+强线）。需要细粒度控制再拆用 `hitran_lines` / `hitran_spectrum` / `hitran_plot`。
+> 失败时返回 `{"error": {"code", "message", "hint"}}`：`E_BAD_ARGS` / `E_STRICT` / `E_NO_LINES` / `E_WINDOW_UNCOVERED` / `E_UPSTREAM_403` / `E_UPSTREAM_429` / `E_MISSING_FILE` / `E_UNKNOWN_TOOL` / `E_INTERNAL`，按 `hint` 决定下一步，不要重试同一组错误参数。
+
+| 工具 | 用途 | 关键输入 |
 |---|---|---|
-| `hitran_species` | 瀹樻柟鍒嗗瓙琛細鍒嗗瓙鍙?M銆佷富鍚屼綅绱犮€佸悇鍚屼綅绱犺嚜鐒朵赴搴︿笌璐ㄩ噺 | `name`锛堝垎瀛愬紡鎴栧垎瀛愬彿锛岀渷鐣ヨ繑鍥炲叏琛級 |
-| `hitran_fetch` | 鎶撳彇娉㈡暟绐楀彛绾胯〃鍒版湰鍦扮紦瀛橈紱鏈鐩栫獥鍙ｈ嚜鍔ㄩ噸鎶?| `name`, `numin`, `numax`, `iso` |
-| `hitran_lines` | 绐楀彛鍐呮渶寮?N 鏉＄嚎锛埼姐€丼銆佄砡air銆丒鈥筹級锛岄€夌嚎/骞叉壈鍒嗘瀽 | `name`, `numin`, `numax`, `top_n` |
-| `hitran_spectrum` | 鍚告敹绯绘暟 伪 / 閫忚繃鐜囪氨锛孋SV 甯︽函婧愭按鍗帮紱澶氱墿绉嶅彲鐢?`specs_csv` 涓€娆″彔鍔狅紱`sample_points>0` 鏃跺洖浼犻噰鏍锋洸绾夸緵璇昏氨褰?| `specs_csv` 鎴?`name`锛沗numin`, `numax` 蹇呭～ |
-| `hitran_plot` | 璋卞浘 PNG锛堝鐗╃鍙犲姞 + 鎬昏氨锛宍ylog` 鍙€夛級 | 鍚?`hitran_spectrum`锛屽彟鍔?`title/ylog/dpi` |
-| `hitran_report` | **AI 棣栭€?*锛氫竴娆¤皟鐢ㄦ嬁鍏?鈥斺€?宄板€?+ 閲囨牱鏇茬嚎 + 寮虹嚎娓呭崟 + PNG/CSV + 鏁版嵁鐗堟 + 鍛婅 + `next_actions` | `name` 鎴?`specs_csv`锛沗numin`, `numax`锛涘彲閫?`top_n/sample_points/make_plot` |
-| `hitran_interference` | **閫夌嚎鍒ゆ嵁**锛氱洰鏍囩嚎涓績鐨勪氦鍙夊共鎵版瘮鍊硷紙鍚勫共鎵扮粍鍒?伪銆乺atio銆乨B銆佺獥鍐呮渶澶ф瘮鍊笺€佸悎璁″垽绾?negligible/minor/significant/dominant锛?| `name`, `interferers_csv`锛?H2O:0.01,CO2:4e-4'锛夛紱`numin`, `numax`锛涘彲閫?`line_index/half_width/T/P` |
-| `hitran_partition_sum` | 閰嶅垎鍑芥暟 Q(T)锛孴IPS 2025/2021/2017/2011 鍙€?| `name` 鎴?`M`锛沗T` |
-| `hitran_cross_section` | 璇诲叆鏈湴鎴潰鏂囦欢锛堝師鐢?`.xsc` 鎴?谓鈥撓?涓ゅ垪锛夆啋 鎴獥/缁樺浘/婧簮 CSV | `file_path`锛堢己鐪佹椂鍒楀嚭 `xsc_data/` 鍙敤鏂囦欢锛?|
-| `hitran_xsc_search` | 鍦ㄧ嚎鎺㈡祴鎴潰瀛愬簱鍒嗗瓙鐨勬埅闈㈡枃浠舵竻鍗曪紙鍏嶇櫥褰曞彧璇伙紝鏃犳枃浠跺悕锛?| `name`锛圥ortal 鏄剧ず鍚嶏級 |
-| `hitran_xsc_molecules` | 鎴潰鍒嗗瓙妫€绱細涓枃鍚?鍖栧寮?鑻辨枃鍚?淇楀悕妯＄硦鍖归厤锛岃繑鍥炲€欓€変笌 `id`锛堢害 670 涓垎瀛愶級 | `query`锛堢暀绌哄垪鍏ㄩ儴锛夛紱`limit` |
-| `hitran_xsc_files` | 鍒楀嚭鏌愭埅闈㈠垎瀛?*鍙洿鎺ヤ笅杞?*鐨勬枃浠舵竻鍗曪紙T/P/娉㈡暟鑼冨洿/鍒嗚鲸鐜?鐐规暟/浣撶Н浼扮畻/filename锛岄渶 API key锛?| `name` 鎴?`molecule_id`锛沗include_all` |
-| `hitran_xsc_download` | 閫夊畾鏂囦欢涓嬭浇鍒?`xsc_data/`锛堝畼鏂?API + 鍏紑鏁版嵁璺緞锛屽厤 Portal 鐧诲綍锛岄粯璁や笂闄?300 MB锛?| `name`, `filenames`/`ids`锛沗dry_run`, `overwrite`, `max_total_mb` |
-| `hitran_apikey_status` | API key / 缂撳瓨 / 浜х墿 / 鎴潰鏂囦欢鐘舵€侀€熸煡 | 鈥?|
+| `hitran_species` | 官方分子表：分子号 M、主同位素、各同位素自然丰度与质量 | `name`（分子式或分子号，省略返回全表） |
+| `hitran_fetch` | 抓取波数窗口线表到本地缓存；未覆盖窗口自动重抓 | `name`, `numin`, `numax`, `iso` |
+| `hitran_lines` | 窗口内最强 N 条线（ν、S、γ_air、E″），选线/干扰分析 | `name`, `numin`, `numax`, `top_n` |
+| `hitran_spectrum` | 吸收系数 α / 透过率谱，CSV 带溯源水印；多物种可用 `specs_csv` 一次叠加；`sample_points>0` 时回传采样曲线供读谱形 | `specs_csv` 或 `name`；`numin`, `numax` 必填 |
+| `hitran_plot` | 谱图 PNG（多物种叠加 + 总谱，`ylog` 可选） | 同 `hitran_spectrum`，另加 `title/ylog/dpi` |
+| `hitran_report` | **AI 首选**：一次调用拿全 —— 峰值 + 采样曲线 + 强线清单 + PNG/CSV + 数据版次 + 告警 + `next_actions` | `name` 或 `specs_csv`；`numin`, `numax`；可选 `top_n/sample_points/make_plot` |
+| `hitran_interference` | **选线判据**：目标线中心的交叉干扰比值（各干扰组分 α、ratio、dB、窗内最大比值、合计判级 negligible/minor/significant/dominant） | `name`, `interferers_csv`（'H2O:0.01,CO2:4e-4'）；`numin`, `numax`；可选 `line_index/half_width/T/P` |
+| `hitran_partition_sum` | 配分函数 Q(T)，TIPS 2025/2021/2017/2011 可选 | `name` 或 `M`；`T` |
+| `hitran_cross_section` | 读入本地截面文件（原生 `.xsc` 或 ν–σ 两列）→ 截窗/绘图/溯源 CSV | `file_path`（缺省时列出 `xsc_data/` 可用文件） |
+| `hitran_xsc_search` | 在线探测截面子库分子的截面文件清单（免登录只读，无文件名） | `name`（Portal 显示名） |
+| `hitran_xsc_molecules` | 截面分子检索：中文名/化学式/英文名/俗名模糊匹配，返回候选与 `id`（约 670 个分子） | `query`（留空列全部）；`limit` |
+| `hitran_xsc_files` | 列出某截面分子**可直接下载**的文件清单（T/P/波数范围/分辨率/点数/体积估算/filename，需 API key） | `name` 或 `molecule_id`；`include_all` |
+| `hitran_xsc_download` | 选定文件下载到 `xsc_data/`（官方 API + 公开数据路径，免 Portal 登录，默认上限 300 MB） | `name`, `filenames`/`ids`；`dry_run`, `overwrite`, `max_total_mb` |
+| `hitran_apikey_status` | API key / 缓存 / 产物 / 截面文件状态速查 | — |
 
-澶氱墿绉嶅彔鍔犵ず渚嬶紙`specs_csv`锛屼笌 `name` 浜掓枼锛夛細
+多物种叠加示例（`specs_csv`，与 `name` 互斥）：
 
 ```
 hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P=1.0)
@@ -368,91 +368,90 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 </details>
 
 <details>
-<summary><b>馃搹 浣跨敤瑙勮寖涓庡畨鍏?/b></summary>
+<summary><b>📏 使用规范与安全</b></summary>
 
-#### 馃搹 浣跨敤瑙勮寖
+#### 📏 使用规范
 
-1. **鍗曚綅**锛氶粯璁よ繑鍥炲惛鏀剁郴鏁?伪锛坈m鈦宦癸級锛沗hitran_units=true` 杩斿洖鎴潰 蟽锛坈m虏/molecule锛夛紝**涓ょ鍙ｅ緞閮芥寜鎽╁皵鍒嗘暟鍔犳潈**锛埼盻i=x_i路伪_pure锛屜僟i=x_i路蟽_pure锛夛紝娣峰悎姘旀€婚噺鍗虫贩鍚堢墿鍙ｅ緞銆?br>`mode=transmittance` 涓?`hitran_units=true` 鏃讹紝蟿=exp(鈭捪兟種路L)锛孨=P/(k_BT)锛堢悊鎯虫皵浣擄紝杩斿洖 `number_density_cm-3`锛夛紱伪 鍙ｅ緞涓?蟿=exp(鈭捨甭稬)銆?
-2. **娣峰悎姘?*锛毼?涓?蟽 鍚屼竴鏉¤鍒欌€斺€旀寜 `伪_i = x_i 路 伪_pure_i(T, P, 娴存皵)`銆乣蟽_i = x_i 路 蟽_pure_i` 璁＄畻锛屼笉浣跨敤 `x路P` 浣滀负鍒嗗帇锛涙湭鎻愪緵娴撳害鏃舵寜绾皵浣撹绠楀苟鎻愮ず纭銆傚悓涓€鍒嗗瓙澶氱粍鍒嗭紙濡備笉鍚屽悓浣嶇礌锛夊悇鑷嫭绔嬭鍏?total锛屾爣绛惧甫 `[I=鈥` 鍚庣紑锛屼笉浼氫簰鐩歌鐩栥€?
-3. **鍙傛暟婢勬竻**锛氭湭缁欏嚭鍙傛暟浣跨敤榛樿鍊煎苟濡傚疄鍒楀嚭锛坄needs_confirm=true` 鏃堕渶鍚戠敤鎴峰鏍?T/P/绐楀彛/娴撳害锛夛紱`strict=true` 鏃?T/P 缂哄け鐩存帴鎶ラ敊銆?
-4. **绾垮瀷**锛歚profile` 鍙€?voigt锛堥粯璁わ級/ lorentz / gauss / doppler / ht / sdvoigt锛屽叏閮ㄧ洿璋冨畼鏂?HAPI 璋卞嚱鏁般€俙mht`锛坢odified Hartmann-Tran锛孒ITRAN2024 鎺ㄨ崘锛変笌 `qsdhc` 鐩墠涓嶅彲閫夛細涓婃父 HAPI 1.3.0.0 / hapi2 0.2.1 鍧囨湭鎻愪緵鍏跺惛鏀剁郴鏁版帴鍙ｏ紝绋嬪簭浼氭樉寮忔姤閿欏苟寤鸿鏀圭敤 `ht` / `sdvoigt`锛屼笉鍋氭湭缁忛獙璇佺殑寮鸿瀹炵幇銆?
-5. **婧簮**锛氫换浣?CSV/鍥惧潎鍙拷婧嚦 HITRAN2024锛圙ordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807锛? HAPI锛圞ochanov et al., JQSRT 2016锛? TIPS 鐗堟湰锛涜鏂囧紩鐢ㄤ互杩斿洖鐨?citation 瀛楁涓哄噯銆傛按鍗板彟璁板疄闄呯嚎鍨嬨€佹荡姘斻€佺嚎琛ㄥ悕涓庢姄鍙栨棩鏈燂紙`# data: ... table fetched ...`锛夆€斺€斿畼鏂硅姹傚紩鐢ㄦ椂娉ㄦ槑鏄惁浣跨敤鏇存柊鐗堬紱鎶撳彇鏃ユ湡鏃╀簬鏈€杩戜竴娆″畼鏂规洿鏂版壒娆℃椂鍐欏叆 `# WARN` 骞跺湪 `warnings` 涓彁绀恒€?
-6. **鍚屼綅绱犲彛寰?*锛氶粯璁や富鍚屼綅绱狅紙绾皵浣撴潈閲?1.0锛夛紱`iso="all"` 鎸夊畼鏂硅嚜鐒朵赴搴﹀姞鏉冦€?
+1. **单位**：默认返回吸收系数 α（cm⁻¹）；`hitran_units=true` 返回截面 σ（cm²/molecule），**两种口径都按摩尔分数加权**（α_i=x_i·α_pure，σ_i=x_i·σ_pure），混合气总量即混合物口径。<br>`mode=transmittance` 且 `hitran_units=true` 时，τ=exp(−σ·N·L)，N=P/(k_BT)（理想气体，返回 `number_density_cm-3`）；α 口径为 τ=exp(−α·L)。
+2. **混合气**：α 与 σ 同一条规则——按 `α_i = x_i · α_pure_i(T, P, 浴气)`、`σ_i = x_i · σ_pure_i` 计算，不使用 `x·P` 作为分压；未提供浓度时按纯气体计算并提示确认。同一分子多组分（如不同同位素）各自独立计入 total，标签带 `[I=…]` 后缀，不会互相覆盖。
+3. **参数澄清**：未给出参数使用默认值并如实列出（`needs_confirm=true` 时需向用户复核 T/P/窗口/浓度）；`strict=true` 时 T/P 缺失直接报错。
+4. **线型**：`profile` 可选 voigt（默认）/ lorentz / gauss / doppler / ht / sdvoigt，全部直调官方 HAPI 谱函数。`mht`（modified Hartmann-Tran，HITRAN2024 推荐）与 `qsdhc` 目前不可选：上游 HAPI 1.3.0.0 / hapi2 0.2.1 均未提供其吸收系数接口，程序会显式报错并建议改用 `ht` / `sdvoigt`，不做未经验证的强行实现。
+5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。水印另记实际线型、浴气、线表名与抓取日期（`# data: ... table fetched ...`）——官方要求引用时注明是否使用更新版；抓取日期早于最近一次官方更新批次时写入 `# WARN` 并在 `warnings` 中提示。
+6. **同位素口径**：默认主同位素（纯气体权重 1.0）；`iso="all"` 按官方自然丰度加权。
 
-#### 馃敀 瀹夊叏涓庨殣绉?
+#### 🔒 安全与隐私
 
-**鏁版嵁闈?*锛氭湰椤圭洰鍙仛 HITRAN 鍙栨暟涓庢湰鍦板厜璋辫绠楋紝涓嶉噰闆嗛仴娴嬨€佷笉涓婃姤浣跨敤鏁版嵁锛涘敮涓€鐨勫嚟鎹槸 HITRAN API key銆?
+**数据面**：本项目只做 HITRAN 取数与本地光谱计算，不采集遥测、不上报使用数据；唯一的凭据是 HITRAN API key。
 
-**鍑嵁瀛樻斁**锛欰PI key 鍙惤鍦ㄨ繍琛屾湡鏁版嵁鐩綍锛坄Hitran_Data/hitran_api_key.txt`锛屽凡 gitignore锛夈€傛煡璇紭鍏堢骇涓虹幆澧冨彉閲?`HITRAN_API_KEY` > `tools/hitran_api_key.txt` > `Hitran_Data/hitran_api_key.txt`銆傚彂甯?ZIP 涓嶅惈 key銆佺紦瀛樹笌鏃ュ織銆?
+**凭据存放**：API key 只落在运行期数据目录（`Hitran_Data/hitran_api_key.txt`，已 gitignore）。查询优先级为环境变量 `HITRAN_API_KEY` > `tools/hitran_api_key.txt` > `Hitran_Data/hitran_api_key.txt`。发布 ZIP 不含 key、缓存与日志。
 
-**鑷姩鏇存柊**锛?
+**自动更新**：
 
-- 涓嬭浇鍦板潃鐢辩▼搴忔寜 `LKF0402/hitran-mcp` + 鍥哄畾璧勪骇鍚?`HitranLink-windows-x64.zip` 鏋勯€狅紝涓嶄俊浠?API 杩斿洖鐨勪换鎰忛摼鎺ワ紱鍙帴鍙?`https://github.com/...` 鍓嶇紑锛屾嫆缁?http銆佸紓鍩熶富鏈轰笌鏌ヨ涓层€?
-- 涓嬭浇鏃惰竟鍐欒竟绠?SHA-256锛屽悓鏃舵牎楠?GitHub 鎻愪緵鐨?`digest` 涓?`size`锛涗换涓€涓嶇鍗冲垹闄ゅ崐鎴枃浠跺苟涓銆?
-- 瑙ｅ帇閫愭潯鎷掔粷缁濆璺緞銆佺洏绗︺€乣..`銆佺鍙烽摼鎺ヤ笌鍔犲瘑鏉＄洰锛岄檺鍒舵潯鐩暟锛?0000锛変笌瑙ｅ帇鎬婚噺锛?00 MB锛夛紱椤跺眰鍙厑璁?`HitranLink.exe` 涓?`_internal`銆?
-- 鏃х増鏈祫浜ц嫢娌℃湁 `digest`锛岀▼搴忔嫆缁濊嚜鍔ㄥ崌绾у苟鎻愮ず鎵嬪姩涓嬭浇鈥斺€旇繖鏄湁鎰忕殑瀹夊叏闄嶇骇銆?
+- 下载地址由程序按 `LKF0402/hitran-mcp` + 固定资产名 `HitranLink-windows-x64.zip` 构造，不信任 API 返回的任意链接；只接受 `https://github.com/...` 前缀，拒绝 http、异域主机与查询串。
+- 下载时边写边算 SHA-256，同时校验 GitHub 提供的 `digest` 与 `size`；任一不符即删除半截文件并中止。
+- 解压逐条拒绝绝对路径、盘符、`..`、符号链接与加密条目，限制条目数（20000）与解压总量（700 MB）；顶层只允许 `HitranLink.exe` 与 `_internal`。
+- 旧版本资产若没有 `digest`，程序拒绝自动升级并提示手动下载——这是有意的安全降级。
 
-**鍙戝竷闂搁棬**锛歚tools/build_release.py` 鍦ㄥ嚭鍖呭墠璋冪敤 `tools/security_check.py`锛屾壂鎻忚窡韪枃浠躲€丟it 鍘嗗彶銆佸伐浣滃尯涓庡彂甯?ZIP 涓殑鍑嵁/涓汉璺緞/鍗遍櫓璋冪敤锛屽嚭鐜伴樆鏂」鐩存帴鎷掔粷鍑哄寘锛汣I 鍙﹁鐙珛 security job 澶嶆煡銆?
+**发布闸门**：`tools/build_release.py` 在出包前调用 `tools/security_check.py`，扫描跟踪文件、Git 历史、工作区与发布 ZIP 中的凭据/个人路径/危险调用，出现阻断项直接拒绝出包；CI 另设独立 security job 复查。
 
-**杩愯鎻愮ず**锛歐indows 浜岃繘鍒舵湭鍋氫唬鐮佺鍚嶏紝棣栨杩愯濡傚嚭鐜?SmartScreen 鎻愮ず锛屽彲閫夋嫨銆屾洿澶氫俊鎭?鈫?浠嶈杩愯銆嶃€?
+**运行提示**：Windows 二进制未做代码签名，首次运行如出现 SmartScreen 提示，可选择「更多信息 → 仍要运行」。
 
-婕忔礊鎶ュ憡鏂瑰紡瑙?[SECURITY.md](SECURITY.md)銆?
+漏洞报告方式见 [SECURITY.md](SECURITY.md)。
 
 </details>
 
 <details>
-<summary><b>鉁?娴嬭瘯涓庤川閲忛棬绂?/b></summary>
+<summary><b>✅ 测试与质量门禁</b></summary>
 
-| 妫€鏌?| 鍛戒护 | 瑕嗙洊鑼冨洿 | 鏈熸湜 |
+| 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 鍗曞厓娴嬭瘯 | `python -m unittest discover -s tests -v`锛堟垨 `python -m pytest -q`锛?| 鏇存柊鍦板潃鐧藉悕鍗曘€丼HA-256銆佸畨鍏ㄨВ鍘嬶紙`../`銆佺粷瀵硅矾寰勩€佺洏绗︺€亃ip bomb銆佺鍙烽摼鎺ワ級銆侀《灞傜櫧鍚嶅崟銆佽劚鏁忎笌鏂囦欢鍚嶉槻閫冮€搞€佹暟鎹増娆″彴璐︼紙绾垮瀷/鎶撳彇鏃ユ湡/闄堟棫鍛婅锛夈€佹懇灏斿垎鏁版姢鏍忋€丮CP 閿欒鐮併€佹洸绾块噰鏍枫€乺eport 缁勮銆佸共鎵版瘮鍒ょ骇锛涚粍鍒嗘爣绛惧敮涓€鍖栥€佅?鍙ｅ緞鍔犳潈銆佅冣€撻€忚繃鐜囨暟瀵嗗害銆佸師鐢?.xsc 浼樺厛瑙ｆ瀽銆佺紦瀛樻牴璺熼殢鏁版嵁鐩綍 | 62/62 閫氳繃 |
-| MCP 濂戠害 | `python tools/contract_check.py` | 14 涓伐鍏风殑 `TOOLS`/`DISPATCH` 涓€鑷存€с€乻chema 蹇呭～銆乣initialize`/`tools/list`/`ping` 杩斿洖銆佹棤 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.5"}` |
-| 瀹夊叏/鏁忔劅鎬?| `python tools/security_check.py` | 璺熻釜鏂囦欢銆丟it 鍘嗗彶銆佸伐浣滃尯銆佸彂甯?ZIP銆丳ython AST 鍗遍櫓璋冪敤銆佷緷璧栭攣瀹氥€乣.gitignore` 瑕嗙洊 | `"ok": true`銆乣issues: []` |
-| MCP 鑱旂綉鑷祴 | `python tools/hitran_mcp.py --selftest` | 鐪熷疄鎶撳彇 CO 灏忕獥鍙ｅ苟鐢熸垚鍥惧儚锛屽彟鍚埅闈㈤摼璺紙鍚堟垚鏂囦欢锛夈€佸湪绾挎帰娴嬩笌鐘舵€佹鏌?| 鍏ㄩ摼璺垚鍔?|
-| 妗岄潰宸ヤ綔绔欒嚜娴?| `python app/hitran_app.py --selftest selftest.json` | 寮曟搸 + 鏁版嵁 + 缃戠粶鍦ㄦ墦鍖呯幆澧冨唴鍙敤锛岃緭鍑哄垎瀛愭暟銆佽氨鐐规暟銆佸嘲鍊笺€亀arnings | `warnings: []` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级；组分标签唯一化、σ 口径加权、σ–透过率数密度、原生 .xsc 优先解析、缓存根跟随数据目录、窗口/步长/工况护栏、全角分隔符归一 | 67/67 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.6"}` |
+| 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
+| MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
+| 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
 
-CI锛坄.github/workflows/ci.yml`锛夊湪 Windows 涓婅窇 Python 3.10/3.11/3.12 涓夌増鏈煩闃碉細璇硶缂栬瘧銆乣pyflakes` 闈欐€佹鏌ャ€佸崟鍏冩祴璇曘€佸绾︽鏌ワ紱鍙︽湁 `fetch-depth: 0` 鐨?security job 鎵弿 Git 鍘嗗彶銆備緷璧栧湪 `requirements.txt` 绮剧‘閿佸畾锛坄hitran-api==1.3.0.0`銆乣numpy==2.0.1`銆乣matplotlib==3.9.1`銆乣Pillow==11.0.0`锛夛紝鐢?Dependabot 姣忓懆妫€鏌ユ洿鏂帮紱Python 3.13 鍙︾敤 `requirements-py313.txt`锛堝悓鍙ｅ緞绮剧‘閿佸畾锛宯umpy 2.1.3 / matplotlib 3.10.0锛夛紝鍥?2.0.1 / 3.9.1 鏃?3.13 杞瓙銆?
+CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`、`Pillow==11.0.0`），由 Dependabot 每周检查更新；Python 3.13 另用 `requirements-py313.txt`（同口径精确锁定，numpy 2.1.3 / matplotlib 3.10.0），因 2.0.1 / 3.9.1 无 3.13 轮子。
 
-鍒嗙淮搴﹁瘎鍒嗕笌鏁忔劅鎬ф娴嬫槑缁嗚 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)銆?
+分维度评分与敏感性检测明细见 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)。
 
 </details>
 
 <details>
-<summary><b>鉂?甯歌闂</b></summary>
+<summary><b>❓ 常见问题</b></summary>
 
-- **鎶撳彇澶辫触 "daily limit"**锛氬畼鏂规瘡鏃ラ厤棰濊秴闄愶紝娆℃棩閲嶈瘯锛涚紦瀛樻湭鍒犳椂澶ч儴鍒嗙獥鍙ｆ棤闇€閲嶆柊鎶撳彇銆?
-- **鎶ラ敊 "Cannot connect to http://hitran.org" 鎴?鏃犳硶鎶撳彇"锛屼絾璇ュ垎瀛愬湪姝ょ獥鍙ｆ槑鏄庢湁鍚告敹**锛氳繖鏄?*鑱旂綉澶辫触**锛屼笌"璇ョ獥鍙ｆ棤鏀跺綍绾?鏃犲叧銆傛渶甯歌鍘熷洜鏄幆澧冨彉閲?`HTTP_PROXY` / `HTTPS_PROXY` 鎸囧悜鐨勪唬鐞嗕笉鍙敤锛堜緥濡?VPN 鍏抽棴鏃剁殑 `127.0.0.1:7892`锛夆€斺€斿紑鍚唬鐞?VPN锛屾垨娓呯┖璇ョ幆澧冨彉閲忚蛋鐩磋繛鍚庨噸璇曞嵆鍙紙鑱旂綉鎭㈠鍚庝細鑷姩閲嶆姄锛夛紱宸茬紦瀛樿繃鐨勫垎瀛?绐楀彛鍙绾胯绠椼€?
-- **淇敼浠ｇ爜涓嶇敓鏁?*锛氶噸鍚?AI 瀹㈡埛绔紙MCP 杩涚▼闅忓鎴风鍚姩锛夛紱妗岄潰宸ヤ綔绔欓渶閲嶅惎绋嬪簭銆?
-- **娓呯悊缂撳瓨**锛氬垹闄?`Hitran_Data/*.data|*.header` 鍗冲彲锛岄渶瑕佹椂鑷姩閲嶆姄銆?
-- **鎴潰搴撳垎瀛愶紙濡備笝鐑?C鈧僅鈧堬級鏌ヤ笉鍒?*锛氳鍒嗗瓙灞炴埅闈㈠簱锛屼笌閫愮嚎搴撳垎寮€鍒嗗彂銆傜敤 `hitran_xsc_molecules` 妫€绱?鈫?`hitran_xsc_files` 鍒楁竻鍗?鈫?`hitran_xsc_download` 涓€閿笅杞斤紝鍐嶇敤 `hitran_cross_section` 璇诲叆锛涙棤 API key 鏃跺彲鎸塠鍙屽簱妗ユ帴](#鍙屽簱妗ユ帴)娴佺▼鎵嬪姩涓嬭浇銆?
-- **exe 琚潃杞鎶?*锛歅yInstaller 鎵撳寘鐨?Python 绋嬪簭鍋舵湁璇姤锛屽彲娣诲姞淇′换鎴栦粠婧愮爜杩愯銆?
-- **鍒楁埅闈㈡竻鍗曟姤 HTTP 500 / "鏌ヨ澶辫触"**锛氳繖鏄畼鏂?`/api/v2/` 鎺ュ彛鐨勬湇鍔＄鏁呴殰锛堝疄娴嬭鎺ュ彛瀵?*鏃犳晥 key 涓庢甯?key 閮借繑鍥?500**锛屾墍浠?500 涓嶈兘璇存槑浣犵殑 key 鏈夐棶棰橈紱鍏嶇櫥褰曠殑鍦ㄧ嚎鎺㈡祴 `hitran_xsc_search` 閫氬父浠嶅彲鐢級銆傝绋嶅悗閲嶈瘯锛屾垨鍒?[hitran.org/xsc](https://hitran.org/xsc) 鐧诲綍鍚庢墜鍔ㄤ笅杞芥埅闈㈡枃浠舵斁杩?`xsc_data/`锛屽啀鐢?`hitran_cross_section` 璇诲叆銆?
+- **抓取失败 "daily limit"**：官方每日配额超限，次日重试；缓存未删时大部分窗口无需重新抓取。
+- **报错 "Cannot connect to http://hitran.org" 或"无法抓取"，但该分子在此窗口明明有吸收**：这是**联网失败**，与"该窗口无收录线"无关。最常见原因是环境变量 `HTTP_PROXY` / `HTTPS_PROXY` 指向的代理不可用（例如 VPN 关闭时的 `127.0.0.1:7892`）——开启代理/VPN，或清空该环境变量走直连后重试即可（联网恢复后会自动重抓）；已缓存过的分子/窗口可离线计算。
+- **修改代码不生效**：重启 AI 客户端（MCP 进程随客户端启动）；桌面工作站需重启程序。
+- **清理缓存**：删除 `Hitran_Data/*.data|*.header` 即可，需要时自动重抓。
+- **截面库分子（如丙烷 C₃H₈）查不到**：该分子属截面库，与逐线库分开分发。用 `hitran_xsc_molecules` 检索 → `hitran_xsc_files` 列清单 → `hitran_xsc_download` 一键下载，再用 `hitran_cross_section` 读入；无 API key 时可按[双库桥接](#双库桥接)流程手动下载。
+- **exe 被杀软误报**：PyInstaller 打包的 Python 程序偶有误报，可添加信任或从源码运行。
+- **列截面清单报 HTTP 500 / "查询失败"**：这是官方 `/api/v2/` 接口的服务端故障（实测该接口对**无效 key 与正常 key 都返回 500**，所以 500 不能说明你的 key 有问题；免登录的在线探测 `hitran_xsc_search` 通常仍可用）。请稍后重试，或到 [hitran.org/xsc](https://hitran.org/xsc) 登录后手动下载截面文件放进 `xsc_data/`，再用 `hitran_cross_section` 读入。
 
 </details>
 
-## 馃敆 鐩稿叧椤圭洰
+## 🔗 相关项目
 
-- **[SpectroLink](https://github.com/LKF0402/spectrolink)**锛氬鎶€鏈厜璋变紶鎰熶豢鐪?MCP 鎬诲叆鍙ｏ紝瑕嗙洊 7 绫绘妧鏈紙TDLAS-DA銆乀DLAS-WMS銆丩ITES銆丆RDS銆丯DIR銆丗TIR銆丏OAS锛夛紝鎷嗘垚 6 涓嫭绔?server銆傜嫭绔嬩粨搴撱€佺嫭绔嬬淮鎶わ紱涓庢湰椤圭洰涓嶉噸鍙犫€斺€旀湰椤圭洰璐熻矗 HITRAN 鍙栨暟涓庨€愮嚎/鎴潰璁＄畻锛岄渶瑕佹煇绫讳紶鎰熸妧鏈殑绔埌绔豢鐪燂紙璋冨埗绯绘暟 m銆佽皭娉€佹娴嬮檺銆佽厰琛拌崱鏃堕棿绛夛級鏃跺彲鐩存帴鎺ュ叆銆?
+- **[SpectroLink](https://github.com/LKF0402/spectrolink)**：多技术光谱传感仿真 MCP 总入口，覆盖 7 类技术（TDLAS-DA、TDLAS-WMS、LITES、CRDS、NDIR、FTIR、DOAS），拆成 6 个独立 server。独立仓库、独立维护；与本项目不重叠——本项目负责 HITRAN 取数与逐线/截面计算，需要某类传感技术的端到端仿真（调制系数 m、谐波、检测限、腔衰荡时间等）时可直接接入。
 
-## 鈿栵笍 鍏嶈矗澹版槑
+## ⚖️ 免责声明
 
-鏈蒋浠舵寜"鐜扮姸"锛圓S IS锛夋彁渚涳紝浣滆€呬笉瀵逛娇鐢ㄦ湰杞欢浜х敓鐨勪换浣曠洿鎺ユ垨闂存帴鎹熷け鎵挎媴璐ｄ换銆?
+本软件按"现状"（AS IS）提供，作者不对使用本软件产生的任何直接或间接损失承担责任。
 
-- 鏈蒋浠朵粎渚涚鐮斻€佹暀鑲插拰瀛︿範鐢ㄩ€旓紝涓嶆瀯鎴愪换浣曚笓涓氬缓璁垨浜у搧鎵胯銆?
-- 鏈」鐩笌 macOS 搴旂敤 `HitranLab` 鍙婂叾寮€鍙戣€呫€佷笌 HITRAN 瀹樻柟鏁版嵁搴撳強鍏跺洟闃熷潎鏃犲叧鑱旓紝涔熸湭鑾峰叾鎺堟潈鎴栬儗涔︺€?
-- 鍏夎氨璁＄畻缁撴灉鍩轰簬 HITRAN 鏁版嵁搴撳拰 HAPI 搴擄紝鍙兘瀛樺湪鏁版嵁鏇存柊寤惰繜銆佽绠楄繎浼兼垨璇樊銆?
-- 鐢ㄦ埛搴旇嚜琛岄獙璇佽绠楃粨鏋滅殑鍑嗙‘鎬э紝鍏抽敭搴旂敤鍦烘櫙璇蜂互瀹樻柟鏁版嵁鍜屼笓涓氳蒋浠朵负鍑嗐€?
-- 浣滆€呬笉淇濊瘉杞欢鏃犵己闄枫€佷笉涓柇鎴栨弧瓒崇壒瀹氶渶姹傘€?
-- 浣跨敤鏈蒋浠跺嵆琛ㄧず鎮ㄥ悓鎰忚嚜琛屾壙鎷呬娇鐢ㄩ闄┿€?
+- 本软件仅供科研、教育和学习用途，不构成任何专业建议或产品承诺。
+- 本项目与 macOS 应用 `HitranLab` 及其开发者、与 HITRAN 官方数据库及其团队均无关联，也未获其授权或背书。
+- 光谱计算结果基于 HITRAN 数据库和 HAPI 库，可能存在数据更新延迟、计算近似或误差。
+- 用户应自行验证计算结果的准确性，关键应用场景请以官方数据和专业软件为准。
+- 作者不保证软件无缺陷、不中断或满足特定需求。
+- 使用本软件即表示您同意自行承担使用风险。
 
-## 馃搫 璁稿彲璇?
+## 📄 许可证
 
-鏈」鐩噰鐢?**GPLv3** 璁稿彲璇侊紝璇﹁ [LICENSE](LICENSE)銆?
+本项目采用 **GPLv3** 许可证，详见 [LICENSE](LICENSE)。
 
-## 馃摎 References
+## 📚 References
 
 - https://github.com/hitranonline/hapi
 - https://github.com/hitranonline/hapi2
 - https://github.com/hitranonline/hapiest
 - https://hitran.org
-

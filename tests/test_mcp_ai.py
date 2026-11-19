@@ -331,6 +331,22 @@ class ChromaticBugTests(unittest.TestCase):
             p.write_text(head + "\n", encoding="utf-8")
             self.assertFalse(m._looks_like_native_xsc(p))
 
+    def test_argument_errors_map_to_bad_args(self):
+        """参数护栏报错必须落在 E_BAD_ARGS，否则 AI 会把它当内部错误而不改参数。"""
+        with mock.patch.object(m, "_hitran", lambda: _FakeAbsorption._DUMMY_HT), \
+                mock.patch.object(m, "_absorption", _FakeAbsorption.fake_abs):
+            try:
+                m._compute([self._spec()], 2147.0, 2143.0)
+            except ValueError as e:
+                self.assertEqual(m._classify_error(e)[0], "E_BAD_ARGS")
+
+    def test_full_width_specs_csv_is_normalized(self):
+        """中文全角逗号/冒号是常见输入，必须能解析成同样的多组分。"""
+        parsed = m._parse_specs_csv("CH4：1e-6，C2H6：2e-5")
+        self.assertEqual([p["name"] for p in parsed], ["CH4", "C2H6"])
+        self.assertAlmostEqual(parsed[0]["mole_frac"], 1e-6)
+        self.assertTrue(all(p["mole_frac_given"] for p in parsed))
+
 
 if __name__ == "__main__":
     unittest.main()

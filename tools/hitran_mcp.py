@@ -42,7 +42,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.7.5"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.6"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -244,7 +244,8 @@ def _classify_error(e):
     elif "strict" in low:
         code = "E_STRICT"
     elif any(k in msg for k in ("互斥", "不在 (0,1]", "不是数字", "必须给出", "需要 name", "缺少 name",
-                                "非法路径", "目录而非文件")):
+                                "非法路径", "目录而非文件", "窗口非法", "必须大于", "不能为负",
+                                "必须 ≥", "必须 >")):
         code = "E_BAD_ARGS"
     elif any(k in msg for k in ("0 条", "0 线", "无谱线", "恒为 0")):
         code = "E_NO_LINES"
@@ -307,7 +308,13 @@ def _parse_specs_csv(specs_csv):
     浓度缺省 = 纯气体（调用方仍需按 assumed_defaults 向用户确认）。
     """
     out = []
-    for item in str(specs_csv or "").split(","):
+    # 全角分隔符归一：中文客户端/AI 常传 'CH4：1e-6，C2H6：1e-5'，旧实现会把它当成
+    # 一个分子名去解析 → 报"未找到该分子"，错误指向完全不相干的地方。
+    raw = str(specs_csv or "")
+    for _a, _b in (("，", ","), ("；", ","), ("、", ","), ("：", ":"),
+                   ("　", " "), ("（", "("), ("）", ")")):
+        raw = raw.replace(_a, _b)
+    for item in raw.split(","):
         s = item.strip()
         if not s:
             continue
