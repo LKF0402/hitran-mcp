@@ -71,13 +71,14 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 | 特性 | 说明 |
 |---|---|
 | 全链路覆盖 | 物种查询 → 线表抓取 → 强线列表 → 吸收/透过率谱 → 谱图 → 配分函数 → 截面文件分析 |
+| 范围边界 | 只做谱线参数与吸收谱仿真（S、γ、α、透过率、截面），不涉及具体检测技术（WMS/2f、LITES、CRDS 等的调制、解调、仪器响应不在本仓库） |
 | 双库桥接 | 逐线库走 HAPI 在线 API；截面库（600+ 重分子）走官方 API 在线检索 + 一键下载（免 Portal 登录），或读入本地文件，统一产物链路 |
 | 物理防呆 | 混合气按 `α_i = x_i · α_pure_i(T, P, 浴气)`；窗口未覆盖自动重抓；0 线/失败显式报错，不静默出空谱 |
 | 全程溯源 | 任何 CSV/PNG 均带 HITRAN2024 版次 + 实际线型 + 浴气 + 线表名 + 抓取日期 + HAPI/TIPS 版本水印，可追溯到原始文献；线表早于官方增量更新时自动告警（官方要求引用须注明是否使用更新版） |
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 60 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 56 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 🧭 三种用法怎么选
@@ -346,7 +347,7 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 | `hitran_spectrum` | 吸收系数 α / 透过率谱，CSV 带溯源水印；多物种可用 `specs_csv` 一次叠加；`sample_points>0` 时回传采样曲线供读谱形 | `specs_csv` 或 `name`；`numin`, `numax` 必填 |
 | `hitran_plot` | 谱图 PNG（多物种叠加 + 总谱，`ylog` 可选） | 同 `hitran_spectrum`，另加 `title/ylog/dpi` |
 | `hitran_report` | **AI 首选**：一次调用拿全 —— 峰值 + 采样曲线 + 强线清单 + PNG/CSV + 数据版次 + 告警 + `next_actions` | `name` 或 `specs_csv`；`numin`, `numax`；可选 `top_n/sample_points/make_plot` |
-| `hitran_interference` | **选线判据**：目标线中心的交叉干扰比值（各干扰组分 α、ratio、dB、窗内最大比值、合计判级）；给 `modulation_cm1` 或 `m` 时追加 **2f 加权**比值（数值锁相，理想正弦调频） | `name`, `interferers_csv`（'H2O:0.01,CO2:4e-4'）；`numin`, `numax`；可选 `line_index/half_width/T/P/modulation_cm1/m` |
+| `hitran_interference` | **选线判据**：目标线中心的交叉干扰比值（各干扰组分 α、ratio、dB、窗内最大比值、合计判级 negligible/minor/significant/dominant） | `name`, `interferers_csv`（'H2O:0.01,CO2:4e-4'）；`numin`, `numax`；可选 `line_index/half_width/T/P` |
 | `hitran_partition_sum` | 配分函数 Q(T)，TIPS 2025/2021/2017/2011 可选 | `name` 或 `M`；`T` |
 | `hitran_cross_section` | 读入本地截面文件（原生 `.xsc` 或 ν–σ 两列）→ 截窗/绘图/溯源 CSV | `file_path`（缺省时列出 `xsc_data/` 可用文件） |
 | `hitran_xsc_search` | 在线探测截面子库分子的截面文件清单（免登录只读，无文件名） | `name`（Portal 显示名） |
@@ -374,7 +375,6 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 4. **线型**：`profile` 可选 voigt（默认）/ lorentz / gauss / doppler / ht / sdvoigt，全部直调官方 HAPI 谱函数。`mht`（modified Hartmann-Tran，HITRAN2024 推荐）与 `qsdhc` 目前不可选：上游 HAPI 1.3.0.0 / hapi2 0.2.1 均未提供其吸收系数接口，程序会显式报错并建议改用 `ht` / `sdvoigt`，不做未经验证的强行实现。
 5. **溯源**：任何 CSV/图均可追溯至 HITRAN2024（Gordon et al., JQSRT 2026, doi:10.1016/j.jqsrt.2026.109807）+ HAPI（Kochanov et al., JQSRT 2016）+ TIPS 版本；论文引用以返回的 citation 字段为准。水印另记实际线型、浴气、线表名与抓取日期（`# data: ... table fetched ...`）——官方要求引用时注明是否使用更新版；抓取日期早于最近一次官方更新批次时写入 `# WARN` 并在 `warnings` 中提示。
 6. **同位素口径**：默认主同位素（纯气体权重 1.0）；`iso="all"` 按官方自然丰度加权。
-7. **2f 加权干扰**：`hitran_interference` 给 `modulation_cm1`（调制幅度 a，cm⁻¹）或 `m`（调制系数，按 HWHM≈γ_air·P 折算）后，对同一条 α 做数值锁相取 2f 幅值再比——平滑的远端线翼会被 2f 抑制，只有落在调制宽度内的吸收才计入，故 2f 比值通常显著低于中心点比值。模型为理想正弦调频、无 RAM、无电-光相移、绝热且未归一化到 1f，实测值随 m/相角/带宽变化，仅作选线与参数初筛。
 
 #### 🔒 安全与隐私
 
@@ -402,8 +402,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级、2f 加权线性不变量与 m 折算 | 60/60 通过 |
-| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.3"}` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级 | 56/56 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.2"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
