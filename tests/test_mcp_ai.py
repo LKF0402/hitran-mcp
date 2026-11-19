@@ -119,9 +119,17 @@ class ReportAssemblyTests(unittest.TestCase):
 class ContractSurfaceTests(unittest.TestCase):
     def test_report_registered(self):
         names = [t["name"] for t in m.TOOLS]
-        self.assertEqual(len(names), 13)
+        self.assertEqual(len(names), 14)
         self.assertIn("hitran_report", names)
         self.assertIs(m.DISPATCH["hitran_report"], m.t_report)
+        self.assertIn("hitran_interference", names)
+        self.assertIs(m.DISPATCH["hitran_interference"], m.t_interference)
+
+    def test_interference_schema(self):
+        tool = next(t for t in m.TOOLS if t["name"] == "hitran_interference")
+        self.assertEqual(tool["inputSchema"]["required"],
+                         ["name", "interferers_csv", "numin", "numax"])
+        self.assertIn("line_index", tool["inputSchema"]["properties"])
 
     def test_report_schema(self):
         tool = next(t for t in m.TOOLS if t["name"] == "hitran_report")
@@ -132,6 +140,74 @@ class ContractSurfaceTests(unittest.TestCase):
         for name in ("hitran_report", "hitran_spectrum", "hitran_lines", "hitran_plot"):
             tool = next(t for t in m.TOOLS if t["name"] == name)
             self.assertGreater(len(tool["description"]), 40, name)
+
+
+class InterferenceTests(unittest.TestCase):
+    """干扰量化：用替代 _compute 做纯逻辑验证（不联网、不依赖真实线表）。"""
+
+    NU0 = 2968.73
+    PURE_AMP = {"CH4": 1.0, "H2O": 0.5}
+
+    def _fake_compute(self, specs, numin, numax, T, P, step, wingHW, mode, pl, hu,
+                      profile, diluent):
+        import numpy as np
+        sp = specs[0]
+        if sp["name"] == "CO2":                     # 模拟"线表未覆盖"失败
+            raise ValueError("[hitran] CO2 线表未覆盖该窗口")
+        nu = np.linspace(numin, numax, 101)
+        x = sp["mole_frac"]
+        amp = self.PURE_AMP.get(sp["name"], 0.0)
+        y = amp * x * (1.0 - abs(2968.73 - nu))     # 线心附近近似三角形，便于取点
+        label = sp["name"] if x == 1 else f"{sp['name']}@{x:g}"
+        return {"nu": nu, "per": {label: y}, "warnings": [], "tables": {}}
+
+    def _fake_lines(self, *a, **kw):
+        return {"lines": [{"nu_cm-1": self.NU0, "S_cm_per_molecule": 1e-19,
+                           "gamma_air": 0.05}]}
+
+    def test_dominant_interferer(self):
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-5",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325)
+        # α_i/α_t = (0.5·1e-5)/(1.0·1e-6) = 5
+        self.assertAlmostEqual(out["interferers"][0]["ratio_to_target"], 5.0, delta=0.3)
+        self.assertEqual(out["verdict"]["level"], "dominant")
+        self.assertTrue(any("2f" in w for w in out["warnings"]))
+        self.assertFalse(out["needs_confirm"])
+
+    def test_negligible_interferer(self):
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-9",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325)
+        self.assertAlmostEqual(out["interferers"][0]["ratio_to_target"], 5e-4, delta=5e-5)
+        self.assertEqual(out["verdict"]["level"], "negligible")
+
+    def test_skipped_component_reported(self):
+        with mock.patch.object(m, "t_lines", self._fake_lines), \
+                mock.patch.object(m, "_compute", self._fake_compute):
+            out = m.t_interference(name="CH4", interferers_csv="H2O:1e-5,CO2:4e-4",
+                                   numin=2968, numax=2970, mole_frac=1e-6,
+                                   T=296, P=1.01325)
+        self.assertEqual(len(out["interferers"]), 1)
+        self.assertEqual(out["skipped"][0]["name"], "CO2")
+        self.assertTrue(any("skipped" in a for a in out["next_actions"]))
+
+    def test_no_target_line_raises(self):
+        with mock.patch.object(m, "t_lines", lambda *a, **kw: {"lines": []}):
+            with self.assertRaises(ValueError):
+                m.t_interference(name="CH4", interferers_csv="H2O:1e-5",
+                                 numin=2968, numax=2970)
+
+    def test_specs_csv_tracks_given_fraction(self):
+        """带浓度的片段必须标 mole_frac_given=True，否则会被误报"未给浓度"。"""
+        given = m._parse_specs_csv("CH4:0.01,C2H6:1e-5")
+        default = m._parse_specs_csv("CO,N2O")
+        self.assertTrue(all(s["mole_frac_given"] for s in given))
+        self.assertFalse(any(s["mole_frac_given"] for s in default))
 
 
 if __name__ == "__main__":

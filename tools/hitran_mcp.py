@@ -6,9 +6,9 @@
   · 纯标准库实现的 stdio JSON-RPC（MCP 2024-11-05），零新增依赖；
     HAPI / matplotlib 惰性加载，空闲时不占用内存。
   · 所有 print 被捕获为 log 字段返回，绝不污染 stdout 协议流。
-  · 13 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
-    / 谱图绘制 / **report 一站式报告（AI 首选）** / 配分函数 / 截面文件（HOTW）读入分析
-    / 截面子库在线检索·列目录·批量下载 / 运行状态。
+  · 14 个工具覆盖全链路：物种查询 / 线表抓取 / 强线列表 / 吸收·透过率谱（可混合气，多物种字符串）
+    / 谱图绘制 / **report 一站式报告（AI 首选）** / **交叉干扰量化** / 配分函数
+    / 截面文件（HOTW）读入分析 / 截面子库在线检索·列目录·批量下载 / 运行状态。
   · 失败返回机器可读错误 {"error": {code, message, hint}}，AI 可据此直接分支，不必猜错误含义。
   · 谱计算可选 sample_points 回传采样曲线（索引抽样，不插值），让 AI 读到谱形而不只是峰值。
   · 产物统一落 tmp/mcp_out/（gitignore 区），CSV 自带 HITRAN 溯源水印。
@@ -42,7 +42,7 @@ DATA_ROOT = (Path(_DATA_DIR_ENV).expanduser().resolve() if _DATA_DIR_ENV
 OUT_DIR = ROOT / "tmp" / "mcp_out"         # 产物区（tmp/ 已 gitignore）
 XSC_DIR = ROOT / "xsc_data"                # 用户下载的截面文件目录（gitignore，个人数据不入库）
 PROTOCOL_VERSION = "2024-11-05"
-VERSION = "1.7.1"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
+VERSION = "1.7.2"  # 单一版本号源：桌面 APP_VERSION 引用此值，发布时只改这里
 SERVER_INFO = {"name": "hitran", "version": VERSION}
 
 _HT = None          # 惰性加载的 tools.hitran 模块（含 hapi，重）
@@ -330,9 +330,9 @@ def _parse_specs_csv(specs_csv):
                     f"[hitran] specs_csv 片段 '{item}' 的摩尔分数 {xf:g} 不在 (0,1]。"
                     f"摩尔分数必须 0<x<=1：1 ppm→1e-6、1%→0.01；"
                     f"写成百分比(如 5)、ppm 数值(如 100)或负数都会算出错误的谱。")
-            out.append({"name": nm, "mole_frac": xf})
+            out.append({"name": nm, "mole_frac": xf, "mole_frac_given": True})
         else:
-            out.append({"name": s})
+            out.append({"name": s, "mole_frac_given": False})
     if not out:
         raise ValueError(
             "[hitran] specs_csv 解析为空。格式：'CH4:0.01,C2H6:1e-5'（冒号后为摩尔分数，"
@@ -1536,6 +1536,130 @@ def t_report(specs=None, name=None, mole_frac=None, iso=None, specs_csv=None,
             "next_actions": next_actions}
 
 
+def t_interference(name, interferers_csv, numin=None, numax=None, mole_frac=None,
+                   iso=None, T=None, P=None, step=None, profile="voigt", diluent=None,
+                   half_width=0.2, strict=False, line_index=0):
+    """目标谱线处的交叉干扰量化：返回每个干扰物在目标线中心 α 及其与目标的比值。
+
+    物理口径（与 hitran_spectrum 完全一致，单一实现不复刻公式）：
+      目标 α_t = x_t·α_pure_t(T,P,bath)，干扰 α_i = x_i·α_pure_i(T,P,bath)；
+      比值 r_i = α_i/α_t 在同一 T/P/浴气/线型下逐点比较，判据取目标线中心（可选第 N 强线）。
+    边界：这是单点判据。WMS 2f 的干扰权重随调制系数 m 变化（2f 对线翼更敏感），
+    因此"中心点比值"不能直接等同"2f 通道干扰"，只作选线初筛——已在 warnings 中注明。
+    """
+    kw, assumed = _resolve_defaults({"T": T, "P": P}, strict)
+    T_eff, P_eff = kw["T"], kw["P"]
+    _crit = ([] if T is not None else [f"T={T_eff} (未给温度)"]) + \
+            ([] if P is not None else [f"P={P_eff} (未给气压)"])
+
+    tgt = _norm_specs(None, name, mole_frac, iso)[0]
+    if not tgt.get("mole_frac_given"):
+        _crit.append(f"{tgt['name']}.mole_frac=1 (未给浓度)")
+
+    # 1) 定位目标线：默认取窗口内最强线，line_index 可换第 2/3 强线
+    lines = t_lines(tgt["name"], numin, numax, iso=iso,
+                    top_n=max(1, int(line_index) + 1))
+    rows = lines.get("lines") or []
+    if not rows:
+        raise ValueError(f"[hitran_interference] {tgt['name']} 在 {numin}-{numax} cm-1 "
+                         f"内 0 条收录线，无法定位目标线中心。")
+    ref = rows[min(int(line_index), len(rows) - 1)]
+    nu0 = float(ref["nu_cm-1"])
+
+    # 2) 细网格（步长按半宽自适应，保证线心不被采样漏掉；点数上限 8000）
+    half = max(1e-3, float(half_width))
+    step_eff = float(step) if step is not None else max(1e-4, min(1e-3, half / 200.0))
+    while (2 * half / step_eff) > 8000:
+        step_eff *= 2
+    lo, hi = nu0 - half, nu0 + half
+
+    inter = _parse_specs_csv(interferers_csv) if interferers_csv else []
+    if not inter:
+        raise ValueError("[hitran_interference] interferers_csv 为空："
+                         "请给出 'H2O:0.01,CO2:4e-4' 形式的干扰组分。")
+
+    def _alpha_at(spec_):
+        """算该组分在细网格上的 α，取最接近线心的点；失败返回 (None, reason)。"""
+        try:
+            r = _compute([spec_], lo, hi, T_eff, P_eff, step_eff,
+                         50.0, "alpha", None, False, profile, diluent)
+        except Exception as e:
+            return None, _classify_error(e)[1]
+        nu_i = _np().asarray(r["nu"], dtype=float)
+        y = list(r["per"].values())[0]
+        i = int(_np().argmin(_np().abs(nu_i - nu0)))
+        return {"alpha_at_line": float(y[i]), "at_nu_cm-1": float(nu_i[i]),
+                "max_in_window": float(_np().asarray(y).max()),
+                "warnings": r.get("warnings", []), "tables": r.get("tables", {}),
+                "nu_offset_cm-1": float(nu_i[i] - nu0)}, None
+
+    tgt_res, tgt_err = _alpha_at(tgt)
+    if tgt_err or tgt_res is None:
+        raise ValueError(f"[hitran_interference] 目标组分 {tgt['name']} 谱计算失败：{tgt_err}")
+    a_t = tgt_res["alpha_at_line"]
+    warnings = list(tgt_res.get("warnings") or [])
+    skipped, out_inter = [], []
+    for s in inter:
+        if not s.get("mole_frac_given"):
+            _crit.append(f"{s['name']}.mole_frac=1 (未给浓度)")
+        r, err = _alpha_at(s)
+        if err or r is None:
+            skipped.append({"name": s["name"], "reason": err})
+            continue
+        a_i = r["alpha_at_line"]
+        ratio = (a_i / a_t) if a_t > 0 else None
+        out_inter.append({"name": s["name"], "mole_frac": s["mole_frac"],
+                          "alpha_at_line": a_i, "ratio_to_target": ratio,
+                          "ratio_dB": (10.0 * _np().log10(ratio)) if ratio and ratio > 0 else None,
+                          "max_in_window": r["max_in_window"],
+                          "max_ratio_in_window": (r["max_in_window"] / a_t) if a_t > 0 else None,
+                          "at_nu_cm-1": r["at_nu_cm-1"]})
+        warnings += [w for w in (r.get("warnings") or []) if w not in warnings]
+
+    sum_i = sum(x["alpha_at_line"] for x in out_inter)
+    ratio_all = (sum_i / a_t) if a_t > 0 else None
+    if ratio_all is None:
+        level, note = "undefined", "目标 α 为 0（浓度过低或线表未覆盖目标线），比值无意义"
+    elif ratio_all < 0.01:
+        level, note = "negligible", "合计干扰 <1%（约 -20 dB）：单点判据下可视为可忽略"
+    elif ratio_all < 0.1:
+        level, note = "minor", "合计干扰 1–10%（-20…-10 dB）：需在论文中注明并做 2f 复核"
+    elif ratio_all < 1.0:
+        level, note = "significant", "合计干扰 10–100%：目标峰被明显抬高，需换线或加预处理"
+    else:
+        level, note = "dominant", "合计干扰 ≥100%：目标峰被干扰淹没，该线不可直接用于定量"
+
+    warnings.append("单点判据：上述比值取自目标线中心；WMS-2f 的干扰权重随调制系数 m 变化"
+                    "（2f 更吃线翼），不能直接当作 2f 通道的干扰比。")
+    ht = _hitran()
+    next_actions = []
+    if _crit:
+        next_actions.append("向用户确认 critical_defaults（T/P/浓度），再按确认值复核")
+    if skipped:
+        next_actions.append("skipped 中的组分未算成：先 hitran_fetch 按窗口抓线表或换窗口")
+    if level in ("significant", "dominant"):
+        next_actions.append("改选目标窗内其他强线（line_index=1/2）或缩窄滤波窗口后复算")
+
+    return {"target": {"name": tgt["name"], "mole_frac": tgt["mole_frac"],
+                       "line_nu_cm-1": nu0, "line_rank": int(line_index),
+                       "alpha_at_line": a_t,
+                       "cross_section_S": float(ref.get("S_cm_per_molecule", 0.0)),
+                       "gamma_air": float(ref.get("gamma_air", 0.0))},
+            "interferers": out_inter, "skipped": skipped,
+            "combined": {"sum_alpha_at_line": sum_i, "ratio_to_target": ratio_all,
+                         "ratio_dB": (10.0 * _np().log10(ratio_all)) if ratio_all and ratio_all > 0 else None,
+                         "interference_fraction": (sum_i / (sum_i + a_t)) if (sum_i + a_t) > 0 else None},
+            "verdict": {"level": level, "note": note},
+            "window_cm-1": [lo, hi], "step_cm-1": step_eff,
+            "conditions": {"T_K": T_eff, "P_atm": P_eff, "profile": profile,
+                           "diluent": diluent or "air"},
+            "data": {"edition": getattr(ht, "HITRAN_EDITION", "HITRAN2024"),
+                     "latest_update": getattr(ht, "latest_update", lambda: None)()},
+            "warnings": warnings, "assumed_defaults": assumed,
+            "critical_defaults": _crit, "needs_confirm": bool(_crit),
+            "next_actions": next_actions}
+
+
 def _looks_like_native_xsc(path):
     """首行是否为半 HITRAN 定宽头（即 hitran.org/data/xsec 那种原生 .xsc）。
 
@@ -2578,6 +2702,32 @@ TOOLS = [
                          "strict": {"type": "boolean", "description": "True 时 T/P 未给直接报错"},
                          "force": {"type": "boolean", "description": "True 强制按当前窗口重抓线表"}},
                      "required": ["numin", "numax"]}},
+    {"name": "hitran_interference",
+     "description": "用途：量化交叉干扰——在目标谱线中心，算每个干扰组分的 α 及与目标的比值，判断该线能不能用。"
+                    "返回：target（线位置/线强/γ_air/α）、interferers（各自 α、ratio_to_target、ratio_dB、窗内最大比值）、"
+                    "combined（合计比值/dB/干扰占比）、verdict（negligible<1% / minor 1–10% / significant 10–100% / dominant≥100%）、"
+                    "skipped、warnings、critical_defaults、next_actions。"
+                    "注意：判据是目标线中心单点值，同一 T/P/浴气/线型逐点比较；WMS-2f 的干扰权重随调制系数 m 变化"
+                    "（2f 更吃线翼），此比值只能作选线初筛，不能直接当 2f 通道干扰比。"
+                    "干扰组分写法同 specs_csv：'H2O:0.01,CO2:4e-4'。",
+     "inputSchema": {"type": "object",
+                     "properties": {
+                         "name": {"type": "string", "description": "目标分子式，如 CH4/CO/N2O"},
+                         "interferers_csv": {"type": "string",
+                                             "description": "干扰组分与摩尔分数：'H2O:0.01,CO2:4e-4'（必填）"},
+                         "numin": {"type": "number", "description": "目标线搜索窗下限 cm-1（必填）"},
+                         "numax": {"type": "number", "description": "目标线搜索窗上限 cm-1（必填）"},
+                         "mole_frac": {"type": "number", "description": "目标摩尔分数 0<x<=1；未给按纯气并在 critical_defaults 标记"},
+                         "iso": {"type": "string", "description": "同位素号或 'all'；默认主同位素"},
+                         "T": {"type": "number", "description": "温度 K（未给用 296 并标记待确认）"},
+                         "P": {"type": "number", "description": "气压 atm（未给用 1.01325 并标记待确认）"},
+                         "step": {"type": "number", "description": "细网格步长 cm-1；默认按半宽自适应（≤1e-3）"},
+                         "profile": {"type": "string", "description": "线型：voigt(默认)/lorentz/gauss/doppler/ht/sdvoigt"},
+                         "diluent": {"type": "string", "description": "展宽浴：'air'(默认) 或 'self'"},
+                         "half_width": {"type": "number", "description": "线心两侧评估半宽 cm-1，默认 0.2"},
+                         "line_index": {"type": "integer", "description": "用窗口内第几强线（0=最强，默认 0）"},
+                         "strict": {"type": "boolean", "description": "True 时 T/P 未给直接报错"}},
+                     "required": ["name", "interferers_csv", "numin", "numax"]}},
     {"name": "hitran_partition_sum",
      "description": "配分函数 Q(T)，走官方 TIPS（2025 默认，可 2021/2017/2011），用于线强温度换算。",
      "inputSchema": {"type": "object",
@@ -2665,6 +2815,7 @@ DISPATCH = {
     "hitran_spectrum": t_spectrum,
     "hitran_plot": t_plot,
     "hitran_report": t_report,
+    "hitran_interference": t_interference,
     "hitran_partition_sum": t_partition_sum,
     "hitran_cross_section": t_cross_section,
     "hitran_xsc_search": t_xsc_search,

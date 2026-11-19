@@ -24,7 +24,7 @@ def _assert(cond, msg):
 
 def check_tools():
     names = [t.get("name") for t in m.TOOLS]
-    _assert(len(names) == 13, f"工具数应为 13，实际 {len(names)}")
+    _assert(len(names) == 14, f"工具数应为 14，实际 {len(names)}")
     _assert(len(set(names)) == len(names), "工具名重复")
     _assert(set(names) == set(m.DISPATCH), "TOOLS 与 DISPATCH 不一致")
     for tool in m.TOOLS:
@@ -54,7 +54,7 @@ def check_protocol():
 
     _, listed, error = m.handle({"jsonrpc": "2.0", "id": "list", "method": "tools/list"})
     _assert(error is None and listed, "tools/list 应返回 result")
-    _assert(len(listed["tools"]) == 13, "tools/list 工具数不是 13")
+    _assert(len(listed["tools"]) == 14, "tools/list 工具数不是 14")
 
     _, pong, error = m.handle({"jsonrpc": "2.0", "id": "ping", "method": "ping"})
     _assert(error is None and pong == {}, "ping 应返回空对象")

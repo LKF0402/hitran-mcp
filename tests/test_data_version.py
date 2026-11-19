@@ -47,9 +47,12 @@ class ProvenanceTests(unittest.TestCase):
 class SpecsGuardTests(unittest.TestCase):
     def test_parse_normal(self):
         out = hm._parse_specs_csv("CH4:0.01,C2H6:1e-5")
-        self.assertEqual(out[0], {"name": "CH4", "mole_frac": 0.01})
+        # mole_frac_given 是下游 needs_confirm 判据，必须随解析结果一并带回
+        self.assertEqual({k: out[0][k] for k in ("name", "mole_frac", "mole_frac_given")},
+                         {"name": "CH4", "mole_frac": 0.01, "mole_frac_given": True})
         self.assertAlmostEqual(out[1]["mole_frac"], 1e-5)
-        self.assertEqual(hm._parse_specs_csv("CO,N2O")[1], {"name": "N2O"})
+        self.assertEqual(hm._parse_specs_csv("CO,N2O")[1],
+                         {"name": "N2O", "mole_frac_given": False})
 
     def test_parse_rejects_out_of_range(self):
         for bad in ("CH4:0", "CH4:-0.5", "CH4:5", "CH4:1e3", "CH4:", "CH4:abc",

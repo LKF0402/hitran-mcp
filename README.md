@@ -77,7 +77,7 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 50 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 56 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 🧭 三种用法怎么选
@@ -288,7 +288,7 @@ hitran-mcp/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
    ├─ hitran_cli.py          # 命令行入口（不装 MCP 也能调用同一批工具函数）
    ├─ hitran.py              # 官方 HAPI 的统一薄封装（输入护栏 + 溯源水印 + 计算缓存）
-   ├─ contract_check.py      # 离线契约检查（12 工具 / 协议 / BOM）
+   ├─ contract_check.py      # 离线契约检查（14 工具 / 协议 / BOM）
    ├─ security_check.py      # 安全与敏感性扫描（发布前闸门）
    ├─ build_release.py       # 一键打包 + 出 zip + 一致性校验 + 安全闸门
    └─ __init__.py
@@ -333,9 +333,9 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 </details>
 
 <details>
-<summary><b>📋 工具参考（13 个）</b></summary>
+<summary><b>📋 工具参考（14 个）</b></summary>
 
-> AI 调用建议：常规"给参数看谱"直接调 `hitran_report`（一次往返拿全）；需要细粒度控制再拆用 `hitran_lines` / `hitran_spectrum` / `hitran_plot`。
+> AI 调用建议：先用 `hitran_interference` 判这条线能不能用，再用 `hitran_report` 一趟拿全（谱+图+强线）。需要细粒度控制再拆用 `hitran_lines` / `hitran_spectrum` / `hitran_plot`。
 > 失败时返回 `{"error": {"code", "message", "hint"}}`：`E_BAD_ARGS` / `E_STRICT` / `E_NO_LINES` / `E_WINDOW_UNCOVERED` / `E_UPSTREAM_403` / `E_UPSTREAM_429` / `E_MISSING_FILE` / `E_UNKNOWN_TOOL` / `E_INTERNAL`，按 `hint` 决定下一步，不要重试同一组错误参数。
 
 | 工具 | 用途 | 关键输入 |
@@ -346,6 +346,7 @@ HITRAN2024 采用**双库分发架构**，两条数据通道的访问机制不�
 | `hitran_spectrum` | 吸收系数 α / 透过率谱，CSV 带溯源水印；多物种可用 `specs_csv` 一次叠加；`sample_points>0` 时回传采样曲线供读谱形 | `specs_csv` 或 `name`；`numin`, `numax` 必填 |
 | `hitran_plot` | 谱图 PNG（多物种叠加 + 总谱，`ylog` 可选） | 同 `hitran_spectrum`，另加 `title/ylog/dpi` |
 | `hitran_report` | **AI 首选**：一次调用拿全 —— 峰值 + 采样曲线 + 强线清单 + PNG/CSV + 数据版次 + 告警 + `next_actions` | `name` 或 `specs_csv`；`numin`, `numax`；可选 `top_n/sample_points/make_plot` |
+| `hitran_interference` | **选线判据**：目标线中心的交叉干扰比值（各干扰组分 α、ratio、dB、窗内最大比值、合计判级 negligible/minor/significant/dominant） | `name`, `interferers_csv`（'H2O:0.01,CO2:4e-4'）；`numin`, `numax`；可选 `line_index/half_width/T/P` |
 | `hitran_partition_sum` | 配分函数 Q(T)，TIPS 2025/2021/2017/2011 可选 | `name` 或 `M`；`T` |
 | `hitran_cross_section` | 读入本地截面文件（原生 `.xsc` 或 ν–σ 两列）→ 截窗/绘图/溯源 CSV | `file_path`（缺省时列出 `xsc_data/` 可用文件） |
 | `hitran_xsc_search` | 在线探测截面子库分子的截面文件清单（免登录只读，无文件名） | `name`（Portal 显示名） |
@@ -400,8 +401,8 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装 | 50/50 通过 |
-| MCP 契约 | `python tools/contract_check.py` | 13 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 13, "version": "1.7.1"}` |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级 | 56/56 通过 |
+| MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.2"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
