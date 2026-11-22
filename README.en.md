@@ -15,11 +15,13 @@ Retrieval · spectral calculation · plotting · provenance in one pipeline. Dat
 <a href="https://github.com/LKF0402/hitran-mcp/stargazers"><img src="https://img.shields.io/github/stars/LKF0402/hitran-mcp?color=yellow" alt="Stars"></a>
 <a href="https://github.com/LKF0402/hitran-mcp/issues"><img src="https://img.shields.io/github/issues/LKF0402/hitran-mcp" alt="Issues"></a>
 <img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
-<img src="https://img.shields.io/badge/tools-12-9C6BD4" alt="Tools">
+<img src="https://img.shields.io/badge/tools-14-9C6BD4" alt="Tools">
 <img src="https://img.shields.io/badge/docs-README-blueviolet" alt="Docs">
 [![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
 
 </div>
+
+> **Version status**: v1.7.7 is the final maintenance release; afterwards only security and dependency issues are handled — no new features.
 
 [English](./README.en.md) | [中文](./README.md)
 

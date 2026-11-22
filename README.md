@@ -15,11 +15,13 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 <img src="https://img.shields.io/github/commit-activity/m/LKF0402/hitran-mcp" alt="Commit Activity">
 <img src="https://img.shields.io/badge/MCP-stdio-6B8FD4" alt="MCP">
 <img src="https://img.shields.io/badge/HITRAN-2024-4C8C4A" alt="HITRAN">
-<img src="https://img.shields.io/badge/tools-12-9C6BD4" alt="Tools">
+<img src="https://img.shields.io/badge/tools-14-9C6BD4" alt="Tools">
 <img src="https://img.shields.io/badge/docs-README-blueviolet" alt="Docs">
 [![CI](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LKF0402/hitran-mcp/actions/workflows/ci.yml)
 
 </div>
+
+> **版本状态**：v1.7.7 为当前最终维护版；后续只处理安全与依赖问题，不再新增功能。
 
 [English](./README.en.md) | 中文
 
