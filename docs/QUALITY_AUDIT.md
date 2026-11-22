@@ -5,6 +5,8 @@
 
 ## v1.7.7 增量快照（2026-11-22）
 
+本版为**最终维护版**，Release `HitranLab v1.7.7` 已发布，附 Windows x64 包资产；后续只处理安全与依赖问题。
+
 本节的数字以当前 `main` 实测为准，不改写上方 v1.6.3 的历史评分（历史快照保留原状，便于对照演进）。
 
 | 项目 | v1.6.3 快照 | v1.7.7 实测 |
@@ -14,7 +16,7 @@
 | 契约检查 | version 1.6.3 | `{"ok": true, "tools": 14, "version": "1.7.7"}` |
 | 安全/敏感性扫描 | 通过 | 通过（`security True []`） |
 | 安装入口 | 无（只能 `python tools/xxx.py`） | `pyproject.toml` 提供 `hitran-mcp` / `hitran-cli` / `hitranlink` 三个 console_scripts，版本仍由 `tools/hitran_mcp.py:VERSION` 单一提供 |
-| 发布物 | GUI ZIP（v1.6.3） | 未变，MCP 侧仍无独立发行包 |
+| 发布物 | GUI ZIP（v1.6.3） | GUI ZIP（v1.7.7）：`HitranLink-windows-x64.zip`，99,798,435 B，SHA-256 `e6c31420678f396fe30cc492f942ef4157eeafbe10e66dc57791f5db614d068e`，2000 条目；MCP 侧仍无独立发行包（可自建 wheel） |
 
 v1.7.4–v1.7.7 修复的实质缺陷（均带回归测试，见 `tests/test_mcp_ai.py` 的 `ChromaticBugTests`）：
 
