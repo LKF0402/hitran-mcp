@@ -27,7 +27,9 @@ v1.7.4–v1.7.7 修复的实质缺陷（均带回归测试，见 `tests/test_mcp
 7. 参数类输入（窗口倒置、`step<=0`、`wingHW<0`、`T<=0`、`P<=0`、`top_n<=0`、`line_index<0`）原先静默出空谱或 numpy 除零 → 显式报错并归 `E_BAD_ARGS`；
 8. 溯源水印的线型/表名/抓取日期此前可能标错 → 本次补 5 项断言（实际线型、窗口后缀表名、陈旧日期 `# WARN`、新日期无告警、单位口径切换）。
 
-仍存在的非阻断项（未做，不属于"完善 bug"范畴）：GUI 无事件级自动化测试；MCP 侧无独立发行物（`build_release.py` 只服务 GUI ZIP）；`CHANGELOG.md` 按既有规则只记 GUI，MCP 侧改动未记；Dependabot 的依赖升级 PR 未合入（与精确 pin 口径需同步确认）。
+仍存在的非阻断项（未做，不属于"完善 bug"范畴）：GUI 无事件级自动化测试；MCP 侧无独立发行物（`build_release.py` 只服务 GUI ZIP）；`CHANGELOG.md` 按既有规则只记 GUI，MCP 侧改动未记。
+
+依赖升级（本次）：`numpy 2.0.1→2.0.2`、`matplotlib 3.9.1→3.9.4`、`Pillow 11.0.0→12.3.0`、CI `checkout@v7` / `setup-python@v7`；Pillow 不升 13.0.0——其 `requires_python >=3.11`，与本仓库 `>=3.10` 声明冲突，升级在 3.10 上不可装。
 
 ## 结论速览
 

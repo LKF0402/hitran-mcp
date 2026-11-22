@@ -441,7 +441,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
 | 桌面工作站自测 | `python app/hitran_app.py --selftest selftest.json` | 引擎 + 数据 + 网络在打包环境内可用，输出分子数、谱点数、峰值、warnings | `warnings: []` |
 
-CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.1`、`matplotlib==3.9.1`、`Pillow==11.0.0`），由 Dependabot 每周检查更新；Python 3.13 另用 `requirements-py313.txt`（同口径精确锁定，numpy 2.1.3 / matplotlib 3.10.0），因 2.0.1 / 3.9.1 无 3.13 轮子。
+CI（`.github/workflows/ci.yml`）在 Windows 上跑 Python 3.10/3.11/3.12 三版本矩阵：语法编译、`pyflakes` 静态检查、单元测试、契约检查；另有 `fetch-depth: 0` 的 security job 扫描 Git 历史。依赖在 `requirements.txt` 精确锁定（`hitran-api==1.3.0.0`、`numpy==2.0.2`、`matplotlib==3.9.4`、`Pillow==12.3.0`），由 Dependabot 每周检查更新；Python 3.13 另用 `requirements-py313.txt`（同口径精确锁定，numpy 2.1.3 / matplotlib 3.10.0），因 2.0.2 / 3.9.4 无 3.13 轮子。Pillow 锁在 12.x 而非 13：13.0.0 起要求 Python ≥ 3.11，而本仓库声明支持 ≥ 3.10。
 
 分维度评分与敏感性检测明细见 [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md)。
 

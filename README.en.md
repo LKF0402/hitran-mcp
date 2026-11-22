@@ -438,7 +438,7 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |
 | Workstation self-test | `python app/hitran_app.py --selftest selftest.json` | Engine + data + network usable inside the packaged environment; reports molecule count, spectrum points, peak, warnings | `warnings: []` |
 
-CI (`.github/workflows/ci.yml`) runs on Windows across Python 3.10/3.11/3.12: syntax compilation, `pyflakes` static analysis, unit tests and the contract check, plus a `fetch-depth: 0` security job that scans Git history. Dependencies are pinned in `requirements.txt` (`hitran-api==1.3.0.0`, `numpy==2.0.1`, `matplotlib==3.9.1`, `Pillow==11.0.0`) and checked weekly by Dependabot; Python 3.13 uses `requirements-py313.txt` (same pinned policy, numpy 2.1.3 / matplotlib 3.10.0) because 2.0.1 / 3.9.1 ship no 3.13 wheels.
+CI (`.github/workflows/ci.yml`) runs on Windows across Python 3.10/3.11/3.12: syntax compilation, `pyflakes` static analysis, unit tests and the contract check, plus a `fetch-depth: 0` security job that scans Git history. Dependencies are pinned in `requirements.txt` (`hitran-api==1.3.0.0`, `numpy==2.0.2`, `matplotlib==3.9.4`, `Pillow==12.3.0`) and checked weekly by Dependabot; Python 3.13 uses `requirements-py313.txt` (same pinned policy, numpy 2.1.3 / matplotlib 3.10.0) because 2.0.2 / 3.9.4 ship no 3.13 wheels. Pillow is held at 12.x, not 13: 13.0.0 requires Python ≥ 3.11 while this repository supports ≥ 3.10.
 
 The full per-dimension scoring and sensitivity results are in [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md).
 
