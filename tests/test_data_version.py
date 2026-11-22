@@ -43,6 +43,22 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual(dates, sorted(dates))
         self.assertIn(ht.HITRAN_EDITION_BASE, dates)
 
+    def test_ht_profile_is_actual_not_hardcoded(self):
+        stamp = ht.provenance("CO", 2109.0, 2111.0, 296, 1.01325, profile="HT")
+        self.assertIn("profile=ht", stamp)
+
+    def test_window_suffixed_table_is_reported(self):
+        # 静态推导只对基础表成立；带窗口后缀的表必须按实参写入，否则产物指向不存在的缓存名
+        stamp = ht.provenance("CH4", 2968.0, 2970.0, 296, 1.01325,
+                              tables="CH4_6_1_2968_2970")
+        self.assertIn("table=CH4_6_1_2968_2970", stamp)
+
+    def test_units_switch_in_watermark(self):
+        self.assertIn("cm2/molecule",
+                      ht.provenance("CO", 2109.0, 2111.0, 296, 1.01325, hitran_units=True))
+        self.assertIn("cm-1",
+                      ht.provenance("CO", 2109.0, 2111.0, 296, 1.01325, hitran_units=False))
+
 
 class SpecsGuardTests(unittest.TestCase):
     def test_parse_normal(self):

@@ -3,6 +3,32 @@
 > 快照说明：本报告为 v1.6.3 时点记录，数字（测试数 23、契约版本 1.6.3、发布 ZIP 摘要）均属该版本。
 > v1.7.0 的变化（测试 35 项、契约版本 1.7.0、数据版次台账、依赖新增 Pillow）见 README「测试与质量门禁」一节与本文件后续版本的独立报告。
 
+## v1.7.7 增量快照（2026-11-22）
+
+本节的数字以当前 `main` 实测为准，不改写上方 v1.6.3 的历史评分（历史快照保留原状，便于对照演进）。
+
+| 项目 | v1.6.3 快照 | v1.7.7 实测 |
+| --- | --- | --- |
+| MCP 工具数 | 12 | 14（新增 `hitran_report`、`hitran_interference`） |
+| 离线单元测试 | 23 | 70（`Ran 70 tests ... OK`） |
+| 契约检查 | version 1.6.3 | `{"ok": true, "tools": 14, "version": "1.7.7"}` |
+| 安全/敏感性扫描 | 通过 | 通过（`security True []`） |
+| 安装入口 | 无（只能 `python tools/xxx.py`） | `pyproject.toml` 提供 `hitran-mcp` / `hitran-cli` / `hitranlink` 三个 console_scripts，版本仍由 `tools/hitran_mcp.py:VERSION` 单一提供 |
+| 发布物 | GUI ZIP（v1.6.3） | 未变，MCP 侧仍无独立发行包 |
+
+v1.7.4–v1.7.7 修复的实质缺陷（均带回归测试，见 `tests/test_mcp_ai.py` 的 `ChromaticBugTests`）：
+
+1. 同名不同同位素组分在 `per` 字典撞标签而被静默覆盖 → 标签唯一化并告警；
+2. `hitran_units=True` 时浓度未按 `x` 加权 → α/σ 统一加权；
+3. σ 口径配透过率时 `exp(-σ·L)` 量纲错误、恒返回 T=1.0 → 补数密度 `N = P·101325/(k·T)`；
+4. 原生 `.xsc` 在 `npnts % 10 == 2` 时被两列文本解析吞掉 → 判定顺序改原生头优先（与 GUI 一致）；
+5. `HITRAN_DATA_DIR` 只对线表生效、计算缓存仍写死仓库根 → 统一走 `DATA_ROOT`；
+6. 截面文件清单漏 `.xsc` 后缀；
+7. 参数类输入（窗口倒置、`step<=0`、`wingHW<0`、`T<=0`、`P<=0`、`top_n<=0`、`line_index<0`）原先静默出空谱或 numpy 除零 → 显式报错并归 `E_BAD_ARGS`；
+8. 溯源水印的线型/表名/抓取日期此前可能标错 → 本次补 5 项断言（实际线型、窗口后缀表名、陈旧日期 `# WARN`、新日期无告警、单位口径切换）。
+
+仍存在的非阻断项（未做，不属于"完善 bug"范畴）：GUI 无事件级自动化测试；MCP 侧无独立发行物（`build_release.py` 只服务 GUI ZIP）；`CHANGELOG.md` 按既有规则只记 GUI，MCP 侧改动未记；Dependabot 的依赖升级 PR 未合入（与精确 pin 口径需同步确认）。
+
 ## 结论速览
 
 - 评估对象：`hitran-mcp` 仓库（HitranLink GUI + HITRAN MCP）。
