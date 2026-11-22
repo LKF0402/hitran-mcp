@@ -10,7 +10,7 @@
 | 项目 | v1.6.3 快照 | v1.7.7 实测 |
 | --- | --- | --- |
 | MCP 工具数 | 12 | 14（新增 `hitran_report`、`hitran_interference`） |
-| 离线单元测试 | 23 | 70（`Ran 70 tests ... OK`） |
+| 离线单元测试 | 23 | 74（`Ran 74 tests ... OK`） |
 | 契约检查 | version 1.6.3 | `{"ok": true, "tools": 14, "version": "1.7.7"}` |
 | 安全/敏感性扫描 | 通过 | 通过（`security True []`） |
 | 安装入口 | 无（只能 `python tools/xxx.py`） | `pyproject.toml` 提供 `hitran-mcp` / `hitran-cli` / `hitranlink` 三个 console_scripts，版本仍由 `tools/hitran_mcp.py:VERSION` 单一提供 |

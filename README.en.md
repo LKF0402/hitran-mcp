@@ -77,7 +77,7 @@ After installation, calculations can be requested directly in natural language, 
 | Computation cache | Results for identical parameters are automatically cached (200-entry cap, LRU eviction); repeated computations return instantly |
 | Desktop GUI | HitranLink workstation: multi-component overlay plotting, layer management, strong-line list (with molecule source labels), Q(T) curves, wavelength↔wavenumber converter, cross-section search & download, CSV/PNG export |
 | Secure updates | Help → Check for updates: download URL derived from a fixed repo and fixed asset name, mandatory SHA-256 + size verification, entry-by-entry safe extraction with a top-level allow-list; releases without a digest are refused |
-| Quality gates | 70 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
+| Quality gates | 74 offline unit tests, MCP contract check, secret/sensitivity scan; CI matrix on three Python versions plus a dedicated security job; pinned dependencies + weekly Dependabot |
 | Data-free repository | Caches, outputs, personal cross-section files and build artifacts are gitignored — the repo stays lightweight |
 
 ## 🧭 Three ways to use it
@@ -143,6 +143,8 @@ The MCP client entry then simplifies to:
 ```
 
 > Without `-e .`, the `python <repository root>/tools/hitran_mcp.py` form above still works — both paths share one engine.
+
+To build a distributable wheel (install offline elsewhere): `python -m pip wheel . --no-deps -w dist`, producing `dist/hitran_mcp-<version>-py3-none-any.whl`.
 
 ##### API Key (Optional)
 
@@ -314,7 +316,8 @@ hitran-mcp/
 │  ├─ test_core.py           # Redaction, filename-escape prevention, status fields
 │  ├─ test_data_version.py   # Table-fetch ledger / mole-fraction guard / provenance watermark (profile, window table, units)
 │  ├─ test_mcp_ai.py         # MCP error contract / curve sampling / interference grading / label & σ–τ regressions
-│  └─ test_cli.py            # CLI entry point tests
+│  ├─ test_cli.py            # CLI entry point tests
+│  └─ test_gui_helpers.py    # GUI pure helpers + cross-section reader parity with MCP (no window created)
 └─ tools/
    ├─ hitran_mcp.py          # MCP server (stdio JSON-RPC, pure stdlib)
    ├─ hitran_cli.py          # CLI entry point (same tool functions, no MCP needed)
@@ -432,7 +435,7 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 
 | Check | Command | Coverage | Expected |
 |---|---|---|---|
-| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), provenance watermark (actual profile / window table / unit convention), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading; label uniqueness, σ scaling, σ–transmittance number density, native .xsc priority, cache root following the data dir, window/step/condition guards, full-width separator normalisation | 70/70 pass |
+| Unit tests | `python -m unittest discover -s tests -v` (or `python -m pytest -q`) | Update URL allow-list, SHA-256, safe extraction (`../`, absolute paths, drive letters, zip bomb, symlinks), top-level allow-list, redaction and filename escape prevention, data-edition ledger (profile / fetch date / staleness warning), provenance watermark (actual profile / window table / unit convention), mole-fraction guard, MCP error codes, curve sampling, report assembly, interference grading; label uniqueness, σ scaling, σ–transmittance number density, native .xsc priority, cache root following the data dir, window/step/condition guards, full-width separator normalisation; GUI molecule-name resolution and cross-section reader parity with MCP | 74/74 pass |
 | MCP contract | `python tools/contract_check.py` | `TOOLS`/`DISPATCH` consistency for the 14 tools, required schema fields, `initialize`/`tools/list`/`ping` responses, no UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.7"}` |
 | Secret / sensitivity | `python tools/security_check.py` | Tracked files, Git history, worktree, release ZIP, Python AST dangerous calls, pinned dependencies, `.gitignore` coverage | `"ok": true`, `issues: []` |
 | MCP online self-test | `python tools/hitran_mcp.py --selftest` | Real fetch of a small CO window and plot, plus cross-section pipeline (synthetic file), online probe and status check | End-to-end success |

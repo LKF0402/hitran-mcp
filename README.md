@@ -78,7 +78,7 @@ MCP 服务器 + HitranLink 桌面工作站 · 实时取数 · 本地缓存</p>
 | 计算缓存 | 相同参数的谱计算结果自动缓存（200 条上限，LRU 淘汰），重复计算瞬时返回 |
 | 桌面 GUI | HitranLink 工作站：多组分叠加绘图、图层管理、强线列表（标注分子来源）、Q(T) 曲线、波长↔波数换算器、截面文件在线搜索与下载、CSV/PNG 导出 |
 | 安全更新 | 「帮助 → 检查更新」：下载地址按固定仓库 + 固定资产名构造，强制 SHA-256 与大小双校验，逐条安全解压 + 顶层白名单，旧资产缺摘要则拒绝自动升级 |
-| 质量门禁 | 70 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
+| 质量门禁 | 74 项离线单元测试、MCP 契约检查、安全/敏感性扫描；CI 三版本矩阵 + 独立 security job；依赖精确锁定 + Dependabot 周检 |
 | 零数据入库 | 缓存、产物、个人下载的截面文件、打包产物全部 gitignore，仓库保持轻量 |
 
 ## 🧭 三种用法怎么选
@@ -144,6 +144,8 @@ MCP 客户端配置里即可写成：
 ```
 
 > 未装 `-e .` 时仍可用上文的 `python <仓库目录>/tools/hitran_mcp.py` 写法，两条路径共用同一引擎。
+
+生成可分发 wheel（离线安装到别的机器）：`python -m pip wheel . --no-deps -w dist`，产物为 `dist/hitran_mcp-<版本>-py3-none-any.whl`。
 
 ##### API Key（可选）
 
@@ -317,7 +319,8 @@ hitran-mcp/
 │  ├─ test_core.py           # 脱敏、文件名防逃逸、状态字段测试
 │  ├─ test_data_version.py   # 线表版次台账 / 摩尔分数护栏 / 溯源水印（线型·表名·抓取日期）
 │  ├─ test_mcp_ai.py         # MCP 错误契约 / 曲线采样 / 干扰判级 / 组分标签与 σ–τ 回归
-│  └─ test_cli.py            # 命令行入口测试
+│  ├─ test_cli.py            # 命令行入口测试
+│  └─ test_gui_helpers.py    # GUI 纯函数 + 截面读取与 MCP 逐值一致（不建窗口）
 └─ tools/
    ├─ hitran_mcp.py          # MCP 服务器本体（stdio JSON-RPC，纯标准库）
    ├─ hitran_cli.py          # 命令行入口（不装 MCP 也能调用同一批工具函数）
@@ -435,7 +438,7 @@ hitran_spectrum(specs_csv="CH4:0.01,C2H6:1e-5", numin=2950, numax=3120, T=296, P
 
 | 检查 | 命令 | 覆盖范围 | 期望 |
 |---|---|---|---|
-| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、溯源水印（实际线型/窗口表名/单位口径）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级；组分标签唯一化、σ 口径加权、σ–透过率数密度、原生 .xsc 优先解析、缓存根跟随数据目录、窗口/步长/工况护栏、全角分隔符归一 | 70/70 通过 |
+| 单元测试 | `python -m unittest discover -s tests -v`（或 `python -m pytest -q`） | 更新地址白名单、SHA-256、安全解压（`../`、绝对路径、盘符、zip bomb、符号链接）、顶层白名单、脱敏与文件名防逃逸、数据版次台账（线型/抓取日期/陈旧告警）、溯源水印（实际线型/窗口表名/单位口径）、摩尔分数护栏、MCP 错误码、曲线采样、report 组装、干扰比判级；组分标签唯一化、σ 口径加权、σ–透过率数密度、原生 .xsc 优先解析、缓存根跟随数据目录、窗口/步长/工况护栏、全角分隔符归一；GUI 侧分子名解析、截面读取与 MCP 逐值一致 | 74/74 通过 |
 | MCP 契约 | `python tools/contract_check.py` | 14 个工具的 `TOOLS`/`DISPATCH` 一致性、schema 必填、`initialize`/`tools/list`/`ping` 返回、无 UTF-8 BOM | `{"ok": true, "tools": 14, "version": "1.7.7"}` |
 | 安全/敏感性 | `python tools/security_check.py` | 跟踪文件、Git 历史、工作区、发布 ZIP、Python AST 危险调用、依赖锁定、`.gitignore` 覆盖 | `"ok": true`、`issues: []` |
 | MCP 联网自测 | `python tools/hitran_mcp.py --selftest` | 真实抓取 CO 小窗口并生成图像，另含截面链路（合成文件）、在线探测与状态检查 | 全链路成功 |
